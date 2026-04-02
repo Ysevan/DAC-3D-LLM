@@ -81,7 +81,7 @@ def create_api_app(assistant: Any) -> Any:
         uploaded_paths: list[Path] = []
         temp_dir: Path | None = None
         if files:
-            temp_dir = Path(tempfile.mkdtemp(prefix="dac3d-kb-", dir=assistant.config.base_dir))
+            temp_dir = Path(tempfile.mkdtemp(prefix="dac3d-kb-", dir=assistant.config.upload_temp_dir))
             for file in files:
                 if not file.filename:
                     continue

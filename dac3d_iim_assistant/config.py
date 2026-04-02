@@ -87,6 +87,8 @@ class AppConfig:
     vector_store_history_path: Path = field(init=False)
     frontend_dir: Path = field(init=False)
     frontend_dist_dir: Path = field(init=False)
+    temp_root_dir: Path = field(init=False)
+    upload_temp_dir: Path = field(init=False)
 
     def __post_init__(self) -> None:
         self.knowledge_base_dir = self.base_dir / "knowledge_base"
@@ -97,6 +99,8 @@ class AppConfig:
         self.vector_store_history_path = self.vector_store_path / "build_history.json"
         self.frontend_dir = self.base_dir / "frontend"
         self.frontend_dist_dir = self.frontend_dir / "dist"
+        self.temp_root_dir = self.base_dir / ".tmp"
+        self.upload_temp_dir = self.temp_root_dir / "uploads"
 
     @classmethod
     def from_env(cls, base_dir: Path | None = None) -> "AppConfig":
@@ -160,6 +164,7 @@ class AppConfig:
         """Ensure runtime directories exist."""
         self.documents_dir.mkdir(parents=True, exist_ok=True)
         self.vector_store_dir.mkdir(parents=True, exist_ok=True)
+        self.upload_temp_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def vector_store_ready(self) -> bool:
