@@ -87,6 +87,8 @@ class AppConfig:
     vector_store_history_path: Path = field(init=False)
     frontend_dir: Path = field(init=False)
     frontend_dist_dir: Path = field(init=False)
+    legacy_frontend_dir: Path = field(init=False)
+    legacy_frontend_dist_dir: Path = field(init=False)
     temp_root_dir: Path = field(init=False)
     upload_temp_dir: Path = field(init=False)
 
@@ -99,6 +101,8 @@ class AppConfig:
         self.vector_store_history_path = self.vector_store_path / "build_history.json"
         self.frontend_dir = self.base_dir / "frontend"
         self.frontend_dist_dir = self.frontend_dir / "dist"
+        self.legacy_frontend_dir = self.base_dir / "ui2"
+        self.legacy_frontend_dist_dir = self.legacy_frontend_dir / "dist"
         self.temp_root_dir = self.base_dir / ".tmp"
         self.upload_temp_dir = self.temp_root_dir / "uploads"
 
