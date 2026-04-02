@@ -266,7 +266,7 @@ body.dark .shutter {
   min-width: 0;
   max-width: none;
   margin: 0;
-  padding: 20px 20px 20px var(--conversation-offset);
+  padding: 20px;
 }
 
 .conversation-column {
@@ -277,6 +277,7 @@ body.dark .shutter {
   min-width: 0;
   max-width: calc(100vw - (var(--conversation-offset) * 2));
   min-height: 0;
+  margin: 0 auto;
 }
 
 .chat-log {
