@@ -71,6 +71,14 @@ class MockProviderAdapter(ProviderAdapter):
     ) -> str:
         del prompt
         items = list(retrieval_items)
+        if task == "greeting":
+            provider_name = question.split("||", 1)[0].strip() or "unknown provider"
+            model_name = question.split("||", 1)[1].strip() if "||" in question else "unknown model"
+            return (
+                f"我是由 {provider_name} 提供的 {model_name} 模型。"
+                "我目前可用于文档问答、操作指导、检测结果解读、扫描命令预览和运行状态查询。"
+            )
+
         if task == "command_clarification":
             missing_fields = list((command or {}).get("missing_fields", []))
             warnings = list((command or {}).get("warnings", []))

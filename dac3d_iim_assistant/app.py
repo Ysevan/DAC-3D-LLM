@@ -24,6 +24,7 @@ from knowledge_base.build_kb import (
 from rag.llm_client import LLMClient, LLMConfigurationError, LLMProviderError
 from rag.prompts import (
     build_command_clarification_prompt,
+    build_greeting_prompt,
     build_guidance_prompt,
     build_interpretation_prompt,
     build_qa_prompt,
@@ -136,6 +137,10 @@ class DAC3DAssistant:
             if not clean_message:
                 return AssistantResponse(intent="error", answer="请输入有效问题。")
 
+            hello_response = self._hello_model_response(clean_message)
+            if hello_response is not None:
+                return hello_response
+
             intent = self.intent_classifier.classify(clean_message)
             history_tail = self._trim_history(history)
 
@@ -169,6 +174,11 @@ class DAC3DAssistant:
             clean_message = message.strip()
             if not clean_message:
                 yield "error", {"message": "请输入有效问题。"}
+                return
+
+            hello_response = self._hello_model_response(clean_message)
+            if hello_response is not None:
+                yield from self._emit_buffered_response(hello_response)
                 return
 
             intent = self.intent_classifier.classify(clean_message)
@@ -214,6 +224,24 @@ class DAC3DAssistant:
             "latest_build_at": knowledge_base.get("latest_build_at"),
             "knowledge_base": knowledge_base,
         }
+
+    def _hello_model_response(self, message: str) -> AssistantResponse | None:
+        """Return an LLM-generated model introduction for plain hello messages."""
+        if message.casefold() != "hello":
+            return None
+
+        provider = self.config.provider.strip() or "unknown provider"
+        model_name = self.config.model_name.strip() or "unknown model"
+        prompt = build_greeting_prompt(provider=provider, model_name=model_name)
+        answer = self.llm_client.generate(
+            prompt,
+            task="greeting",
+            question=f"{provider}||{model_name}",
+        )
+        return AssistantResponse(
+            intent="query",
+            answer=answer,
+        )
 
     def knowledge_base_summary(self) -> dict[str, Any]:
         """Return persisted knowledge-base metadata for the Web control panel."""

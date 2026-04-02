@@ -14,7 +14,7 @@ def create_api_app(assistant: Any) -> Any:
     try:
         from fastapi import Body, FastAPI, File, HTTPException, UploadFile
         from fastapi.middleware.cors import CORSMiddleware
-        from fastapi.responses import HTMLResponse, StreamingResponse
+        from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
         from fastapi.staticfiles import StaticFiles
     except Exception as exc:  # pragma: no cover - optional dependency guard
         raise RuntimeError(
@@ -109,13 +109,15 @@ def create_api_app(assistant: Any) -> Any:
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="frontend-assets")
 
-        @app.get("/", response_class=HTMLResponse)
-        async def frontend_index() -> HTMLResponse:
+        @app.get("/{static_path:path}")
+        async def frontend_static(static_path: str) -> HTMLResponse | FileResponse:
+            candidate = assistant.config.frontend_dist_dir / static_path
+            if static_path and candidate.exists() and candidate.is_file():
+                return FileResponse(candidate)
             return HTMLResponse(assistant.config.frontend_dist_dir.joinpath("index.html").read_text(encoding="utf-8"))
 
-        @app.get("/{full_path:path}", response_class=HTMLResponse)
-        async def frontend_spa(full_path: str) -> HTMLResponse:
-            del full_path
+        @app.get("/", response_class=HTMLResponse)
+        async def frontend_index() -> HTMLResponse:
             return HTMLResponse(assistant.config.frontend_dist_dir.joinpath("index.html").read_text(encoding="utf-8"))
 
     else:

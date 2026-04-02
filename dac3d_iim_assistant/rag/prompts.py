@@ -100,3 +100,23 @@ def build_command_clarification_prompt(
         f"历史对话:\n{format_history(history)}\n\n"
         f"当前命令草稿:\n{command}"
     )
+
+
+def build_greeting_prompt(
+    *,
+    provider: str,
+    model_name: str,
+) -> str:
+    """Build the prompt for a plain hello model introduction."""
+    return (
+        "你是 DAC-3D 助手。\n"
+        "用户只输入了 hello。\n"
+        "请你只回答下面三项内容，不要添加其他解释：\n"
+        "1. 你调用的模型商\n"
+        "2. 你调用的模型名\n"
+        "3. 你当前可使用的功能\n"
+        "回答必须简洁，使用中文，控制在 3 句话以内，不要引用来源，不要展开技术细节。\n\n"
+        f"模型商: {provider}\n"
+        f"模型名: {model_name}\n"
+        "当前可使用功能: 文档问答、操作指导、检测结果解读、扫描命令预览、运行状态查询。"
+    )
