@@ -1,0 +1,172 @@
+[
+  {
+    "generated_at": "2026-03-19T16:13:20.497854+00:00",
+    "chunk_count": 98,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "manual_build",
+    "uploaded_files": []
+  },
+  {
+    "generated_at": "2026-03-19T16:12:44.011940+00:00",
+    "chunk_count": 98,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "manual_build",
+    "uploaded_files": []
+  },
+  {
+    "generated_at": "2026-03-19T16:12:06.131148+00:00",
+    "chunk_count": 98,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "manual_build",
+    "uploaded_files": []
+  },
+  {
+    "generated_at": "2026-03-19T16:12:05.809872+00:00",
+    "chunk_count": 98,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "manual_build",
+    "uploaded_files": []
+  },
+  {
+    "generated_at": "2026-03-19T12:51:42.738758+00:00",
+    "chunk_count": 98,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "manual_build",
+    "uploaded_files": []
+  },
+  {
+    "generated_at": "2026-03-19T12:39:27.529643+00:00",
+    "chunk_count": 98,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "manual_build",
+    "uploaded_files": []
+  },
+  {
+    "generated_at": "2026-03-19T12:13:12.233094+00:00",
+    "chunk_count": 98,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "manual_build",
+    "uploaded_files": []
+  },
+  {
+    "generated_at": "2026-03-19T12:11:32.094892+00:00",
+    "chunk_count": 97,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "manual_build",
+    "uploaded_files": []
+  },
+  {
+    "generated_at": "2026-03-19T12:01:37.696052+00:00",
+    "chunk_count": 2211,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "web_rebuild",
+    "uploaded_files": []
+  },
+  {
+    "generated_at": "2026-03-19T11:57:08.971393+00:00",
+    "chunk_count": 2211,
+    "document_count": 6,
+    "documents": [
+      "_DAC3D_本科毕业设计课题规划.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md",
+      "web_ui_test_doc.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "web_rebuild",
+    "uploaded_files": []
+  }
+]
