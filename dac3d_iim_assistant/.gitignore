@@ -11,3 +11,4 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 
 rag/*.egg-info/
+ui2/node_modules/
