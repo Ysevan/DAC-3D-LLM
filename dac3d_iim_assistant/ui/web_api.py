@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 
-def create_api_app(assistant: Any) -> Any:
+def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any:
     """Create the FastAPI app that powers the React web client."""
     try:
         from fastapi import Body, FastAPI, File, HTTPException, UploadFile
@@ -104,21 +104,23 @@ def create_api_app(assistant: Any) -> Any:
             "knowledge_base": summary,
         }
 
-    if assistant.config.frontend_dist_dir.exists():
-        assets_dir = assistant.config.frontend_dist_dir / "assets"
+    selected_frontend_dist = frontend_dist_dir or assistant.config.frontend_dist_dir
+
+    if selected_frontend_dist.exists():
+        assets_dir = selected_frontend_dist / "assets"
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="frontend-assets")
 
         @app.get("/{static_path:path}")
         async def frontend_static(static_path: str) -> HTMLResponse | FileResponse:
-            candidate = assistant.config.frontend_dist_dir / static_path
+            candidate = selected_frontend_dist / static_path
             if static_path and candidate.exists() and candidate.is_file():
                 return FileResponse(candidate)
-            return HTMLResponse(assistant.config.frontend_dist_dir.joinpath("index.html").read_text(encoding="utf-8"))
+            return HTMLResponse(selected_frontend_dist.joinpath("index.html").read_text(encoding="utf-8"))
 
         @app.get("/", response_class=HTMLResponse)
         async def frontend_index() -> HTMLResponse:
-            return HTMLResponse(assistant.config.frontend_dist_dir.joinpath("index.html").read_text(encoding="utf-8"))
+            return HTMLResponse(selected_frontend_dist.joinpath("index.html").read_text(encoding="utf-8"))
 
     else:
         @app.get("/", response_class=HTMLResponse)
