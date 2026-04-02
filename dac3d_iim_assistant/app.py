@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Iterator, Sequence
@@ -713,9 +714,34 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Launch the legacy Gradio UI instead of the FastAPI/React web app.",
     )
+    parser.add_argument(
+        "--web-only",
+        action="store_true",
+        help="Launch only the FastAPI/React web UI.",
+    )
     parser.add_argument("--host", help="Override the web server host.")
     parser.add_argument("--port", type=int, help="Override the web server port.")
     return parser
+
+
+def _build_gradio_widget(assistant: DAC3DAssistant, *, host: str, port: int) -> ChatWidget:
+    return ChatWidget(
+        assistant.handle_message,
+        runtime_summary_getter=assistant.runtime_summary,
+        knowledge_base_builder=assistant.build_knowledge_base_from_uploads,
+        knowledge_base_summary_getter=assistant.knowledge_base_summary,
+        streaming=assistant.config.streaming,
+        host=host,
+        port=port,
+        share=assistant.config.gradio_share,
+    )
+
+
+def _launch_gradio_widget(widget: ChatWidget) -> None:
+    try:
+        widget.launch_background()
+    except RuntimeError as exc:
+        print(f"Legacy web UI unavailable: {exc}")
 
 
 def main() -> None:
@@ -732,29 +758,19 @@ def main() -> None:
         return
 
     if args.cli:
-        widget = ChatWidget(
-            assistant.handle_message,
-            runtime_summary_getter=assistant.runtime_summary,
-            knowledge_base_builder=assistant.build_knowledge_base_from_uploads,
-            knowledge_base_summary_getter=assistant.knowledge_base_summary,
-            streaming=assistant.config.streaming,
+        widget = _build_gradio_widget(
+            assistant,
             host=assistant.config.gradio_host,
             port=assistant.config.gradio_port,
-            share=assistant.config.gradio_share,
         )
         widget.launch_cli()
         return
 
     if args.gradio:
-        widget = ChatWidget(
-            assistant.handle_message,
-            runtime_summary_getter=assistant.runtime_summary,
-            knowledge_base_builder=assistant.build_knowledge_base_from_uploads,
-            knowledge_base_summary_getter=assistant.knowledge_base_summary,
-            streaming=assistant.config.streaming,
+        widget = _build_gradio_widget(
+            assistant,
             host=args.host or assistant.config.gradio_host,
             port=args.port or assistant.config.gradio_port,
-            share=assistant.config.gradio_share,
         )
         try:
             widget.launch()
@@ -770,6 +786,24 @@ def main() -> None:
         print(f"FastAPI web server unavailable: {exc}")
         print("Use `python app.py --gradio` for the legacy UI or `python app.py --cli`.")
         return
+
+    if not args.web_only:
+        gradio_widget = _build_gradio_widget(
+            assistant,
+            host=assistant.config.gradio_host,
+            port=assistant.config.gradio_port,
+        )
+        gradio_thread = threading.Thread(
+            target=_launch_gradio_widget,
+            args=(gradio_widget,),
+            name="dac3d-gradio-ui",
+            daemon=True,
+        )
+        gradio_thread.start()
+        print(
+            f"Running dual UIs: React/FastAPI at http://{args.host or assistant.config.web_host}:{args.port or assistant.config.web_port} "
+            f"and Gradio at http://{assistant.config.gradio_host}:{assistant.config.gradio_port}"
+        )
 
     web_app = create_api_app(assistant)
     uvicorn.run(

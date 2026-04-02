@@ -40,6 +40,16 @@ class ChatWidget:
         demo = self.build_demo()
         demo.launch(server_name=self.host, server_port=self.port, share=self.share)
 
+    def launch_background(self) -> None:
+        """Launch the Gradio web app without blocking the current thread."""
+        demo = self.build_demo()
+        demo.launch(
+            server_name=self.host,
+            server_port=self.port,
+            share=self.share,
+            prevent_thread_lock=True,
+        )
+
     def build_demo(self) -> Any:
         """Build the Gradio Blocks app."""
         try:
