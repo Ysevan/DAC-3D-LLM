@@ -744,6 +744,21 @@ def _launch_gradio_widget(widget: ChatWidget) -> None:
         print(f"Legacy web UI unavailable: {exc}")
 
 
+def _launch_legacy_web_ui(assistant: DAC3DAssistant) -> None:
+    try:
+        import uvicorn
+    except Exception as exc:
+        print(f"Legacy source UI unavailable: {exc}")
+        return
+
+    legacy_app = create_api_app(assistant, frontend_dist_dir=assistant.config.legacy_frontend_dist_dir)
+    uvicorn.run(
+        legacy_app,
+        host=assistant.config.gradio_host,
+        port=assistant.config.gradio_port,
+    )
+
+
 def main() -> None:
     """Start the assistant application."""
     args = build_argument_parser().parse_args()
@@ -788,21 +803,16 @@ def main() -> None:
         return
 
     if not args.web_only:
-        gradio_widget = _build_gradio_widget(
-            assistant,
-            host=assistant.config.gradio_host,
-            port=assistant.config.gradio_port,
-        )
-        gradio_thread = threading.Thread(
-            target=_launch_gradio_widget,
-            args=(gradio_widget,),
-            name="dac3d-gradio-ui",
+        legacy_ui_thread = threading.Thread(
+            target=_launch_legacy_web_ui,
+            args=(assistant,),
+            name="dac3d-legacy-source-ui",
             daemon=True,
         )
-        gradio_thread.start()
+        legacy_ui_thread.start()
         print(
             f"Running dual UIs: React/FastAPI at http://{args.host or assistant.config.web_host}:{args.port or assistant.config.web_port} "
-            f"and Gradio at http://{assistant.config.gradio_host}:{assistant.config.gradio_port}"
+            f"and legacy source UI at http://{assistant.config.gradio_host}:{assistant.config.gradio_port}"
         )
 
     web_app = create_api_app(assistant)
