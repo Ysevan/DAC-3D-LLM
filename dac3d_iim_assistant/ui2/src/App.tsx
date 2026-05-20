@@ -382,16 +382,17 @@ function App() {
     };
   }
 
-  async function handleBuildKnowledgeBase(): Promise<void> {
+  async function handleBuildKnowledgeBase(filesOverride?: File[]): Promise<void> {
     if (isBuilding) {
       return;
     }
 
-    setBuildStatus("正在重建知识库...");
+    const filesToBuild = filesOverride ?? selectedFiles;
+    setBuildStatus(filesToBuild.length ? "已收到文档，正在自动重建知识库..." : "正在重建当前知识库...");
     setIsBuilding(true);
     setPanelMode("settings");
     try {
-      const result = await buildKnowledgeBase(selectedFiles);
+      const result = await buildKnowledgeBase(filesToBuild);
       setRuntimeSummary(result.runtime);
       setKnowledgeBaseSummary(result.knowledge_base);
       setBuildStatus(result.knowledge_base.status_message ?? "知识库构建完成。");
@@ -400,6 +401,14 @@ function App() {
       setBuildStatus(error instanceof Error ? error.message : String(error));
     } finally {
       setIsBuilding(false);
+    }
+  }
+
+  function handleKnowledgeBaseFilesChange(files: FileList | null): void {
+    const pickedFiles = Array.from(files ?? []);
+    setSelectedFiles(pickedFiles);
+    if (pickedFiles.length > 0) {
+      void handleBuildKnowledgeBase(pickedFiles);
     }
   }
 
@@ -450,6 +459,10 @@ function App() {
 
   return (
     <div className={`app-container theme-${theme} ${hasConversation ? "state-active" : "state-idle"}`}>
+      <a className="ui-switch-link" href="http://127.0.0.1:8000" title="切换到 8000 UI">
+        切换到 8000
+      </a>
+
       <aside className="left-sidebar">
         <div className="sidebar-header">
           <div className="brand">
@@ -641,10 +654,13 @@ function App() {
               <div className="upload-area">
                 <label className="upload-label">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                  <span>选择文档并上传</span>
+                  <span>选择文档后自动构建</span>
                   <input
                     multiple
-                    onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
+                    onChange={(event) => {
+                      handleKnowledgeBaseFilesChange(event.target.files);
+                      event.currentTarget.value = "";
+                    }}
                     type="file"
                   />
                 </label>
@@ -664,7 +680,7 @@ function App() {
                 onClick={() => void handleBuildKnowledgeBase()}
                 type="button"
               >
-                {isBuilding ? "正在构建…" : "重建知识库"}
+                {isBuilding ? "正在构建…" : "手动重建当前知识库"}
               </button>
               {buildStatus ? <div className="status-msg">{buildStatus}</div> : null}
             </section>

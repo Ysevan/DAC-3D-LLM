@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 from collections.abc import Iterator, Sequence
 from typing import Any
 
@@ -326,6 +327,104 @@ class AnthropicProviderAdapter(ProviderAdapter):
             raise LLMProviderError(f"Anthropic streaming request failed: {exc}") from exc
 
 
+class OpenAICompatibleProviderAdapter(ProviderAdapter):
+    """OpenAI-compatible /v1/chat/completions adapter."""
+
+    def __init__(self, config: AppConfig) -> None:
+        self.config = config
+
+    def _endpoint(self) -> str:
+        if not self.config.api_key:
+            raise LLMConfigurationError("OpenAI-compatible provider requires an API key.")
+        if not self.config.api_base_url:
+            raise LLMConfigurationError("OpenAI-compatible provider requires DAC3D_LLM_API_BASE_URL.")
+        return self.config.api_base_url.rstrip("/") + "/chat/completions"
+
+    def _payload(self, prompt: str, *, stream: bool = False) -> dict[str, Any]:
+        return {
+            "model": self.config.model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": self.config.temperature,
+            "max_tokens": self.config.max_generation_tokens,
+            "stream": stream,
+        }
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.config.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def generate(
+        self,
+        prompt: str,
+        *,
+        task: str,
+        question: str,
+        retrieval_items: Sequence[RetrievalItem],
+        parsed_result: ParsedInspectionResult | None,
+        command: dict[str, Any] | None,
+    ) -> str:
+        del task, question, retrieval_items, parsed_result, command
+        try:
+            import httpx
+
+            with httpx.Client(timeout=self.config.timeout_seconds) as client:
+                response = client.post(
+                    self._endpoint(),
+                    headers=self._headers(),
+                    json=self._payload(prompt),
+                )
+                response.raise_for_status()
+                data = response.json()
+        except Exception as exc:  # pragma: no cover - network guarded
+            raise LLMProviderError(f"OpenAI-compatible request failed: {exc}") from exc
+
+        try:
+            answer = data["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            raise LLMProviderError(f"OpenAI-compatible provider returned invalid response: {data}") from exc
+        if not answer:
+            raise LLMProviderError("OpenAI-compatible provider returned an empty response.")
+        return answer
+
+    def stream_generate(
+        self,
+        prompt: str,
+        *,
+        task: str,
+        question: str,
+        retrieval_items: Sequence[RetrievalItem],
+        parsed_result: ParsedInspectionResult | None,
+        command: dict[str, Any] | None,
+    ) -> Iterator[str]:
+        del task, question, retrieval_items, parsed_result, command
+        try:
+            import httpx
+
+            with httpx.stream(
+                "POST",
+                self._endpoint(),
+                headers=self._headers(),
+                json=self._payload(prompt, stream=True),
+                timeout=self.config.timeout_seconds,
+            ) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    payload = line[len("data:") :].strip()
+                    if payload == "[DONE]":
+                        break
+                    chunk = json.loads(payload)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    text = delta.get("content")
+                    if text:
+                        yield str(text)
+        except Exception as exc:  # pragma: no cover - network guarded
+            raise LLMProviderError(f"OpenAI-compatible streaming request failed: {exc}") from exc
+
+
 class UnsupportedProviderAdapter(ProviderAdapter):
     """Placeholder for providers that are outside this delivery scope."""
 
@@ -356,6 +455,8 @@ class LLMClient:
         self._providers: dict[str, ProviderAdapter] = {
             "mock": MockProviderAdapter(),
             "anthropic": AnthropicProviderAdapter(config),
+            "openai_compatible": OpenAICompatibleProviderAdapter(config),
+            "openai-compatible": OpenAICompatibleProviderAdapter(config),
             "qwen": UnsupportedProviderAdapter("qwen"),
             "ernie": UnsupportedProviderAdapter("ernie"),
         }

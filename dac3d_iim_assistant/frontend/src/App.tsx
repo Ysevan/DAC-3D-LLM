@@ -337,6 +337,10 @@ function App() {
 
   return (
     <>
+      <a className="ui-switch-link" href="http://127.0.0.1:7860" title="切换到 7860 UI">
+        切换到 7860
+      </a>
+
       <div id="dappled-light">
         <div id="glow" />
         <div id="glow-bounce" />

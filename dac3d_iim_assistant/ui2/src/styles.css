@@ -1203,7 +1203,44 @@ button {
 }
 
 /* Responsive */
+.ui-switch-link {
+  position: fixed;
+  top: 18px;
+  right: 22px;
+  z-index: 120;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid rgba(28, 100, 242, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #1354a8;
+  box-shadow: 0 14px 34px rgba(20, 86, 160, 0.16);
+  backdrop-filter: blur(18px);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.ui-switch-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(28, 100, 242, 0.42);
+  box-shadow: 0 18px 40px rgba(20, 86, 160, 0.22);
+}
+
 @media (max-width: 768px) {
+  .ui-switch-link {
+    top: 10px;
+    right: 12px;
+    min-height: 32px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
   .app-container {
     flex-direction: column;
     height: 100dvh;

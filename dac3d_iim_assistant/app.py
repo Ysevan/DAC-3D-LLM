@@ -6,6 +6,7 @@ import argparse
 import json
 import shutil
 import threading
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Iterator, Sequence
@@ -108,7 +109,14 @@ class DAC3DAssistant:
         self.dac3d_client = dac3d_client
 
     @classmethod
-    def create(cls, config: AppConfig | None = None, *, rebuild_kb: bool = False) -> "DAC3DAssistant":
+    def create(
+        cls,
+        config: AppConfig | None = None,
+        *,
+        rebuild_kb: bool = False,
+        dac3d_client: DAC3DClient | None = None,
+        runtime_bridge: Any | None = None,
+    ) -> "DAC3DAssistant":
         """Create an application instance and ensure the vector store exists."""
         active_config = config or AppConfig.from_env()
         active_config.ensure_directories()
@@ -121,9 +129,11 @@ class DAC3DAssistant:
             llm_client=LLMClient(active_config),
             intent_classifier=IntentClassifier(),
             command_generator=CommandGenerator(),
-            dac3d_client=DAC3DClient(
+            dac3d_client=dac3d_client
+            or DAC3DClient(
                 mock_mode=active_config.mock_mode,
                 endpoint=active_config.dac3d_endpoint,
+                runtime_bridge=runtime_bridge,
             ),
         )
 
@@ -375,6 +385,7 @@ class DAC3DAssistant:
     ) -> AssistantResponse:
         command = self.command_generator.generate(message)
         preview = command.to_dict()
+        self._attach_runtime_context_to_command(preview, command.warnings)
         if command.missing_fields:
             prompt = build_command_clarification_prompt(preview, history)
             answer = self.llm_client.generate(
@@ -389,22 +400,42 @@ class DAC3DAssistant:
                 command_preview=preview,
             )
 
+        read_only_response = self._handle_read_only_operation(preview)
+        if read_only_response is not None:
+            return read_only_response
+
+        if self._should_auto_execute(preview):
+            result = self.dac3d_client.submit_scan_command(preview)
+            return AssistantResponse(
+                intent="operation",
+                answer=self._command_result_answer(preview, result),
+                command_preview=preview,
+                status_summary=result.get("status"),
+                parsed_result=result.get("result"),
+            )
+
         if self._should_submit(message):
+            busy_message = self._busy_runtime_message(preview)
+            if busy_message:
+                return AssistantResponse(
+                    intent="operation",
+                    answer=busy_message,
+                    command_preview=preview,
+                    status_summary=preview.get("runtime_status"),
+                )
             result = self.dac3d_client.submit_scan_command(preview)
             warning_text = ""
             if command.warnings:
                 warning_text = f" 风险提示: {'；'.join(command.warnings)}"
+            submit_message = result.get("message") or "结构化 DAC-3D 命令已通过校验，并提交到运行时。"
             return AssistantResponse(
                 intent="operation",
-                answer=(
-                    "结构化 DAC-3D 命令已通过校验，并提交到 mock 运行时。"
-                    f"{warning_text}"
-                ).strip(),
+                answer=f"{submit_message}{warning_text}".strip(),
                 command_preview=preview,
                 status_summary=result["status"],
             )
 
-        answer = "已生成 DAC-3D 扫描命令预览，请确认后再执行。"
+        answer = self._operation_preview_answer(preview)
         if command.warnings:
             answer = f"{answer} 风险提示: {'；'.join(command.warnings)}"
         return AssistantResponse(
@@ -421,6 +452,7 @@ class DAC3DAssistant:
         yield self._status_event("command", "解析指令中")
         command = self.command_generator.generate(message)
         preview = command.to_dict()
+        self._attach_runtime_context_to_command(preview, command.warnings)
         if command.missing_fields:
             prompt = build_command_clarification_prompt(preview, history)
             response = AssistantResponse(
@@ -439,24 +471,49 @@ class DAC3DAssistant:
             yield from self._emit_done_with_chunks(response, chunks)
             return
 
+        read_only_response = self._handle_read_only_operation(preview)
+        if read_only_response is not None:
+            yield from self._emit_buffered_response(read_only_response)
+            return
+
+        if self._should_auto_execute(preview):
+            result = self.dac3d_client.submit_scan_command(preview)
+            response = AssistantResponse(
+                intent="operation",
+                answer=self._command_result_answer(preview, result),
+                command_preview=preview,
+                status_summary=result.get("status"),
+                parsed_result=result.get("result"),
+            )
+            yield from self._emit_buffered_response(response)
+            return
+
         if self._should_submit(message):
+            busy_message = self._busy_runtime_message(preview)
+            if busy_message:
+                response = AssistantResponse(
+                    intent="operation",
+                    answer=busy_message,
+                    command_preview=preview,
+                    status_summary=preview.get("runtime_status"),
+                )
+                yield from self._emit_buffered_response(response)
+                return
             result = self.dac3d_client.submit_scan_command(preview)
             warning_text = ""
             if command.warnings:
                 warning_text = f" 风险提示: {'；'.join(command.warnings)}"
+            submit_message = result.get("message") or "结构化 DAC-3D 命令已通过校验，并提交到运行时。"
             response = AssistantResponse(
                 intent="operation",
-                answer=(
-                    "结构化 DAC-3D 命令已通过校验，并提交到 mock 运行时。"
-                    f"{warning_text}"
-                ).strip(),
+                answer=f"{submit_message}{warning_text}".strip(),
                 command_preview=preview,
                 status_summary=result["status"],
             )
             yield from self._emit_buffered_response(response)
             return
 
-        answer = "已生成 DAC-3D 扫描命令预览，请确认后再执行。"
+        answer = self._operation_preview_answer(preview)
         if command.warnings:
             answer = f"{answer} 风险提示: {'；'.join(command.warnings)}"
         response = AssistantResponse(
@@ -465,6 +522,88 @@ class DAC3DAssistant:
             command_preview=preview,
         )
         yield from self._emit_buffered_response(response)
+
+    def _handle_read_only_operation(self, preview: dict[str, Any]) -> AssistantResponse | None:
+        action = str(preview.get("action") or "")
+        if action == "get_latest_result":
+            try:
+                if self.dac3d_client.runtime_bridge is not None:
+                    bridge_result = self.dac3d_client.submit_scan_command(preview)
+                    result_summary = dict(bridge_result.get("result") or {})
+                    status = dict(bridge_result.get("status") or preview.get("runtime_status") or {})
+                else:
+                    result_summary = self.dac3d_client.get_latest_result_summary()
+                    status = self.dac3d_client.query_current_status()
+            except DAC3DUnavailableError as exc:
+                return AssistantResponse(
+                    intent="operation",
+                    answer=str(exc),
+                    command_preview=preview,
+                    status_summary=preview.get("runtime_status"),
+                )
+            result = {
+                "accepted": True,
+                "mode": "local_status_file",
+                "command": preview,
+                "status": status,
+                "result": result_summary,
+            }
+            return AssistantResponse(
+                intent="operation",
+                answer=self._command_result_answer(preview, result),
+                command_preview=preview,
+                status_summary=status,
+                parsed_result=result_summary,
+            )
+        if action == "query_status":
+            status = self.dac3d_client.query_current_status()
+            result = {"accepted": True, "status": status, "command": preview}
+            return AssistantResponse(
+                intent="operation",
+                answer=self._command_result_answer(preview, result),
+                command_preview=preview,
+                status_summary=status,
+            )
+        return None
+
+    def _attach_runtime_context_to_command(
+        self,
+        preview: dict[str, Any],
+        command_warnings: list[str],
+    ) -> None:
+        """Attach live DAC-3D runtime state to every operation command preview."""
+        try:
+            status = self.dac3d_client.query_current_status()
+        except Exception as exc:  # noqa: BLE001 - keep command preview available.
+            status = {
+                "state": "unknown",
+                "message": f"Unable to read DAC-3D runtime status: {exc}",
+            }
+
+        state = str(status.get("state") or "unknown")
+        preview["runtime_status"] = status
+
+        busy_states = {"running", "detecting", "scanning", "initializing"}
+        if state.lower() in busy_states:
+            warning = (
+                f"Current DAC-3D state is {state}; verify the running task before executing a new command."
+            )
+            if warning not in command_warnings:
+                command_warnings.append(warning)
+            preview.setdefault("warnings", [])
+            if warning not in preview["warnings"]:
+                preview["warnings"].append(warning)
+
+        yaml_preview = preview.get("yaml_preview")
+        if isinstance(yaml_preview, str):
+            preview["yaml_preview"] = (
+                f"{yaml_preview}\n"
+                "runtime_status:\n"
+                f"  state: {state}\n"
+                f"  progress: {status.get('progress', 'null')}\n"
+                f"  step: {status.get('step', 'null')}\n"
+                f"  source: {status.get('source', 'null')}"
+            )
 
     def _handle_interpretation(
         self,
@@ -541,10 +680,48 @@ class DAC3DAssistant:
     def _handle_status_query(self, intent: IntentResult) -> AssistantResponse:
         del intent
         status = self.dac3d_client.query_current_status()
-        answer = (
-            f"当前 DAC-3D 状态为 {status['state']}，进度 {status['progress']}%，"
-            f"最新消息: {status['message']}"
+        runtime = self.dac3d_client.runtime_snapshot()
+        state = status.get("state", "unknown")
+        progress = status.get("progress", "unknown")
+        message = status.get("message", "无状态消息")
+        step = (
+            status.get("step")
+            or status.get("stage")
+            or status.get("current_step")
+            or status.get("phase")
         )
+        last_action = runtime.get("last_command_action") or "无"
+        mode = runtime.get("mode", "unknown")
+        bridge_snapshot = runtime.get("runtime_bridge")
+
+        lines = [
+            f"当前 DAC-3D 状态为 {state}，进度 {progress}%，最新消息: {message}",
+            f"运行模式: {mode}；最近一次结构化命令: {last_action}。",
+        ]
+        if step:
+            lines.append(f"当前步骤: {step}。")
+        if isinstance(bridge_snapshot, dict) and bridge_snapshot:
+            bridge_state = bridge_snapshot.get("state") or bridge_snapshot.get("status")
+            bridge_step = (
+                bridge_snapshot.get("step")
+                or bridge_snapshot.get("stage")
+                or bridge_snapshot.get("current_step")
+                or bridge_snapshot.get("phase")
+            )
+            bridge_message = bridge_snapshot.get("message") or bridge_snapshot.get("log")
+            if bridge_state or bridge_step or bridge_message:
+                details = []
+                if bridge_state:
+                    details.append(f"状态={bridge_state}")
+                if bridge_step:
+                    details.append(f"步骤={bridge_step}")
+                if bridge_message:
+                    details.append(f"消息={bridge_message}")
+                lines.append("主系统实时桥接信息: " + "；".join(details) + "。")
+        elif mode == "mock":
+            lines.append("当前为本地 mock 模式；接入 DAC-3D 主系统 runtime bridge 后，此处会读取主系统实时状态、步骤和最新消息。")
+
+        answer = "\n".join(lines)
         return AssistantResponse(
             intent="status",
             answer=answer,
@@ -599,12 +776,247 @@ class DAC3DAssistant:
             "submit",
             "start now",
             "run now",
+            "stop",
+            "abort",
+            "cancel",
+            "开始扫描",
+            "执行扫描",
+            "离线测试",
+            "离线检测",
+            "停止",
+            "停止检测",
+            "停止离线检测",
+            "中止",
+            "取消",
             "执行",
             "提交",
             "立即开始",
             "马上扫描",
         )
         return any(keyword in lowered for keyword in submit_keywords)
+
+    def _operation_preview_answer(self, command: dict[str, Any]) -> str:
+        action = str(command.get("action") or "")
+        if action != "scan":
+            return "已生成 DAC-3D 结构化命令预览，请确认后再执行。"
+
+        area = dict(command.get("scan_area_mm") or {})
+        resolution = dict(command.get("resolution") or {})
+        width = area.get("width")
+        height = area.get("height")
+        step_um = resolution.get("value")
+        mode = command.get("mode") or "standard"
+        scan_path = "蛇形扫描"
+
+        lines = ["好的，我为您生成了扫描配置："]
+        if width and height:
+            lines.append(f"- 扫描范围：{width:g}mm × {height:g}mm")
+        else:
+            lines.append("- 扫描范围：待补充")
+
+        if step_um:
+            lines.append(f"- 步长：{float(step_um):g}μm")
+        else:
+            lines.append("- 步长：待确认")
+
+        lines.append(f"- 扫描模式：{scan_path}（推荐，效率更高；当前模式 {mode}）")
+
+        if width and height and step_um:
+            points = int((float(width) * 1000.0 / float(step_um)) * (float(height) * 1000.0 / float(step_um)))
+            estimated_minutes = max(1, round(points * 0.000336 / 60))
+            lines.append(f"- 预计采集点数：{points:,}")
+            lines.append(f"- 预计扫描时间：约{estimated_minutes}分钟")
+        else:
+            lines.append("- 预计采集点数：需要补充步长后计算")
+            lines.append("- 预计扫描时间：需要补充步长后计算")
+
+        lines.append("")
+        lines.append("是否需要我生成配置文件并开始扫描？如需执行，请回复“执行扫描”。")
+        return "\n".join(lines)
+
+    def _busy_runtime_message(self, command: dict[str, Any]) -> str | None:
+        action = str(command.get("action") or "")
+        if action not in {"scan", "start_online_scan", "start_offline_detection"}:
+            return None
+        status = dict(command.get("runtime_status") or {})
+        state = str(status.get("state") or "").lower()
+        if state not in {"running", "detecting", "scanning", "initializing"}:
+            return None
+        progress = status.get("progress", "unknown")
+        message = status.get("message") or "当前已有检测任务正在执行。"
+        return (
+            f"当前 DAC-3D 正在运行，进度 {progress}%，最新状态: {message} "
+            "为避免重复启动检测，本次命令未下发。请先等待完成或发送“停止检测”。"
+        )
+
+    def _should_auto_execute(self, command: dict[str, Any]) -> bool:
+        safety = dict(command.get("safety") or {})
+        return bool(safety.get("safe_to_auto_execute")) and not command.get("missing_fields")
+
+    def _command_result_answer(self, command: dict[str, Any], result: dict[str, Any]) -> str:
+        action = str(command.get("action", "command"))
+        if action == "validate_offline_folder":
+            validation = dict(result.get("validation") or {})
+            if validation.get("ready"):
+                return "离线图片目录校验通过：三相机图像和 surface1/surface2 要求已满足。"
+            missing = validation.get("missing_requirements") or []
+            return f"离线图片目录校验未通过，缺少或异常项：{', '.join(map(str, missing)) or 'unknown'}。"
+        if action == "get_latest_result":
+            result_summary = dict(result.get("result") or {})
+            if not result_summary:
+                return "当前没有读取到 DAC-3D 最近检测结果。请确认主系统已经完成至少一个样品检测。"
+
+            history = [dict(item) for item in (result_summary.get("result_history") or []) if isinstance(item, dict)]
+            requested_position = (command.get("payload") or {}).get("sample_position")
+            if requested_position is not None:
+                try:
+                    requested_position = int(requested_position)
+                except (TypeError, ValueError):
+                    requested_position = None
+            if requested_position is not None:
+                matched = None
+                for item in history:
+                    try:
+                        item_position = int(item.get("position") or -1)
+                    except (TypeError, ValueError):
+                        continue
+                    if item_position == requested_position:
+                        matched = item
+                        break
+                if matched is None:
+                    checked_count = len(history)
+                    return (
+                        f"当前真实状态文件中还没有第 {requested_position} 个样品的检测结果。"
+                        f"目前已记录 {checked_count} 个样品。"
+                    )
+                return self._single_sample_result_answer(matched)
+
+            quality_label = result_summary.get("quality_label")
+            if quality_label is None and "quality" in result_summary:
+                quality_label = "合格" if result_summary.get("quality") else "不合格"
+            defects = list(result_summary.get("defects") or [])
+            files = [str(file) for file in (result_summary.get("files") or []) if file]
+            parsed = dict(result_summary.get("parsed_result") or {})
+            reason = parsed.get("rule_reason") or result_summary.get("message") or ""
+            position = result_summary.get("position")
+            tray_id = result_summary.get("tray_id")
+
+            if not result_summary.get("files") and not result_summary.get("parsed_result") and result_summary.get("message"):
+                return str(result_summary["message"])
+
+            if history:
+                total = len(history)
+                failed = [item for item in history if item.get("quality") is False or item.get("quality_label") == "不合格"]
+                passed = total - len(failed)
+                defect_total = sum(int(item.get("defects_num") or 0) for item in history)
+                defect_counter: Counter[str] = Counter()
+                for item in history:
+                    for defect in item.get("defects") or []:
+                        if isinstance(defect, dict):
+                            defect_counter[str(defect.get("defect_type") or "unknown")] += 1
+
+                lines = [
+                    f"已读取 DAC-3D 已检测样品结果：当前已完成 {total} 个样品，合格 {passed} 个，不合格 {len(failed)} 个，累计缺陷 {defect_total} 个。"
+                ]
+                if defect_counter:
+                    top_defects = "；".join(
+                        f"{name} {count} 个" for name, count in defect_counter.most_common(4)
+                    )
+                    lines.append(f"主要缺陷分布: {top_defects}。")
+                recent_items = history[-5:]
+                lines.append("最近样品情况:")
+                for item in recent_items:
+                    item_quality = item.get("quality_label")
+                    if item_quality is None and "quality" in item:
+                        item_quality = "合格" if item.get("quality") else "不合格"
+                    item_defects = int(item.get("defects_num") or 0)
+                    item_pos = item.get("position", "未知")
+                    item_reason = ""
+                    parsed_item = item.get("parsed_result")
+                    if isinstance(parsed_item, dict):
+                        item_reason = str(parsed_item.get("rule_reason") or "")
+                    if not item_reason and item.get("defects"):
+                        first_defect = (item.get("defects") or [{}])[0]
+                        if isinstance(first_defect, dict):
+                            item_reason = str(first_defect.get("reason") or "")
+                    detail = f"- 位置 {item_pos}: {item_quality or '未知'}，缺陷 {item_defects} 个"
+                    if item_reason:
+                        detail += f"，依据: {item_reason}"
+                    lines.append(detail + "。")
+                if failed:
+                    failed_positions = ", ".join(str(item.get("position", "未知")) for item in failed[:8])
+                    lines.append(f"分析结论: 当前异常集中在位置 {failed_positions}；建议优先打开这些位置的结果图核查缺陷框、区域和阈值原因。")
+                else:
+                    lines.append("分析结论: 当前已检测样品均为合格，建议继续观察后续样品是否出现缺陷聚集。")
+                return "\n".join(lines)
+
+            lines = ["已读取最近一次 DAC-3D 检测结果。"]
+            if tray_id is not None or position is not None:
+                lines.append(f"样品信息: 托盘 {tray_id if tray_id is not None else '未知'}，位置 {position if position is not None else '未知'}。")
+            if quality_label:
+                lines.append(f"判定结果: {quality_label}。")
+            lines.append(f"缺陷数量: {result_summary.get('defects_num', len(defects))}。")
+            if defects:
+                preview = []
+                for defect in defects[:3]:
+                    preview.append(
+                        f"{defect.get('defect_type', 'unknown')}@{defect.get('position', 'unknown')}"
+                    )
+                lines.append(f"主要缺陷: {'；'.join(preview)}。")
+            if reason:
+                lines.append(f"判定依据: {reason}")
+            if files:
+                lines.append("结果图: " + "；".join(files[:4]))
+            return "\n".join(lines)
+        if action == "query_status":
+            status = dict(result.get("status") or {})
+            return (
+                f"当前 DAC-3D 状态为 {status.get('state')}，进度 {status.get('progress')}%，"
+                f"最新消息：{status.get('message')}"
+            )
+        return f"已处理 DAC-3D 结构化命令：{action}。"
+
+    def _single_sample_result_answer(self, sample: dict[str, Any]) -> str:
+        position = sample.get("position", "未知")
+        tray_id = sample.get("tray_id", "未知")
+        quality_label = sample.get("quality_label")
+        if quality_label is None and "quality" in sample:
+            quality_label = "合格" if sample.get("quality") else "不合格"
+        defects = [dict(item) for item in (sample.get("defects") or []) if isinstance(item, dict)]
+        parsed = dict(sample.get("parsed_result") or {})
+        reason = parsed.get("rule_reason") or ""
+        files = [str(file) for file in (sample.get("files") or []) if file]
+
+        lines = [
+            f"第 {position} 个样品检测结果如下。",
+            f"托盘: {tray_id}；判定: {quality_label or '未知'}；缺陷数量: {sample.get('defects_num', len(defects))}。",
+        ]
+        if defects:
+            lines.append("缺陷明细:")
+            for defect in defects[:8]:
+                defect_type = defect.get("defect_type", "unknown")
+                defect_position = defect.get("position", "unknown")
+                defect_size = defect.get("size")
+                defect_reason = defect.get("reason") or ""
+                detail = f"- {defect_type}，位置 {defect_position}"
+                if defect_size is not None:
+                    detail += f"，尺寸 {defect_size}"
+                if defect_reason:
+                    detail += f"，原因: {defect_reason}"
+                lines.append(detail + "。")
+            if len(defects) > 8:
+                lines.append(f"- 其余 {len(defects) - 8} 个缺陷已省略，可继续追问该样品的完整缺陷明细。")
+        else:
+            lines.append("该样品未记录不合格缺陷。")
+        if reason:
+            lines.append(f"主要判定依据: {reason}")
+        if files:
+            lines.append("结果图: " + "；".join(files[:4]))
+        if sample.get("quality") is False:
+            lines.append("分析建议: 优先打开结果图复核缺陷框位置和阈值原因，必要时复扫该点位确认是否为真实缺陷。")
+        else:
+            lines.append("分析建议: 当前样品结果正常，可继续观察后续点位是否出现连续异常。")
+        return "\n".join(lines)
 
     def _unique_sources(self, items: Sequence[RetrievalItem]) -> list[str]:
         sources: list[str] = []

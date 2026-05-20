@@ -341,12 +341,16 @@ def test_guidance_and_status_flows(tmp_path: Path) -> None:
 
     guidance_response = assistant.handle_message("样品太反光了应该怎么办？")
     status_response = assistant.handle_message("当前检测状态是什么？")
+    realtime_status_response = assistant.handle_message("当前系统在做什么，运行到哪一步了？")
 
     assert guidance_response.intent == "guidance"
     assert "照明" in guidance_response.answer or "曝光" in guidance_response.answer
     assert status_response.intent == "status"
     assert status_response.status_summary is not None
     assert status_response.status_summary["state"] == "idle"
+    assert realtime_status_response.intent == "status"
+    assert realtime_status_response.status_summary is not None
+    assert "运行模式" in realtime_status_response.answer
 
 
 def test_complex_guidance_combines_reflective_and_unstable_steps(tmp_path: Path) -> None:

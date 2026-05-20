@@ -1,4 +1,4 @@
-"""Structured command generation compatibility layer for DAC-3D scan requests."""
+"""Structured command generation compatibility layer for DAC-3D requests."""
 
 from __future__ import annotations
 
@@ -11,13 +11,15 @@ from intent.schemas import ParsedCommand
 
 @dataclass(slots=True)
 class StructuredCommand:
-    """Normalized DAC-3D scan command preview."""
+    """Normalized DAC-3D command preview."""
 
     action: str
     scan_area_mm: dict[str, float] | None
     resolution: dict[str, float | str] | None
     region: str | None
     mode: str | None
+    payload: dict[str, Any] = field(default_factory=dict)
+    safety: dict[str, Any] = field(default_factory=dict)
     missing_fields: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     yaml_preview: str | None = None
@@ -30,6 +32,8 @@ class StructuredCommand:
             "resolution": self.resolution,
             "region": self.region,
             "mode": self.mode,
+            "payload": self.payload,
+            "safety": self.safety,
             "missing_fields": self.missing_fields,
             "warnings": self.warnings,
             "yaml_preview": self.yaml_preview,
@@ -52,6 +56,8 @@ class CommandGenerator:
             resolution=command.resolution,
             region=command.region,
             mode=command.mode,
+            payload=dict(command.payload),
+            safety=dict(command.safety),
             missing_fields=list(parsed.missing_fields),
             warnings=list(parsed.warnings),
         )
@@ -71,8 +77,18 @@ class CommandGenerator:
             f"  unit: {resolution.get('unit', 'null')}",
             f"region: {command.region or 'null'}",
             f"mode: {command.mode or 'null'}",
-            "missing_fields:",
+            "payload:",
         ]
+        if command.payload:
+            lines.extend(self._render_yaml_mapping(command.payload, indent=2))
+        else:
+            lines.append("  {}")
+        lines.append("safety:")
+        if command.safety:
+            lines.extend(self._render_yaml_mapping(command.safety, indent=2))
+        else:
+            lines.append("  {}")
+        lines.append("missing_fields:")
         if command.missing_fields:
             lines.extend(f"  - {field_name}" for field_name in command.missing_fields)
         else:
@@ -83,3 +99,21 @@ class CommandGenerator:
         else:
             lines.append("  []")
         return "\n".join(lines)
+
+    def _render_yaml_mapping(self, value: dict[str, Any], *, indent: int) -> list[str]:
+        spaces = " " * indent
+        lines: list[str] = []
+        for key, item in value.items():
+            if isinstance(item, dict):
+                lines.append(f"{spaces}{key}:")
+                lines.extend(self._render_yaml_mapping(item, indent=indent + 2))
+            elif isinstance(item, list):
+                lines.append(f"{spaces}{key}:")
+                if item:
+                    lines.extend(f"{spaces}  - {entry}" for entry in item)
+                else:
+                    lines.append(f"{spaces}  []")
+            else:
+                rendered = "null" if item is None else item
+                lines.append(f"{spaces}{key}: {rendered}")
+        return lines

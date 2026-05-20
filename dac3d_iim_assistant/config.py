@@ -105,6 +105,9 @@ class AppConfig:
         self.legacy_frontend_dist_dir = self.legacy_frontend_dir / "dist"
         self.temp_root_dir = self.base_dir / ".tmp"
         self.upload_temp_dir = self.temp_root_dir / "uploads"
+        local_status_file = self.temp_root_dir / "dac3d_runtime_status.json"
+        if self.dac3d_endpoint == "mock://dac3d" and local_status_file.exists():
+            self.dac3d_endpoint = local_status_file.resolve().as_uri()
 
     @classmethod
     def from_env(cls, base_dir: Path | None = None) -> "AppConfig":
@@ -120,7 +123,6 @@ class AppConfig:
             or os.getenv("DAC3D_LLM_API_BASE")
             or os.getenv("ANTHROPIC_BASE_URL", "")
         )
-
         return cls(
             provider=provider,
             api_key=api_key,

@@ -18,6 +18,8 @@ class ParsedCommand:
     resolution: dict[str, float | str] | None = None
     region: str | None = None
     mode: str | None = None
+    payload: dict[str, Any] = field(default_factory=dict)
+    safety: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the parsed command into a serializable mapping."""
@@ -27,6 +29,8 @@ class ParsedCommand:
             "resolution": self.resolution,
             "region": self.region,
             "mode": self.mode,
+            "payload": dict(self.payload),
+            "safety": dict(self.safety),
         }
 
 

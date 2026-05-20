@@ -125,7 +125,7 @@ class ChatWidget:
                         )
                         with gr.Group(elem_classes=["side-card", "settings-card"]):
                             gr.Markdown(
-                                "**知识库构建**\n\n知识库上传、重建和构建历史已收进设置面板，主界面只保留对话。",
+                                "**知识库构建**\n\n上传文档后会自动保存并重建知识库；按钮用于不上传新文件时手动重建当前文档。",
                                 elem_classes=["settings-copy"],
                             )
                             upload_files = gr.File(
@@ -134,7 +134,7 @@ class ChatWidget:
                                 type="filepath",
                             )
                             build_kb_button = gr.Button(
-                                "创建 / 重建知识库",
+                                "手动重建当前知识库",
                                 variant="primary",
                                 elem_classes=["settings-build-button"],
                             )
@@ -216,6 +216,11 @@ class ChatWidget:
             )
 
             build_kb_button.click(
+                self._build_knowledge_base,
+                inputs=[upload_files],
+                outputs=[runtime_markdown, knowledge_base_markdown, upload_files],
+            )
+            upload_files.upload(
                 self._build_knowledge_base,
                 inputs=[upload_files],
                 outputs=[runtime_markdown, knowledge_base_markdown, upload_files],
