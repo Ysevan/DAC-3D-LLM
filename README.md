@@ -24,7 +24,6 @@ DAC-3D-LLM 面向智能检测场景，不是通用聊天机器人。系统应尽
 示例：
 
 ```text
-扫描 10mm x 10mm 区域
 我想扫描一个 25mm x 25mm 的楔形滤光片，步长 10 微米
 选择 pre_fusion_images 下的图片进行离线检测
 停止当前检测
@@ -74,29 +73,9 @@ DAC-3D 的设计原则是什么？
 
 本项目不是只做了一个独立聊天页面，而是在原 DAC-3D 主系统基础上增加了和 LLM 助手联动的能力。主要修改集中在 `福特科/xxp_ui/`。
 
-### 与 `福特科.zip` 原始版本的差异
+### 与 `福特科` 项目原始版本的差异
 
-本说明以 `C:\Users\xecat\DAC-3D-LLM\福特科.zip` 作为原始 DAC-3D 系统版本，对比当前 `C:\Users\xecat\DAC-3D-LLM\福特科\` 目录。
-
-对比结果：
-
-```text
-原始压缩包文件数：8157
-当前目录文件数：24077
-新增文件数：15920
-删除文件数：0
-内容或大小变化文件数：5
-```
-
-需要注意：新增文件中绝大多数是 DAC-3D 运行后生成的检测结果、运行时图片、缓存文件和 `__pycache__`，例如：
-
-```text
-福特科/xxp_ui/runtime/
-福特科/xxp_ui/__pycache__/
-福特科/xxp_ui/window/__pycache__/
-```
-
-真正和系统功能改造相关的代码变化主要集中在以下文件。
+本说明以 `DAC-3D-LLM\福特科.zip`（2026年5月18日企业发送离线版本） 作为原始 DAC-3D 系统版本，对比当前 `DAC-3D-LLM\福特科\` 目录。
 
 ### 代码更新清单
 
@@ -195,18 +174,6 @@ DAC-3D 的设计原则是什么？
 - 忽略临时图像 `frame.jpg`、`bottom_pos.txt`。
 - 对 `deploy/weights/`、`deploy/model/`、`weights/` 等模型目录做特殊放行，并通过根目录 `.gitattributes` 使用 Git LFS 管理。
 
-### 新增但不属于核心代码的内容
-
-当前目录相比 `福特科.zip` 还新增了大量运行时文件，主要来自实际运行和离线检测测试：
-
-```text
-福特科/xxp_ui/runtime/ftkpic/results/
-福特科/xxp_ui/runtime/ftkpic/images/
-各级 __pycache__/
-Thumbs.db
-```
-
-这些文件说明系统已经实际运行并生成过检测结果，但不属于核心源代码改造内容。当前 Git 配置默认不上传 `runtime/` 和缓存文件，避免仓库体积失控。
 
 ### 1. 增加智能助手入口
 
@@ -308,8 +275,6 @@ DAC-3D-LLM/
 ├─ dac3d_iim_assistant/          # LLM 智能检测助手
 ├─ 福特科/xxp_ui/                # DAC-3D 主检测系统
 ├─ 福特科/pre_fusion_images/     # 离线演示图片数据
-├─ 提交材料/                     # 毕业设计提交材料
-├─ Doc/                          # 论文和文档材料
 ├─ 07.毕业论文初稿.docx          # 毕业论文初稿
 ├─ .gitattributes                # Git LFS 规则
 └─ README.md                     # 本说明文档
