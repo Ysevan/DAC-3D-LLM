@@ -20,6 +20,16 @@ results/
 *.engine
 *.ckpt
 
+# Requested deploy assets are tracked through Git LFS.
+!deploy/exported_models/
+!deploy/exported_models/**
+!deploy/model/
+!deploy/model/**
+!deploy/weights/
+!deploy/weights/**
+!weights/
+!weights/**
+
 # Temporary images and local experiments
 frame.jpg
 bottom_pos.txt
