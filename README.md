@@ -74,6 +74,140 @@ DAC-3D 的设计原则是什么？
 
 本项目不是只做了一个独立聊天页面，而是在原 DAC-3D 主系统基础上增加了和 LLM 助手联动的能力。主要修改集中在 `福特科/xxp_ui/`。
 
+### 与 `福特科.zip` 原始版本的差异
+
+本说明以 `C:\Users\xecat\DAC-3D-LLM\福特科.zip` 作为原始 DAC-3D 系统版本，对比当前 `C:\Users\xecat\DAC-3D-LLM\福特科\` 目录。
+
+对比结果：
+
+```text
+原始压缩包文件数：8157
+当前目录文件数：24077
+新增文件数：15920
+删除文件数：0
+内容或大小变化文件数：5
+```
+
+需要注意：新增文件中绝大多数是 DAC-3D 运行后生成的检测结果、运行时图片、缓存文件和 `__pycache__`，例如：
+
+```text
+福特科/xxp_ui/runtime/
+福特科/xxp_ui/__pycache__/
+福特科/xxp_ui/window/__pycache__/
+```
+
+真正和系统功能改造相关的代码变化主要集中在以下文件。
+
+### 代码更新清单
+
+#### `福特科/xxp_ui/window/ui.py`
+
+这是 DAC-3D 主界面的核心改造文件。相比 `福特科.zip` 原始版本，主要增加了智能助手入口、状态桥、命令桥和离线检测控制。
+
+主要更新：
+
+- 新增 `json`、`os`、`subprocess`、`sys`、`webbrowser`、`Path` 等导入，用于写状态文件、启动助手服务、打开浏览器。
+- 新增 `_startPos`、`_endPos` 初始化，修复窗口拖动时可能出现的 `_startPos` 属性不存在导致闪退的问题。
+- 新增 `assistant_status_file`、`assistant_command_file`、`assistant_command_ack_file`，用于主系统和 LLM 助手之间交换状态与命令。
+- 新增 `writeAssistantRuntimeStatus(...)`，把 DAC-3D 当前运行状态写成 JSON，供助手实时读取。
+- 新增 `writeAssistantCommandAck(...)`，把主系统对助手命令的接收、拒绝、执行状态写回给助手。
+- 新增 `buildAssistantLatestResult(...)`，把最新检测样品结果整理成助手可解释的结构化数据。
+- 新增 `pollAssistantCommandFile(...)`，定时读取助手生成的命令文件。
+- 支持识别并处理 `start_online_scan`、`start_offline_detection`、`stop_detection`、`query_status`、`get_latest_result`、`validate_offline_folder` 等命令。
+- 新增 `describeAssistantCommand(...)`，把结构化命令转成人可读描述。
+- 新增 `initAssistantWebButton(...)`，在 DAC-3D 主界面添加智能助手入口按钮。
+- 新增 `openAssistantWeb(...)`，自动启动 `dac3d_iim_assistant/app.py` 并打开 `http://127.0.0.1:7860`。
+- 新增离线检测控件逻辑，包括 `initOfflineControls(...)`、`chooseOfflineSourceDir(...)`、`setOfflineControlsVisible(...)`。
+- 在检测过程中写入 `latest_result` 和 `result_history`，支持助手回答“当前检测结果”“第三个样品结果”“前面几个样品结果”等问题。
+- 在启动在线扫描、启动离线检测、停止检测时写入实时状态，支持助手回答“当前系统在做什么”。
+
+#### `福特科/xxp_ui/image_processor_22.py`
+
+这是当前主要检测处理器。相比原始版本，主要增强了离线检测停止、GPU 推理适配、模型路径加载和结果图保存。
+
+主要更新：
+
+- 新增 `offline_stop_requested` 标志位，用于离线检测中断。
+- 新增 `request_offline_stop(...)`，收到停止命令后清空待处理状态并向 UI 队列发送结束信号。
+- 离线检测提交图片时会检查 `offline_stop_requested`，停止后不再继续提交后续图片。
+- 图像处理循环中收到停止请求后会丢弃后续离线图像处理结果，避免停止后仍继续输出结果。
+- 支持从 UI 队列接收 `stop_offline_detection` 消息，并调用 `request_offline_stop(...)`。
+- 模型加载时根据 `torch.cuda.is_available()` 自动选择 `cuda:0` 或 `cpu`。
+- 修正模型路径加载方式，将绝对路径转换为相对项目路径，降低 SAHI/YOLO 在 Windows 路径下加载失败的概率。
+- YOLO 模型加载后尝试 `yolo_model.to(device)`，尽量使用 GPU 推理。
+- `AutoDetectionModel.from_pretrained(...)` 增加 `device=device`，并保留 `TypeError` 回退逻辑，兼容不同 SAHI 版本。
+- 保留并增强缺陷框、缺陷圆心、标注结果图输出逻辑，确保测试结果图片能显示标记。
+
+#### `福特科/xxp_ui/image_processor_2.py`
+
+这是旧版/备用图像处理器。相比原始版本，主要同步了模型加载和 GPU 适配修复。
+
+主要更新：
+
+- 新增 `model_path_for_loader`，避免部分模型加载器无法处理 Windows 绝对路径。
+- 根据 CUDA 可用性自动选择 `cuda:0` 或 `cpu`。
+- YOLO 模型加载后尝试移动到目标设备。
+- SAHI `AutoDetectionModel` 增加 `device` 参数，并保留旧版本兼容回退。
+
+#### `福特科/xxp_ui/Algorithm/Regis_Fusion/Regis_Fusion_three2.py`
+
+这是图像配准/融合相关脚本。相比原始版本，主要修复硬编码路径。
+
+主要更新：
+
+- 将原始固定路径 `F:\福特科\xxp_ui\Algorithm\result` 改为基于当前脚本位置计算的项目相对路径。
+- 将原始固定路径 `D:\zycgit\ZDevelop_Confocal\xxp_ui\results\fusion_result` 改为项目内 `results/fusion_result`。
+- 这样项目换电脑或换目录后，不需要手动修改代码中的绝对路径。
+
+#### `福特科/xxp_ui/window/login.py`
+
+这是登录窗口逻辑。相比原始版本，主要修复登录后主窗口对象生命周期问题。
+
+主要更新：
+
+- 将局部变量 `window = MyWindow(...)` 改为 `self.main_window = MyWindow(...)`。
+- 这样登录窗口持有主窗口引用，避免主窗口对象被 Python 垃圾回收导致登录后闪退或窗口异常关闭。
+
+#### `福特科/xxp_ui/window/assistant_panel.py`
+
+这是当前版本新增文件，原始 `福特科.zip` 中不存在。它是一个嵌入式助手 Dock/桥接层原型，用于后续把助手直接嵌入 DAC-3D 主系统。
+
+主要能力：
+
+- 新增 `DAC3DMainWindowBridge`，把助手命令转成主系统队列动作。
+- 支持 `start_online_scan(...)`、`start_offline_detection(...)`、`stop_detection(...)`。
+- 支持 `query_current_status(...)`，读取当前运行状态、样品数量、离线模式、离线目录。
+- 支持 `validate_offline_folder(...)`，检查离线图片目录是否存在并包含图片。
+- 支持 `get_latest_result_summary(...)`，读取最近一次检测结果目录。
+- 新增 `AssistantWorker`，避免助手调用阻塞 PyQt UI 线程。
+- 新增 `AssistantDock`，提供可嵌入主系统的聊天式助手面板原型。
+
+当前主系统实际演示入口仍以浏览器跳转到 Web 助手为主，`assistant_panel.py` 保留为后续深度嵌入式侧边栏方案。
+
+#### `福特科/xxp_ui/.gitignore`
+
+这是当前版本新增文件，原始 `福特科.zip` 中不存在。它用于控制哪些 DAC-3D 主系统文件进入 Git。
+
+主要规则：
+
+- 忽略 `.idea/`、`.vs/`、`__pycache__/`、`*.pyc` 等本地 IDE 和缓存文件。
+- 忽略 `runtime/`、`results/`、`*.log` 等运行时输出。
+- 忽略临时图像 `frame.jpg`、`bottom_pos.txt`。
+- 对 `deploy/weights/`、`deploy/model/`、`weights/` 等模型目录做特殊放行，并通过根目录 `.gitattributes` 使用 Git LFS 管理。
+
+### 新增但不属于核心代码的内容
+
+当前目录相比 `福特科.zip` 还新增了大量运行时文件，主要来自实际运行和离线检测测试：
+
+```text
+福特科/xxp_ui/runtime/ftkpic/results/
+福特科/xxp_ui/runtime/ftkpic/images/
+各级 __pycache__/
+Thumbs.db
+```
+
+这些文件说明系统已经实际运行并生成过检测结果，但不属于核心源代码改造内容。当前 Git 配置默认不上传 `runtime/` 和缓存文件，避免仓库体积失控。
+
 ### 1. 增加智能助手入口
 
 在 DAC-3D 主系统界面中增加了智能助手按钮。用户登录 DAC-3D 后，可以从主系统直接打开 Web 版 LLM 助手。
