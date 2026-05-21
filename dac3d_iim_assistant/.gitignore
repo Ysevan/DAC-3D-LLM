@@ -12,3 +12,21 @@ frontend/vite.config.d.ts
 
 rag/*.egg-info/
 ui2/node_modules/
+ui2/dist/
+ui2/*.tsbuildinfo
+ui2/vite.config.js
+ui2/vite.config.d.ts
+
+# Local thesis/weekly-journal/Word generation helpers are not part of the DAC-3D assistant runtime.
+tools/build_proposal_docx.py
+tools/build_rich_thesis_template_docx.py
+tools/build_simple_docx.py
+tools/build_thesis_template_docx.py
+tools/build_weekly_journal_doc.py
+tools/enrich_thesis_visuals.py
+tools/expand_thesis_to_30k.py
+tools/fix_thesis_images_tables_and_style.py
+tools/generate_dorm_wall_detail.py
+tools/mark_citations_in_docx.py
+tools/optimize_doc_thesis_structure.py
+tools/polish_abstract_and_superscript_citations.py
