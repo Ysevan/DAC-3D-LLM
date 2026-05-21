@@ -581,7 +581,7 @@ npm run build
 
 ### 6. LLM API 配置
 
-在 `dac3d_iim_assistant` 目录创建本地 `.env` 文件。不要把真实 API Key 提交到 GitHub。
+在 `dac3d_iim_assistant` 目录创建本地 `.env` 文件。在这里我没有把真实 API Key 提交到 GitHub，需要添加你自己的 API Key。
 
 OpenAI-compatible 示例：
 
