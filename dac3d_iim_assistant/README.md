@@ -62,6 +62,10 @@ python app.py --gradio
 
 ## 示例场景
 
+下面的动图展示了 README 示例关键词在助手中的测试结果摘要，便于快速了解每类能力的实际返回效果。
+
+<img src="docs/media/readme-demo.gif" alt="DAC-3D IIM Assistant README 示例场景测试动图" width="900">
+
 - `scan a 10mm x 10mm area`
 - `扫描 10mm x 10mm 区域`
 - `这个参数是什么意思？`
