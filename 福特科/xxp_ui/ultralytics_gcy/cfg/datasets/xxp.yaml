@@ -1,0 +1,10 @@
+# dataset.yaml 示例
+path: E:\study\model\PaddleDetection\datasets\xxp\xxp_yolo
+train: train/images
+val: val/images
+
+# 类别名称（与 classes.txt 中的顺序一致）
+names:
+  0: chipping
+  1: splash
+  2: scratch

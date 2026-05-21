@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: gclib
+Version: 1.0
+Summary: Python wrapper for Galil gclib
+Home-page: http://www.galil.com
+Author: Galil Motion Control
+Author-email: softwaresupport@galil.com
+Dynamic: author
+Dynamic: author-email
+Dynamic: home-page
+Dynamic: summary

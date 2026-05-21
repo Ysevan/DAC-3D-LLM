@@ -1,0 +1,25 @@
+# Local IDE and cache files
+.idea/
+.sixth/
+.vs/
+__pycache__/
+*.pyc
+Thumbs.db
+
+# Runtime outputs and inspection artifacts
+runtime/
+results/
+*.log
+
+# Model weights and generated ML artifacts.
+# Keep these outside normal GitHub history; document their expected paths instead.
+*.pt
+*.pth
+*.torchscript
+*.onnx
+*.engine
+*.ckpt
+
+# Temporary images and local experiments
+frame.jpg
+bottom_pos.txt
