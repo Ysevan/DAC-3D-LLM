@@ -216,14 +216,39 @@ class MockProviderAdapter(ProviderAdapter):
         evidence = self._select_evidence(parsed_result.rule_reason, retrieval_items, sentence_limit=2)
         sources = self._format_sources(retrieval_items)
         threshold_text = parsed_result.threshold_reference or "未提供明确阈值引用"
+        qualification_text = self._format_qualification(parsed_result)
         return (
             f"最新检测结果判断为{seriousness}。"
             f"缺陷类型为 {parsed_result.defect_type}，位置在 {parsed_result.location}，"
             f"严重度为 {parsed_result.severity}，置信度 {parsed_result.confidence:.2f}。"
             f"测量值: {measurements or '无'}。"
+            f"{qualification_text}"
             f"结构化判定依据: {parsed_result.rule_reason} 阈值说明: {threshold_text}。"
             f"{evidence} 来源: {sources}."
         )
+
+    def _format_qualification(self, parsed_result: ParsedInspectionResult) -> str:
+        fields: list[str] = []
+        if parsed_result.is_qualified is not None:
+            fields.append(
+                "该缺陷合格性字段 is_qualified="
+                f"{parsed_result.is_qualified}"
+            )
+        if parsed_result.is_ignored is not None:
+            fields.append(
+                "忽略字段 is_ignored="
+                f"{parsed_result.is_ignored}"
+            )
+        if parsed_result.sample_quality_label:
+            fields.append(f"样品级判定为 {parsed_result.sample_quality_label}")
+        elif parsed_result.sample_quality is not None:
+            fields.append(
+                "样品级判定为 "
+                f"{'合格' if parsed_result.sample_quality else '不合格'}"
+            )
+        if not fields:
+            return ""
+        return "合格性说明: " + "；".join(fields) + "。"
 
     def _prioritize_items(
         self,

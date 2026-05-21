@@ -61,6 +61,11 @@ class DAC3DClient:
                     "width_um": 41.0,
                 },
                 "sample_id": "SAMPLE-001",
+                "is_qualified": False,
+                "is_ignored": False,
+                "sample_quality": False,
+                "sample_quality_label": "不合格",
+                "region": "ROI",
             },
             "pit_medium": {
                 "defect_type": "pit",
@@ -184,7 +189,9 @@ class DAC3DClient:
         if file_result is not None:
             parsed = file_result.get("parsed_result")
             if isinstance(parsed, dict):
-                return deepcopy(parsed)
+                parsed_result = deepcopy(parsed)
+                self._enrich_parsed_result_from_summary(parsed_result, file_result)
+                return parsed_result
             return deepcopy(file_result)
         if self.endpoint.startswith("file://"):
             raise DAC3DUnavailableError("DAC-3D 主系统尚未发布可解读的最新检测结果。")
@@ -380,6 +387,39 @@ class DAC3DClient:
         result.setdefault("files", [])
         result.setdefault("source", "status_file")
         return result
+
+    def _enrich_parsed_result_from_summary(
+        self,
+        parsed_result: dict[str, Any],
+        summary: dict[str, Any],
+    ) -> None:
+        """Carry sample and defect qualification fields into interpretation payloads."""
+        parsed_result.setdefault("sample_quality", summary.get("quality"))
+        parsed_result.setdefault("sample_quality_label", summary.get("quality_label"))
+        parsed_result.setdefault("defects_num", summary.get("defects_num"))
+
+        defects = summary.get("defects")
+        if not isinstance(defects, list) or not defects:
+            return
+
+        first_defect = defects[0]
+        if not isinstance(first_defect, dict):
+            return
+
+        field_map = {
+            "is_qualified": "is_qualified",
+            "is_ignored": "is_ignored",
+            "region": "region",
+            "reason": "defect_reason",
+        }
+        for source_key, target_key in field_map.items():
+            if source_key in first_defect and target_key not in parsed_result:
+                parsed_result[target_key] = first_defect[source_key]
+
+        if "defect_type" not in parsed_result and "category" in first_defect:
+            parsed_result["defect_type"] = first_defect["category"]
+        if "confidence" not in parsed_result and "confidence" in first_defect:
+            parsed_result["confidence"] = first_defect["confidence"]
 
     def _file_endpoint_path(self) -> Path | None:
         """Resolve a file:// endpoint to a local Windows path."""

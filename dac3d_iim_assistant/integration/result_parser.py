@@ -28,6 +28,13 @@ class ParsedInspectionResult:
     threshold_reference: str | None
     rule_reason: str
     summary: str
+    is_qualified: bool | None = None
+    is_ignored: bool | None = None
+    sample_quality: bool | None = None
+    sample_quality_label: str | None = None
+    region: str | None = None
+    defect_reason: str | None = None
+    defects_num: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a serializable representation."""
@@ -52,12 +59,28 @@ def parse_result(payload: dict[str, Any]) -> ParsedInspectionResult:
         str(derived["threshold_reference"]) if derived["threshold_reference"] else None
     )
     rule_reason = str(payload.get("rule_reason") or derived["rule_reason"])
+    is_qualified = _optional_bool(payload.get("is_qualified"))
+    is_ignored = _optional_bool(payload.get("is_ignored"))
+    sample_quality = _optional_bool(payload.get("sample_quality"))
+    if sample_quality is None:
+        sample_quality = _optional_bool(payload.get("quality"))
+    sample_quality_label = _optional_str(payload.get("sample_quality_label"))
+    if sample_quality_label is None:
+        sample_quality_label = _optional_str(payload.get("quality_label"))
+    if sample_quality_label is None and sample_quality is not None:
+        sample_quality_label = "合格" if sample_quality else "不合格"
+    region = _optional_str(payload.get("region"))
+    defect_reason = _optional_str(payload.get("defect_reason") or payload.get("reason"))
+    defects_num = _optional_int(payload.get("defects_num"))
     summary = _build_summary(
         defect_type=defect_type,
         severity=severity,
         location=location,
         measurements=measurements,
         rule_reason=rule_reason,
+        is_qualified=is_qualified,
+        is_ignored=is_ignored,
+        sample_quality_label=sample_quality_label,
     )
     return ParsedInspectionResult(
         defect_type=defect_type,
@@ -69,6 +92,13 @@ def parse_result(payload: dict[str, Any]) -> ParsedInspectionResult:
         threshold_reference=threshold_reference,
         rule_reason=rule_reason,
         summary=summary,
+        is_qualified=is_qualified,
+        is_ignored=is_ignored,
+        sample_quality=sample_quality,
+        sample_quality_label=sample_quality_label,
+        region=region,
+        defect_reason=defect_reason,
+        defects_num=defects_num,
     )
 
 
@@ -119,6 +149,36 @@ def _extract_defect_type(normalized: str) -> str | None:
     if any(keyword in normalized for keyword in ("pit", "点蚀")):
         return "pit"
     return None
+
+
+def _optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y", "合格", "qualified"}:
+            return True
+        if normalized in {"false", "0", "no", "n", "不合格", "unqualified"}:
+            return False
+    return None
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _derive_severity_metadata(defect_type: str, measurements: dict[str, float]) -> dict[str, str | None]:
@@ -197,9 +257,25 @@ def _build_summary(
     location: str,
     measurements: dict[str, float],
     rule_reason: str,
+    is_qualified: bool | None = None,
+    is_ignored: bool | None = None,
+    sample_quality_label: str | None = None,
 ) -> str:
     measurement_text = ", ".join(f"{key}={value}" for key, value in measurements.items())
+    qualification_parts: list[str] = []
+    if is_qualified is not None:
+        qualification_parts.append(f"is_qualified={is_qualified}")
+    if is_ignored is not None:
+        qualification_parts.append(f"is_ignored={is_ignored}")
+    if sample_quality_label:
+        qualification_parts.append(f"样品判定={sample_quality_label}")
+    qualification_text = (
+        f"合格性字段: {'，'.join(qualification_parts)}。"
+        if qualification_parts
+        else ""
+    )
     return (
         f"检测到的 {defect_type} 位于 {location}，当前判定为 {severity} 严重度。"
         f"测量值: {measurement_text or '无可用测量值'}。判定依据: {rule_reason}"
+        f"{qualification_text}"
     )

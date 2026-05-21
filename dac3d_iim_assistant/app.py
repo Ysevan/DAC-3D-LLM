@@ -586,7 +586,8 @@ class DAC3DAssistant:
         busy_states = {"running", "detecting", "scanning", "initializing"}
         if state.lower() in busy_states:
             warning = (
-                f"Current DAC-3D state is {state}; verify the running task before executing a new command."
+                f"DAC-3D 当前状态为 {state}，已有任务可能正在执行；"
+                "执行新命令前请先确认当前任务是否可中断或已完成。"
             )
             if warning not in command_warnings:
                 command_warnings.append(warning)

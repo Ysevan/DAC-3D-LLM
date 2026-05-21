@@ -311,6 +311,9 @@ def test_dac3d_client_reads_latest_result_from_status_file(tmp_path) -> None:
                                 "defect_type": "scratch",
                                 "position": [120.0, 240.0],
                                 "size": 42.0,
+                                "region": "C",
+                                "is_qualified": False,
+                                "is_ignored": False,
                                 "reason": "区域C中发现超标划痕",
                             }
                         ],
@@ -357,6 +360,11 @@ def test_dac3d_client_reads_latest_result_from_status_file(tmp_path) -> None:
     assert len(summary["result_history"]) == 2
     assert parsed["defect_type"] == "scratch"
     assert parsed["rule_reason"] == "区域C中发现超标划痕"
+    assert parsed["is_qualified"] is False
+    assert parsed["is_ignored"] is False
+    assert parsed["sample_quality"] is False
+    assert parsed["sample_quality_label"] == "不合格"
+    assert parsed["region"] == "C"
 
 
 def test_dac3d_client_writes_command_file_for_status_endpoint(tmp_path) -> None:

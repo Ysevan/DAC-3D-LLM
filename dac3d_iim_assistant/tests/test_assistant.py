@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import zipfile
 from xml.sax.saxutils import escape
@@ -10,6 +11,7 @@ from app import DAC3DAssistant
 from config import AppConfig
 from knowledge_base.build_kb import build_knowledge_base
 from rag.retriever import Retriever
+from rag.prompts import build_guidance_prompt
 
 SAMPLE_DOCUMENTS = {
     "parameter_notes.md": """# DAC-3D 参数说明
@@ -308,6 +310,35 @@ def test_operation_flow_builds_command_preview(tmp_path: Path) -> None:
     assert response.command_preview["warnings"]
 
 
+def test_operation_busy_runtime_warning_is_localized(tmp_path: Path) -> None:
+    """Busy runtime warnings should be operator-facing Chinese text."""
+    status_file = tmp_path / "dac3d_runtime_status.json"
+    status_file.write_text(
+        json.dumps(
+            {
+                "status": {
+                    "state": "running",
+                    "progress": 42,
+                    "message": "检测中...(61/144)",
+                    "step": "sample_detection_result",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    config = make_config(tmp_path)
+    config.dac3d_endpoint = status_file.as_uri()
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+
+    response = assistant.handle_message("scan a 10mm x 10mm area")
+
+    assert response.command_preview is not None
+    warnings = response.command_preview["warnings"]
+    assert any("DAC-3D 当前状态为 running" in warning for warning in warnings)
+    assert not any("Current DAC-3D state" in warning for warning in warnings)
+
+
 def test_operation_flow_requests_missing_fields(tmp_path: Path) -> None:
     """The assistant should refuse to guess required fields."""
     config = make_config(tmp_path)
@@ -331,6 +362,10 @@ def test_interpretation_flow_uses_mock_result(tmp_path: Path) -> None:
     assert response.intent == "interpretation"
     assert response.parsed_result is not None
     assert response.parsed_result["severity"] == "high"
+    assert response.parsed_result["is_qualified"] is False
+    assert response.parsed_result["is_ignored"] is False
+    assert response.parsed_result["sample_quality_label"] == "不合格"
+    assert "合格性说明" in response.answer
     assert "判定依据" in response.answer or "阈值" in response.answer
 
 
@@ -351,6 +386,14 @@ def test_guidance_and_status_flows(tmp_path: Path) -> None:
     assert realtime_status_response.intent == "status"
     assert realtime_status_response.status_summary is not None
     assert "运行模式" in realtime_status_response.answer
+
+
+def test_guidance_prompt_constrains_field_answer_length() -> None:
+    """Operator guidance prompts should steer live models toward concise steps."""
+    prompt = build_guidance_prompt("样品太反光了应该怎么办？", [])
+
+    assert "3 到 5 条优先操作步骤" in prompt
+    assert "不要展开长篇背景" in prompt
 
 
 def test_complex_guidance_combines_reflective_and_unstable_steps(tmp_path: Path) -> None:
