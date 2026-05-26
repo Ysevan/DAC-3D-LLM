@@ -2,6 +2,8 @@ import type {
   AssistantPayload,
   ChatRequest,
   KnowledgeBaseSummary,
+  MachineAgentPayload,
+  MachineSnapshot,
   RuntimeSummary,
 } from "./types";
 
@@ -36,6 +38,18 @@ export function sendChat(request: ChatRequest): Promise<AssistantPayload> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
+  });
+}
+
+export function fetchMachineSnapshot(): Promise<MachineSnapshot> {
+  return requestJson<MachineSnapshot>("/api/machine-agent/snapshot");
+}
+
+export function sendMachineAgentChat(message: string): Promise<MachineAgentPayload> {
+  return requestJson<MachineAgentPayload>("/api/machine-agent/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
   });
 }
 

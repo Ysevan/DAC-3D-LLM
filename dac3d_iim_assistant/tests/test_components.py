@@ -420,8 +420,18 @@ def test_result_parser_generates_threshold_reason_for_pit() -> None:
     assert "11.20" in parsed.rule_reason
 
 
-def test_config_loads_dotenv_and_anthropic_aliases(tmp_path) -> None:
+def test_config_loads_dotenv_and_anthropic_aliases(tmp_path, monkeypatch) -> None:
     """Configuration loading should support .env files and Anthropic-compatible aliases."""
+    for key in (
+        "DAC3D_LLM_PROVIDER",
+        "DAC3D_LLM_API_KEY",
+        "DAC3D_LLM_API_BASE_URL",
+        "DAC3D_LLM_API_BASE",
+        "DAC3D_LLM_MODEL_NAME",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_BASE_URL",
+    ):
+        monkeypatch.delenv(key, raising=False)
     (tmp_path / ".env").write_text(
         "\n".join(
             [
@@ -438,6 +448,72 @@ def test_config_loads_dotenv_and_anthropic_aliases(tmp_path) -> None:
     assert config.provider == "anthropic"
     assert config.api_key == "test-key"
     assert config.api_base_url == "https://api.minimaxi.com/anthropic"
+
+
+def test_config_loads_agent_openai_compatible_settings(tmp_path, monkeypatch) -> None:
+    """Agent runtime should have its own OpenAI-compatible model endpoint settings."""
+    for key in (
+        "DAC3D_AGENT_MODEL_NAME",
+        "DAC3D_AGENT_API_KEY",
+        "DAC3D_AGENT_API_BASE_URL",
+        "DAC3D_AGENT_API_TYPE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "DAC3D_AGENT_MODEL_NAME=vendor/dac3d-control-model",
+                "DAC3D_AGENT_API_KEY=third-party-key",
+                "DAC3D_AGENT_API_BASE_URL=https://llm.example.test/v1",
+                "DAC3D_AGENT_API_TYPE=chat_completions",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = AppConfig.from_env(tmp_path)
+
+    assert config.agent_model_name == "vendor/dac3d-control-model"
+    assert config.agent_api_key == "third-party-key"
+    assert config.agent_api_base_url == "https://llm.example.test/v1"
+    assert config.agent_api_type == "chat_completions"
+
+
+def test_agent_settings_fall_back_to_openai_compatible_llm_config(tmp_path, monkeypatch) -> None:
+    """Agent model config should stay aligned with DAC-3D-LLM OpenAI-compatible settings."""
+    for key in (
+        "DAC3D_AGENT_MODEL_NAME",
+        "DAC3D_AGENT_API_KEY",
+        "DAC3D_AGENT_API_BASE_URL",
+        "DAC3D_AGENT_API_TYPE",
+        "OPENAI_DEFAULT_MODEL",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "DAC3D_LLM_PROVIDER",
+        "DAC3D_LLM_API_KEY",
+        "DAC3D_LLM_API_BASE_URL",
+        "DAC3D_LLM_API_BASE",
+        "DAC3D_LLM_MODEL_NAME",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "DAC3D_LLM_PROVIDER=openai_compatible",
+                "DAC3D_LLM_API_KEY=shared-key",
+                "DAC3D_LLM_API_BASE_URL=https://shared-provider.example/v1",
+                "DAC3D_LLM_MODEL_NAME=shared-dac3d-model",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = AppConfig.from_env(tmp_path)
+
+    assert config.agent_model_name == "shared-dac3d-model"
+    assert config.agent_api_key == "shared-key"
+    assert config.agent_api_base_url == "https://shared-provider.example/v1"
+    assert config.agent_api_type == "chat_completions"
 
 
 def test_default_chunk_size_is_larger_for_richer_context() -> None:

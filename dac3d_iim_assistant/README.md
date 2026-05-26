@@ -19,10 +19,13 @@ DAC-3D IIM Assistant 是一个面向 DAC-3D 检测流程的中文优先智能交
 - `FastAPI` 后端接口和可嵌入 DAC-3D 侧边栏的 `React + Vite` 前端
 - `Gradio` 旧版界面保留为兼容回退
 - 结构化命令预览、状态展示、结果解析和来源显示
+- OpenAI Agents SDK 入口，将现有 DAC-3D 助手能力暴露为 Agent 工具
+- 工业设备信息管理 AI Agent 原型，内置 mock 设备状态、历史数据、报警记录、维护文档、规则异常分析和工具调用轨迹展示
 
 ## 仓库结构
 
 - `app.py`: 应用启动、依赖组装、消息路由
+- `agent_runtime.py`: OpenAI Agents SDK Agent 封装和工具注册
 - `config.py`: 运行配置、环境变量读取、路径管理
 - `knowledge_base/`: 文档、知识库构建与向量持久化
 - `rag/`: 检索、提示词、LLM 适配层
@@ -46,6 +49,51 @@ python app.py
 python -m pytest tests -q
 ```
 
+如果要用 OpenAI Agents SDK 运行 DAC-3D Agent，需要配置 `OPENAI_API_KEY`，可选配置 `DAC3D_AGENT_MODEL_NAME` 或 `OPENAI_DEFAULT_MODEL`：
+
+```bash
+export OPENAI_API_KEY="..."
+python app.py --agent --message "当前检测状态是什么？"
+python app.py --agent --agent-model gpt-5.4-mini
+python app.py --agent-web
+```
+
+如果要接第三方 OpenAI-compatible 模型，保持 DAC-3D 工具和控制 bridge 不变，只替换 Agent 的模型 endpoint：
+
+```bash
+export DAC3D_AGENT_MODEL_NAME="vendor/dac3d-control-model"
+export DAC3D_AGENT_API_KEY="第三方模型 API Key"
+export DAC3D_AGENT_API_BASE_URL="https://llm.example.com/v1"
+export DAC3D_AGENT_API_TYPE="chat_completions"
+python app.py --agent --message "确认立即开始在线扫描"
+```
+
+如果 `DAC3D_LLM_PROVIDER=openai_compatible` 已经配置好普通 DAC-3D-LLM 对话模型，Agent 会默认继承 `DAC3D_LLM_MODEL_NAME`、`DAC3D_LLM_API_KEY` 和 `DAC3D_LLM_API_BASE_URL`，并自动使用 `chat_completions`。需要单独给 Agent 换模型时，再设置 `DAC3D_AGENT_*`。
+
+也可以用命令行覆盖：
+
+```bash
+python app.py --agent \
+  --agent-model vendor/dac3d-control-model \
+  --agent-api-base-url https://llm.example.com/v1 \
+  --agent-api-type chat_completions \
+  --message "当前检测状态是什么？"
+```
+
+Agent 会把现有 DAC-3D 助手封装为工具，包括 `dac3d_answer`、`dac3d_operation`、`dac3d_preview_command`、`dac3d_execute_command`、`dac3d_status`、`dac3d_latest_result` 和 `dac3d_rebuild_knowledge_base`。其中 `dac3d_preview_command` 只生成结构化命令预览，`dac3d_execute_command` 会在用户明确确认、运行时不忙碌、离线目录校验通过后，把命令提交到 embedded bridge、file command bridge 或 mock runtime。未配置 API Key 时，仍可使用普通 `python app.py --message ...` 的本地 mock/规则路径。
+
+安装为 editable 包后，也可以使用 Agent-first 命令：
+
+```bash
+dac3d-agent --describe
+dac3d-agent --list-tools
+dac3d-agent --message "当前检测状态是什么？"
+dac3d-agent --preview-command "start online scan"
+dac3d-agent --execute-command "start online scan" --confirmed
+```
+
+这条入口不启动 Web UI，定位为可被脚本、终端演示或后续生产编排直接调用的 DAC-3D Agent 项目入口。`python app.py --agent-web` 则会让 FastAPI/React 与 Gradio 聊天入口使用 OpenAI Agents SDK runtime。真实 DAC-3D 主系统运行时，将 `DAC3D_ENDPOINT` 指向主系统发布的 `dac3d_runtime_status.json`，并设置 `DAC3D_COMMAND_PATH` 后，确认执行的 Agent 命令会写入 `dac3d_assistant_command.json`，由 `福特科/xxp_ui/window/ui.py` 轮询并触发在线扫描、离线检测或停止检测。
+
 默认 `python app.py` 会启动 FastAPI 后端并尝试提供构建后的 React 前端。调试前端时也可以单独执行：
 
 ```bash
@@ -58,6 +106,58 @@ npm run dev
 ```bash
 python app.py --cli
 python app.py --gradio
+```
+
+## 工业设备信息管理 AI Agent 原型
+
+当前 React 首页已提供一个可演示的工业设备信息管理 Agent 工作台。它不是静态页面，而是通过后端 `/api/machine-agent/*` 接口读取 mock 设备数据、调用工具、检索文档并返回分析结果。
+
+新增模块：
+
+- `machine_agent/data_provider.py`：统一设备数据接口和 mock seed data，覆盖实时状态、历史记录、报警记录和设备文档。
+- `machine_agent/agent.py`：规则型 Agent 服务，根据用户问题选择工具并组织回答。
+- `machine_agent/analysis.py`：异常统计、报警高发时段、正常/异常数据差异和自然语言总结。
+- `machine_agent/documents/`：示例设备操作手册、故障代码说明、维护保养规范和报警处理流程。
+
+主要工具：
+
+- `get_current_machine_status`
+- `get_machine_history`
+- `get_alarm_records`
+- `search_machine_docs`
+- `summarize_machine_condition`
+- `detect_abnormal_patterns`
+
+启动：
+
+```bash
+cd dac3d_iim_assistant
+python app.py --web-only
+```
+
+访问：
+
+```text
+http://127.0.0.1:8000
+```
+
+推荐 demo 问题：
+
+```text
+现在设备状态怎么样？
+上个月运行情况怎么样？
+最近有哪些异常？
+为什么最近温度报警变多了？
+E102 错误代码是什么意思？
+帮我总结一下这台机器最近三个月的问题。
+```
+
+也可以直接调用 API：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/machine-agent/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"为什么最近温度报警变多了？"}'
 ```
 
 ## 示例场景

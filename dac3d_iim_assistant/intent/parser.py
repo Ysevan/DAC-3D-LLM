@@ -33,7 +33,12 @@ RESOLUTION_PATTERNS = (
 WINDOWS_PATH_PATTERN = re.compile(
     r"(?P<path>[A-Za-z]:\\[^\r\n\"'<>|]*)"
 )
-QUOTED_PATH_PATTERN = re.compile(r"[\"'“”](?P<path>[A-Za-z]:\\[^\"'“”]+)[\"'“”]")
+POSIX_PATH_PATTERN = re.compile(
+    r"(?P<path>(?:~|/)[^\r\n\"'<>|]*)"
+)
+QUOTED_PATH_PATTERN = re.compile(
+    r"[\"'“”](?P<path>(?:[A-Za-z]:\\|~|/)[^\"'“”]+)[\"'“”]"
+)
 
 
 class ParserBackend(Protocol):
@@ -435,7 +440,7 @@ class FallbackIntentBackend:
 
     def _extract_windows_path(self, text: str) -> str | None:
         quoted = QUOTED_PATH_PATTERN.search(text)
-        match = quoted or WINDOWS_PATH_PATTERN.search(text)
+        match = quoted or WINDOWS_PATH_PATTERN.search(text) or POSIX_PATH_PATTERN.search(text)
         if not match:
             return None
         path = match.group("path").rstrip("。；;，,")
@@ -462,10 +467,12 @@ class FallbackIntentBackend:
         for trailing_keyword in (" execute", " submit", " run now", " start now"):
             if path.lower().endswith(trailing_keyword):
                 path = path[: -len(trailing_keyword)].rstrip()
-        try:
-            return str(PureWindowsPath(path))
-        except Exception:
-            return path
+        if re.match(r"^[A-Za-z]:\\", path):
+            try:
+                return str(PureWindowsPath(path))
+            except Exception:
+                return path
+        return path
 
     def _looks_like_guidance(self, normalized: str) -> bool:
         if not self._contains_any(normalized, self._question_markers):

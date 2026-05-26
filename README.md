@@ -13,7 +13,9 @@ DAC-3D-LLM 面向智能检测场景，不是通用聊天机器人。系统应尽
 当前演示支持两种形态：
 
 - LLM 智能检测助手原型：可独立启动 Web 页面，用于问答、命令预览、知识库构建和结果解释。
+- OpenAI Agents SDK 形态：将 DAC-3D 问答、命令、状态和结果能力注册为 Agent 工具，通过 `python app.py --agent --message "..."` 调用。
 - 嵌入式 DAC-3D 演示：从 DAC-3D 主系统按钮跳转到 Web 助手，读取主系统状态和结果数据。
+- 工业设备信息管理 AI Agent 原型：在同一 FastAPI/React 技术栈下演示设备状态、历史数据、报警记录、维护文档、异常模式分析和工具调用轨迹。
 
 ## 核心能力
 
@@ -67,6 +69,27 @@ DAC-3D 的设计原则是什么？
 检测速度太慢怎么办？
 图像没有缺陷标记怎么办？
 离线检测为什么不能停止？
+```
+
+### 5. 工业设备信息管理 Agent
+
+新增 `dac3d_iim_assistant/machine_agent/` 原型模块，内置 mock 工业设备数据和文档，可演示：
+
+- 查询当前设备状态、温度、压力、转速、电流、产量和未关闭报警。
+- 查询某段时间历史数据和报警记录。
+- 总结上个月或最近三个月运行情况。
+- 分析报警次数、最高频报警类型、高发时段、正常/异常数据差异。
+- 检索设备操作手册、故障代码说明、维护保养规范和报警处理流程。
+
+推荐演示问题：
+
+```text
+现在设备状态怎么样？
+上个月运行情况怎么样？
+最近有哪些异常？
+为什么最近温度报警变多了？
+E102 错误代码是什么意思？
+帮我总结一下这台机器最近三个月的问题。
 ```
 
 ## DAC-3D 主系统改造内容
@@ -381,6 +404,51 @@ python knowledge_base\build_kb.py
 ```powershell
 python app.py
 ```
+
+启动 OpenAI Agents SDK 版 DAC-3D Agent：
+
+```powershell
+$env:OPENAI_API_KEY="你的 OpenAI API Key"
+python app.py --agent --message "当前检测状态是什么？"
+python app.py --agent-web
+```
+
+可选通过环境变量或命令行指定 Agent 模型：
+
+```powershell
+$env:DAC3D_AGENT_MODEL_NAME="gpt-5.4-mini"
+python app.py --agent --agent-model gpt-5.4-mini
+```
+
+第三方 OpenAI-compatible 模型接入方式：
+
+```powershell
+$env:DAC3D_AGENT_MODEL_NAME="vendor/dac3d-control-model"
+$env:DAC3D_AGENT_API_KEY="第三方模型 API Key"
+$env:DAC3D_AGENT_API_BASE_URL="https://llm.example.com/v1"
+$env:DAC3D_AGENT_API_TYPE="chat_completions"
+python app.py --agent --message "确认立即开始在线扫描"
+```
+
+如果 `DAC3D_LLM_PROVIDER=openai_compatible` 已经配置好普通 DAC-3D-LLM 对话模型，Agent 会默认继承 `DAC3D_LLM_MODEL_NAME`、`DAC3D_LLM_API_KEY` 和 `DAC3D_LLM_API_BASE_URL`，并自动使用 `chat_completions`。需要单独给 Agent 换模型时，再设置 `DAC3D_AGENT_*`。
+
+也可以通过命令行覆盖：
+
+```powershell
+python app.py --agent --agent-model vendor/dac3d-control-model --agent-api-base-url https://llm.example.com/v1 --agent-api-type chat_completions --message "当前检测状态是什么？"
+```
+
+如果已在 `dac3d_iim_assistant` 中执行 `python -m pip install -e ".[dev]"`，还可以使用 Agent-first 命令：
+
+```powershell
+dac3d-agent --describe
+dac3d-agent --list-tools
+dac3d-agent --message "当前检测状态是什么？"
+dac3d-agent --preview-command "start online scan"
+dac3d-agent --execute-command "start online scan" --confirmed
+```
+
+`python app.py --agent-web` 会让 FastAPI/React 与 Gradio 聊天入口使用 OpenAI Agents SDK runtime。`dac3d_preview_command` 只生成结构化命令预览；`dac3d_execute_command` 会在用户明确确认、运行时不忙碌、离线目录校验通过后，把控制命令提交到 embedded bridge、file command bridge 或 mock runtime。真实 DAC-3D 主系统运行时，`DAC3D_ENDPOINT` 指向 `dac3d_runtime_status.json`，`DAC3D_COMMAND_PATH` 指向 `dac3d_assistant_command.json`，主系统会轮询该命令文件并触发在线扫描、离线检测或停止检测。
 
 默认访问：
 

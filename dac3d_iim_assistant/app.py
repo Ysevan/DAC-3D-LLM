@@ -7,6 +7,7 @@ import json
 import shutil
 import threading
 from collections import Counter
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Iterator, Sequence
@@ -383,9 +384,7 @@ class DAC3DAssistant:
         message: str,
         history: Sequence[tuple[str, str]],
     ) -> AssistantResponse:
-        command = self.command_generator.generate(message)
-        preview = command.to_dict()
-        self._attach_runtime_context_to_command(preview, command.warnings)
+        command, preview = self._build_operation_preview(message)
         if command.missing_fields:
             prompt = build_command_clarification_prompt(preview, history)
             answer = self.llm_client.generate(
@@ -450,9 +449,7 @@ class DAC3DAssistant:
         history: Sequence[tuple[str, str]],
     ) -> Iterator[tuple[str, dict[str, Any]]]:
         yield self._status_event("command", "解析指令中")
-        command = self.command_generator.generate(message)
-        preview = command.to_dict()
-        self._attach_runtime_context_to_command(preview, command.warnings)
+        command, preview = self._build_operation_preview(message)
         if command.missing_fields:
             prompt = build_command_clarification_prompt(preview, history)
             response = AssistantResponse(
@@ -522,6 +519,175 @@ class DAC3DAssistant:
             command_preview=preview,
         )
         yield from self._emit_buffered_response(response)
+
+    def preview_operation_command(
+        self,
+        message: str,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> AssistantResponse:
+        """Return a structured DAC-3D command preview without submitting it."""
+        history_tail = self._trim_history(history)
+        command, preview = self._build_operation_preview(message)
+        if command.missing_fields:
+            prompt = build_command_clarification_prompt(preview, history_tail)
+            answer = self.llm_client.generate(
+                prompt,
+                task="command_clarification",
+                question=message,
+                command=preview,
+            )
+            return AssistantResponse(
+                intent="operation",
+                answer=answer,
+                command_preview=preview,
+                status_summary=preview.get("runtime_status"),
+            )
+
+        answer = self._operation_preview_answer(preview)
+        if command.warnings:
+            answer = f"{answer} 风险提示: {'；'.join(command.warnings)}"
+        return AssistantResponse(
+            intent="operation",
+            answer=answer,
+            command_preview=preview,
+            status_summary=preview.get("runtime_status"),
+        )
+
+    def execute_operation_command(
+        self,
+        message: str,
+        *,
+        confirmed_by_user: bool = False,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> AssistantResponse:
+        """Generate and, when allowed, submit a DAC-3D command to the runtime."""
+        history_tail = self._trim_history(history)
+        command, preview = self._build_operation_preview(message)
+        if command.missing_fields:
+            prompt = build_command_clarification_prompt(preview, history_tail)
+            answer = self.llm_client.generate(
+                prompt,
+                task="command_clarification",
+                question=message,
+                command=preview,
+            )
+            return AssistantResponse(
+                intent="operation",
+                answer=answer,
+                command_preview=preview,
+                status_summary=preview.get("runtime_status"),
+            )
+
+        return self._execute_operation_preview(
+            preview,
+            command.warnings,
+            confirmed_by_user=confirmed_by_user,
+        )
+
+    def _build_operation_preview(self, message: str) -> tuple[Any, dict[str, Any]]:
+        """Build a structured command and attach current runtime context."""
+        command = self.command_generator.generate(message)
+        preview = command.to_dict()
+        self._attach_runtime_context_to_command(preview, command.warnings)
+        return command, preview
+
+    def _execute_operation_preview(
+        self,
+        preview: dict[str, Any],
+        command_warnings: Sequence[str],
+        *,
+        confirmed_by_user: bool,
+    ) -> AssistantResponse:
+        """Submit a complete command preview, enforcing runtime and confirmation checks."""
+        read_only_response = self._handle_read_only_operation(preview)
+        if read_only_response is not None:
+            return read_only_response
+
+        safety = dict(preview.get("safety") or {})
+        if safety.get("needs_confirmation") and not confirmed_by_user:
+            warnings = f" 风险提示: {'；'.join(command_warnings)}" if command_warnings else ""
+            return AssistantResponse(
+                intent="operation",
+                answer=(
+                    "已生成 DAC-3D 控制命令，但该命令需要用户明确确认后才会下发。"
+                    "如果确认执行，请明确说明“确认执行”或“立即开始”。"
+                    f"{warnings}"
+                ).strip(),
+                command_preview=preview,
+                status_summary=preview.get("runtime_status"),
+            )
+
+        busy_message = self._busy_runtime_message(preview)
+        if busy_message:
+            return AssistantResponse(
+                intent="operation",
+                answer=busy_message,
+                command_preview=preview,
+                status_summary=preview.get("runtime_status"),
+            )
+
+        validation_response = self._validate_offline_command_before_submit(preview)
+        if validation_response is not None:
+            return validation_response
+
+        result = self.dac3d_client.submit_scan_command(preview)
+        warning_text = ""
+        if command_warnings:
+            warning_text = f" 风险提示: {'；'.join(command_warnings)}"
+        if str(preview.get("action") or "") in {"validate_offline_folder"}:
+            answer = self._command_result_answer(preview, result)
+        else:
+            submit_message = result.get("message") or "结构化 DAC-3D 命令已通过校验，并提交到运行时。"
+            answer = f"{submit_message}{warning_text}".strip()
+        return AssistantResponse(
+            intent="operation",
+            answer=answer,
+            command_preview=preview,
+            status_summary=result.get("status"),
+            parsed_result=result.get("result") or result.get("validation"),
+        )
+
+    def _validate_offline_command_before_submit(
+        self,
+        preview: dict[str, Any],
+    ) -> AssistantResponse | None:
+        """Block offline detection startup when the selected image folder is incomplete."""
+        if str(preview.get("action") or "") != "start_offline_detection":
+            return None
+
+        payload = dict(preview.get("payload") or {})
+        if not payload.get("validate_before_run", True):
+            return None
+
+        validate_command = deepcopy(preview)
+        validate_command["action"] = "validate_offline_folder"
+        validate_command["safety"] = {
+            "needs_confirmation": False,
+            "hardware_required": False,
+            "safe_to_auto_execute": True,
+        }
+        if self.dac3d_client.runtime_bridge is not None:
+            validation_result = self.dac3d_client.submit_scan_command(validate_command)
+            validation = dict(validation_result.get("validation") or {})
+            status = validation_result.get("status") or preview.get("runtime_status")
+        else:
+            validation = self.dac3d_client.validate_offline_folder(validate_command)
+            status = preview.get("runtime_status")
+
+        if validation.get("ready"):
+            return None
+
+        missing = validation.get("missing_requirements") or []
+        return AssistantResponse(
+            intent="operation",
+            answer=(
+                "离线图片目录校验未通过，未启动 DAC-3D 离线检测。"
+                f"缺少或异常项：{', '.join(map(str, missing)) or 'unknown'}。"
+            ),
+            command_preview=preview,
+            status_summary=status,
+            parsed_result=validation,
+        )
 
     def _handle_read_only_operation(self, preview: dict[str, Any]) -> AssistantResponse | None:
         action = str(preview.get("action") or "")
@@ -1132,6 +1298,33 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Launch only the FastAPI/React web UI.",
     )
+    parser.add_argument(
+        "--agent",
+        action="store_true",
+        help="Run through the OpenAI Agents SDK DAC-3D agent.",
+    )
+    parser.add_argument(
+        "--agent-model",
+        help="Override the OpenAI Agents SDK model name for this run.",
+    )
+    parser.add_argument(
+        "--agent-api-base-url",
+        help="Override the OpenAI-compatible Agent model API base URL.",
+    )
+    parser.add_argument(
+        "--agent-api-key",
+        help="Override the Agent model API key. Prefer DAC3D_AGENT_API_KEY in .env.",
+    )
+    parser.add_argument(
+        "--agent-api-type",
+        choices=["auto", "chat_completions", "responses"],
+        help="Agent model API mode. Use chat_completions for most third-party OpenAI-compatible providers.",
+    )
+    parser.add_argument(
+        "--agent-web",
+        action="store_true",
+        help="Use the OpenAI Agents SDK runtime as the web/Gradio chat backend.",
+    )
     parser.add_argument("--host", help="Override the web server host.")
     parser.add_argument("--port", type=int, help="Override the web server port.")
     return parser
@@ -1172,6 +1365,25 @@ def _launch_legacy_web_ui(assistant: DAC3DAssistant) -> None:
     )
 
 
+def _launch_agent_cli(agent_runtime: Any) -> None:
+    """Launch a small terminal loop backed by the OpenAI Agents SDK."""
+    print("DAC-3D Agent CLI. Type `exit` to quit.")
+    while True:
+        try:
+            message = input("User> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if not message:
+            continue
+        if message.lower() in {"exit", "quit"}:
+            return
+        try:
+            print(agent_runtime.run_sync(message))
+        except Exception as exc:  # pragma: no cover - interactive safety net
+            print(f"Agent run failed: {exc}")
+
+
 def main() -> None:
     """Start the assistant application."""
     args = build_argument_parser().parse_args()
@@ -1181,24 +1393,60 @@ def main() -> None:
         print(f"Assistant startup failed: {exc}")
         return
 
+    if args.agent_model:
+        assistant.config.agent_model_name = args.agent_model
+    if args.agent_api_base_url:
+        assistant.config.agent_api_base_url = args.agent_api_base_url
+    if args.agent_api_key:
+        assistant.config.agent_api_key = args.agent_api_key
+    if args.agent_api_type:
+        assistant.config.agent_api_type = args.agent_api_type
+
+    if args.agent:
+        try:
+            from agent_runtime import DAC3DAgentRuntime
+        except Exception as exc:  # pragma: no cover - dependency guard
+            print(f"Agent runtime unavailable: {exc}")
+            return
+        agent_runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+        if args.message:
+            try:
+                print(agent_runtime.run_sync(args.message))
+            except Exception as exc:
+                print(f"Agent run failed: {exc}")
+            return
+        _launch_agent_cli(agent_runtime)
+        return
+
     if args.message:
         print(assistant.handle_message(args.message).render_text())
         return
 
+    chat_runtime: Any = assistant
+    if args.agent_web:
+        try:
+            from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime
+        except Exception as exc:  # pragma: no cover - dependency guard
+            print(f"Agent runtime unavailable: {exc}")
+            return
+        chat_runtime = DAC3DAgentChatAdapter(
+            DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+        )
+
     if args.cli:
         widget = _build_gradio_widget(
-            assistant,
-            host=assistant.config.gradio_host,
-            port=assistant.config.gradio_port,
+            chat_runtime,
+            host=chat_runtime.config.gradio_host,
+            port=chat_runtime.config.gradio_port,
         )
         widget.launch_cli()
         return
 
     if args.gradio:
         widget = _build_gradio_widget(
-            assistant,
-            host=args.host or assistant.config.gradio_host,
-            port=args.port or assistant.config.gradio_port,
+            chat_runtime,
+            host=args.host or chat_runtime.config.gradio_host,
+            port=args.port or chat_runtime.config.gradio_port,
         )
         try:
             widget.launch()
@@ -1218,21 +1466,21 @@ def main() -> None:
     if not args.web_only:
         legacy_ui_thread = threading.Thread(
             target=_launch_legacy_web_ui,
-            args=(assistant,),
+            args=(chat_runtime,),
             name="dac3d-legacy-source-ui",
             daemon=True,
         )
         legacy_ui_thread.start()
         print(
-            f"Running dual UIs: React/FastAPI at http://{args.host or assistant.config.web_host}:{args.port or assistant.config.web_port} "
-            f"and legacy source UI at http://{assistant.config.gradio_host}:{assistant.config.gradio_port}"
+            f"Running dual UIs: React/FastAPI at http://{args.host or chat_runtime.config.web_host}:{args.port or chat_runtime.config.web_port} "
+            f"and legacy source UI at http://{chat_runtime.config.gradio_host}:{chat_runtime.config.gradio_port}"
         )
 
-    web_app = create_api_app(assistant)
+    web_app = create_api_app(chat_runtime)
     uvicorn.run(
         web_app,
-        host=args.host or assistant.config.web_host,
-        port=args.port or assistant.config.web_port,
+        host=args.host or chat_runtime.config.web_host,
+        port=args.port or chat_runtime.config.web_port,
     )
 
 

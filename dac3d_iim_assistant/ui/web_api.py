@@ -22,6 +22,12 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         ) from exc
 
     app = FastAPI(title="DAC-3D IIM Assistant API")
+    try:
+        from machine_agent import MachineAgentService
+
+        machine_agent = MachineAgentService()
+    except Exception:
+        machine_agent = None
     frontend_dev_url = assistant.config.frontend_dev_url
     allowed_origins = [
         origin
@@ -51,6 +57,27 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
     @app.get("/api/knowledge-base/summary")
     def knowledge_base_summary() -> dict[str, Any]:
         return assistant.knowledge_base_summary()
+
+    @app.get("/api/machine-agent/snapshot")
+    def machine_agent_snapshot() -> dict[str, Any]:
+        if machine_agent is None:
+            raise HTTPException(status_code=503, detail="Machine Agent is unavailable.")
+        return machine_agent.snapshot()
+
+    @app.post("/api/machine-agent/chat")
+    def machine_agent_chat(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        if machine_agent is None:
+            raise HTTPException(status_code=503, detail="Machine Agent is unavailable.")
+        message = str(request.get("message", "")).strip()
+        if not message:
+            raise HTTPException(status_code=422, detail="The `message` field is required.")
+        return machine_agent.chat(message)
+
+    @app.get("/api/machine-agent/status")
+    def machine_agent_status() -> dict[str, Any]:
+        if machine_agent is None:
+            raise HTTPException(status_code=503, detail="Machine Agent is unavailable.")
+        return machine_agent.get_current_machine_status()
 
     @app.post("/api/chat")
     def chat(request: dict[str, Any] = Body(...)) -> dict[str, Any]:

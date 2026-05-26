@@ -78,6 +78,12 @@ class AppConfig:
     web_host: str = "127.0.0.1"
     web_port: int = 8000
     frontend_dev_url: str = ""
+    agent_model_name: str = ""
+    agent_api_key: str = ""
+    agent_api_base_url: str = ""
+    agent_api_type: str = "auto"
+    agent_max_turns: int = 8
+    agent_tracing_disabled: bool = True
     base_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent)
     knowledge_base_dir: Path = field(init=False)
     documents_dir: Path = field(init=False)
@@ -123,11 +129,17 @@ class AppConfig:
             or os.getenv("DAC3D_LLM_API_BASE")
             or os.getenv("ANTHROPIC_BASE_URL", "")
         )
+        llm_model_name = os.getenv("DAC3D_LLM_MODEL_NAME", "claude-3-5-haiku-latest")
+        openai_compatible_model_name = (
+            llm_model_name if provider == "openai_compatible" else ""
+        )
+        openai_compatible_api_key = api_key if provider == "openai_compatible" else ""
+        openai_compatible_base_url = api_base_url if provider == "openai_compatible" else ""
         return cls(
             provider=provider,
             api_key=api_key,
             api_base_url=api_base_url,
-            model_name=os.getenv("DAC3D_LLM_MODEL_NAME", "claude-3-5-haiku-latest"),
+            model_name=llm_model_name,
             max_generation_tokens=int(os.getenv("DAC3D_MAX_GENERATION_TOKENS", "700")),
             temperature=float(os.getenv("DAC3D_TEMPERATURE", "0.1")),
             timeout_seconds=float(os.getenv("DAC3D_TIMEOUT_SECONDS", "30")),
@@ -163,6 +175,28 @@ class AppConfig:
             web_host=os.getenv("DAC3D_WEB_HOST", "127.0.0.1"),
             web_port=int(os.getenv("DAC3D_WEB_PORT", "8000")),
             frontend_dev_url=os.getenv("DAC3D_FRONTEND_DEV_URL", "").strip(),
+            agent_model_name=(
+                os.getenv("DAC3D_AGENT_MODEL_NAME")
+                or os.getenv("OPENAI_DEFAULT_MODEL", "")
+                or openai_compatible_model_name
+            ).strip(),
+            agent_api_key=(
+                os.getenv("DAC3D_AGENT_API_KEY")
+                or os.getenv("OPENAI_API_KEY")
+                or openai_compatible_api_key
+            ).strip(),
+            agent_api_base_url=(
+                os.getenv("DAC3D_AGENT_API_BASE_URL")
+                or os.getenv("DAC3D_AGENT_BASE_URL")
+                or os.getenv("OPENAI_BASE_URL")
+                or openai_compatible_base_url
+            ).strip(),
+            agent_api_type=(
+                os.getenv("DAC3D_AGENT_API_TYPE")
+                or ("chat_completions" if provider == "openai_compatible" else "auto")
+            ).strip().lower(),
+            agent_max_turns=int(os.getenv("DAC3D_AGENT_MAX_TURNS", "8")),
+            agent_tracing_disabled=_read_bool("DAC3D_AGENT_TRACING_DISABLED", True),
             base_dir=resolved_base_dir,
         )
 
