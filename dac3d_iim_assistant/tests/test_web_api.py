@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 from fastapi.testclient import TestClient
 
 from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime, LOCAL_VALIDATION_MODEL_NAME
@@ -547,6 +549,28 @@ def test_web_api_repo_context_map_endpoints(tmp_path) -> None:
     assert search_response.status_code == 200
     assert search_response.json()["count"] >= 1
     assert workspace_response.json()["repo_context_map"]["file_count"] >= 2
+
+
+def test_web_api_git_workspace_status_endpoint(tmp_path) -> None:
+    """The web UI should inspect read-only Git branch and changed-file context."""
+    config = make_config(tmp_path)
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "api-change.txt").write_text("changed\n", encoding="utf-8")
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    status_response = client.get("/api/agent/git/status")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert status_response.status_code == 200
+    payload = status_response.json()
+    assert payload["enabled"] is True
+    assert payload["clean"] is False
+    assert any(item["path"] == "api-change.txt" for item in payload["changed_files"])
+    assert workspace_response.json()["git_workspace"]["changed_file_count"] >= 1
 
 
 def test_web_api_agent_workflow_template_endpoints(tmp_path) -> None:

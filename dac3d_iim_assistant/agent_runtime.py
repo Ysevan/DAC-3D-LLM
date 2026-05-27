@@ -28,7 +28,7 @@ from agent_core import (
 )
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
-from context_engineering import ContextBuilder, FileBackedContextTree, RepoContextMapStore
+from context_engineering import ContextBuilder, FileBackedContextTree, GitWorkspaceContext, RepoContextMapStore
 from goals import (
     ArtifactStore,
     AutomationPlannerStore,
@@ -1203,6 +1203,7 @@ class DAC3DAgentRuntime:
                 "shared_workspace_artifacts",
                 "durable_event_queue",
                 "static_repo_context_map",
+                "git_workspace_context",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2158,6 +2159,7 @@ class DAC3DAgentChatAdapter:
     context_builder: ContextBuilder | None = None
     context_tree: FileBackedContextTree | None = None
     repo_context_map: RepoContextMapStore | None = None
+    git_workspace_context: GitWorkspaceContext | None = None
     goal_store: GoalStore | None = None
     task_board_store: TaskBoardStore | None = None
     automation_store: AutomationPlannerStore | None = None
@@ -2199,6 +2201,8 @@ class DAC3DAgentChatAdapter:
                 self.config.base_dir,
                 self.config.conversation_memory_dir,
             )
+        if self.git_workspace_context is None:
+            self.git_workspace_context = GitWorkspaceContext.from_config_root(self.config.base_dir)
         if self.goal_store is None:
             self.goal_store = GoalStore.from_root(self.config.conversation_memory_dir)
         if self.task_board_store is None:
@@ -2317,6 +2321,11 @@ class DAC3DAgentChatAdapter:
             self.repo_context_map.describe()
             if self.repo_context_map is not None
             else {"enabled": False, "backend": "static_repo_context_map"}
+        )
+        summary["git_workspace"] = (
+            self.git_workspace_context.describe()
+            if self.git_workspace_context is not None
+            else {"enabled": False, "backend": "git_workspace_context"}
         )
         summary["goals"] = (
             self.goal_store.describe()
@@ -2472,6 +2481,11 @@ class DAC3DAgentChatAdapter:
             if self.repo_context_map is not None
             else {"enabled": False, "backend": "static_repo_context_map"}
         )
+        git_workspace = (
+            self.git_workspace_context.describe()
+            if self.git_workspace_context is not None
+            else {"enabled": False, "backend": "git_workspace_context"}
+        )
         skills = (
             self.skill_registry.describe()
             if self.skill_registry is not None
@@ -2528,6 +2542,7 @@ class DAC3DAgentChatAdapter:
             "skill_patches": skill_patches,
             "context_tree": context_tree,
             "repo_context_map": repo_context_map,
+            "git_workspace": git_workspace,
             "memory_os": memory,
             "goals": goals,
             "task_board": task_board,
@@ -2547,6 +2562,7 @@ class DAC3DAgentChatAdapter:
                 "skill_selection",
                 "context_tree_search",
                 "repo_context_map",
+                "git_workspace_context",
                 "memory_prefetch",
                 "specialist_agent",
                 "tool_loop",
@@ -3005,6 +3021,22 @@ class DAC3DAgentChatAdapter:
         if self.repo_context_map is None:
             raise ValueError("Repo context map is not enabled.")
         return self.repo_context_map.search(query, limit=limit)
+
+    def git_workspace_status(
+        self,
+        *,
+        recent_limit: int = 5,
+        include_diff_stat: bool = True,
+        include_worktrees: bool = True,
+    ) -> dict[str, Any]:
+        """Return read-only Git branch, diff, and worktree context."""
+        if self.git_workspace_context is None:
+            raise ValueError("Git workspace context is not enabled.")
+        return self.git_workspace_context.snapshot(
+            recent_limit=recent_limit,
+            include_diff_stat=include_diff_stat,
+            include_worktrees=include_worktrees,
+        )
 
     def preview_agent_workflow(
         self,

@@ -104,6 +104,24 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/git/status")
+    def git_workspace_status(
+        recent_limit: int = 5,
+        include_diff_stat: bool = True,
+        include_worktrees: bool = True,
+    ) -> dict[str, Any]:
+        git_status = getattr(assistant, "git_workspace_status", None)
+        if not callable(git_status):
+            raise HTTPException(status_code=503, detail="Git workspace context is unavailable.")
+        try:
+            return git_status(
+                recent_limit=recent_limit,
+                include_diff_stat=include_diff_stat,
+                include_worktrees=include_worktrees,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     @app.get("/api/agent/artifacts")
     def list_agent_artifacts(
         session_id: str | None = None,

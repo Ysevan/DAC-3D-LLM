@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from typing import Any
 
 from agents import Model, ModelResponse, Runner
@@ -780,6 +781,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["context_builder"]["backend"] == "context_builder"
     assert summary["context_builder"]["actions"] == ["write", "select", "compress", "isolate"]
     assert summary["repo_context_map"]["backend"] == "static_repo_context_map"
+    assert summary["git_workspace"]["backend"] == "git_workspace_context"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
     assert summary["automations"]["backend"] == "local_automation_planner"
     assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
@@ -1061,6 +1063,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "shared_workspace_artifacts" in description["network_capabilities"]
     assert "durable_event_queue" in description["network_capabilities"]
     assert "static_repo_context_map" in description["network_capabilities"]
+    assert "git_workspace_context" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1263,6 +1266,24 @@ def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:
     assert search["count"] >= 1
     assert workspace["repo_context_map"]["file_count"] >= 2
     assert "repo_context_map" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_git_workspace_context_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "git-demo.txt").write_text("changed\n", encoding="utf-8")
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    status = adapter.git_workspace_status()
+    workspace = adapter.agent_workspace()
+
+    assert status["enabled"] is True
+    assert any(item["path"] == "git-demo.txt" for item in status["changed_files"])
+    assert workspace["git_workspace"]["changed_file_count"] >= 1
+    assert "git_workspace_context" in workspace["workflow"]
 
 
 def test_agent_runtime_parser_supports_agent_project_commands() -> None:

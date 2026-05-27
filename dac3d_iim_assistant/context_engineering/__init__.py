@@ -1,6 +1,7 @@
 """Context Builder for DAC-Agent Runtime."""
 
 from context_engineering.builder import ContextBuilder, ContextBundle, ContextSection
+from context_engineering.git_context import GitWorkspaceContext
 from context_engineering.repo_map import RepoContextMapStore
 from context_engineering.tree import ContextTreeMatch, ContextTreeNode, FileBackedContextTree
 
@@ -11,5 +12,6 @@ __all__ = [
     "ContextTreeMatch",
     "ContextTreeNode",
     "FileBackedContextTree",
+    "GitWorkspaceContext",
     "RepoContextMapStore",
 ]

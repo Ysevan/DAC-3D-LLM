@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from config import AppConfig
-from context_engineering import ContextBuilder, FileBackedContextTree, RepoContextMapStore
+from context_engineering import ContextBuilder, FileBackedContextTree, GitWorkspaceContext, RepoContextMapStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
 from skill_system import SkillRegistry
 
@@ -138,6 +139,25 @@ def test_repo_context_map_builds_and_searches_static_project_map(tmp_path: Path)
     assert any(match["role"] == "api" for match in search["matches"])
     assert summary["module_count"] == 1
     assert summary["api_route_count"] == 1
+
+
+def test_git_workspace_context_reports_branch_and_changed_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    (repo / "demo.py").write_text("print('demo')\n", encoding="utf-8")
+    context = GitWorkspaceContext(repo)
+
+    snapshot = context.snapshot()
+    summary = context.describe()
+
+    assert snapshot["enabled"] is True
+    assert snapshot["repo_root"] == str(repo)
+    assert snapshot["clean"] is False
+    assert snapshot["changed_files"] == [{"status": "??", "path": "demo.py"}]
+    assert isinstance(snapshot["worktrees"], list)
+    assert summary["backend"] == "git_workspace_context"
+    assert summary["changed_file_count"] == 1
 
 
 def test_context_builder_includes_context_tree_matches(tmp_path: Path) -> None:
