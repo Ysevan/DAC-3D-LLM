@@ -6,6 +6,7 @@ import type {
   ApproveCommandRequest,
   AssistantPayload,
   ChatRequest,
+  CodexHandoffResult,
   EvalDraftListResult,
   EvalRunResult,
   KnowledgeBaseSummary,
@@ -113,6 +114,14 @@ export function generateEvalDrafts(limit = 5): Promise<EvalDraftListResult> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ limit }),
+  });
+}
+
+export function generateCodexHandoff(recentTraceLimit = 8): Promise<CodexHandoffResult> {
+  return requestJson<CodexHandoffResult>("/api/evals/codex-handoff", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recent_trace_limit: recentTraceLimit }),
   });
 }
 

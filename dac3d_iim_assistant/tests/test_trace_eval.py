@@ -5,6 +5,7 @@ from __future__ import annotations
 from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime, LOCAL_VALIDATION_MODEL_NAME
 from app import DAC3DAssistant
 from tests.test_agent_runtime import make_agent_config
+from trace_eval import CodexHandoffGenerator, TraceLogger
 
 
 def _make_adapter(tmp_path) -> DAC3DAgentChatAdapter:
@@ -58,3 +59,60 @@ def test_trace_to_eval_drafts_are_saved_outside_approved_cases(tmp_path) -> None
     assert "dac3d_status" in draft["expected"]["must_call_tools"]
     assert (tmp_path / "evals" / "drafts" / f"{draft['id']}.json").exists()
     assert not (tmp_path / "evals" / "cases" / f"{draft['id']}.json").exists()
+
+
+def test_codex_handoff_generator_writes_failed_eval_and_trace_summary(tmp_path) -> None:
+    trace_logger = TraceLogger(tmp_path / "agent_traces.jsonl")
+    trace = trace_logger.append(
+        {
+            "trace_id": "trace-status-mismatch",
+            "event_type": "agent_chat",
+            "session_id": "handoff-session",
+            "user_message": "当前检测状态是什么？",
+            "intent": "query",
+            "tool_calls": [{"name": "dac3d_answer"}],
+            "final_response": "我查询了知识库。",
+        }
+    )
+    eval_result = {
+        "backend": "local_deterministic_eval",
+        "case_count": 1,
+        "passed": 0,
+        "failed": 1,
+        "pass_rate": 0.0,
+        "results": [
+            {
+                "id": "state_query_status",
+                "category": "state_query",
+                "input": "当前检测状态是什么？",
+                "passed": False,
+                "checks": [
+                    {
+                        "name": "response.intent",
+                        "passed": False,
+                        "expected": "status",
+                        "actual": "query",
+                    }
+                ],
+                "intent": "query",
+                "answer_preview": "我查询了知识库。",
+                "trace_id": trace["trace_id"],
+            }
+        ],
+    }
+    output_path = tmp_path / "docs" / "generated" / "codex_handoff_next.md"
+
+    result = CodexHandoffGenerator(
+        trace_logger=trace_logger,
+        output_path=output_path,
+    ).generate(eval_result=eval_result)
+
+    assert result["failed_count"] == 1
+    assert result["trace_count"] >= 1
+    assert result["auto_applied"] is False
+    assert result["path"] == str(output_path)
+    markdown = output_path.read_text(encoding="utf-8")
+    assert "state_query_status" in markdown
+    assert "trace-status-mismatch" in markdown
+    assert "Tune intent routing" in markdown
+    assert "python -m pytest tests/test_trace_eval.py tests/test_web_api.py -q" in markdown

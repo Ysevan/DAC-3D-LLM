@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from agent_core import (
@@ -31,7 +32,7 @@ from context_engineering import ContextBuilder, FileBackedContextTree
 from goals import GoalStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
 from skill_system import SkillRegistry
-from trace_eval import EvalDraftGenerator, EvalRunner, TraceLogger
+from trace_eval import CodexHandoffGenerator, EvalDraftGenerator, EvalRunner, TraceLogger
 
 
 VALID_AGENT_API_TYPES = {"auto", "responses", "chat_completions"}
@@ -2021,6 +2022,13 @@ class DAC3DAgentChatAdapter:
                 "workflow": "trace -> eval draft -> human review -> evals/cases",
                 "auto_approved": False,
             },
+            "codex_handoff_generator": {
+                "enabled": True,
+                "backend": "codex_handoff_generator",
+                "path": str(self.config.base_dir / "docs" / "generated" / "codex_handoff_next.md"),
+                "workflow": "failing evals + traces -> Codex handoff -> next implementation pass",
+                "auto_applied": False,
+            },
         }
         return summary
 
@@ -2082,6 +2090,27 @@ class DAC3DAgentChatAdapter:
             drafts_dir=self.config.base_dir / "evals" / "drafts",
         )
         return generator.list_drafts()
+
+    def generate_codex_handoff(
+        self,
+        *,
+        categories: list[str] | None = None,
+        recent_trace_limit: int = 8,
+        output_path: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Run local evals and generate a Codex handoff markdown document."""
+        if self.trace_logger is None:
+            raise ValueError("Trace logger is not enabled.")
+        eval_result = self.run_evals(categories=categories)
+        generator = CodexHandoffGenerator(
+            trace_logger=self.trace_logger,
+            output_path=output_path
+            or self.config.base_dir / "docs" / "generated" / "codex_handoff_next.md",
+        )
+        return generator.generate(
+            eval_result=eval_result,
+            recent_trace_limit=recent_trace_limit,
+        )
 
     def agent_workspace(self) -> dict[str, Any]:
         """Return a UI-ready overview of the local multi-agent workspace."""

@@ -179,6 +179,30 @@ export interface EvalDraftListResult {
   auto_approved?: boolean;
 }
 
+export interface CodexHandoffResult {
+  enabled: boolean;
+  backend: string;
+  path: string;
+  generated_at?: string;
+  failed_count: number;
+  trace_count: number;
+  eval_summary?: {
+    backend?: string;
+    case_count?: number;
+    passed?: number;
+    failed?: number;
+    pass_rate?: number;
+  };
+  recommendations?: Array<{
+    title: string;
+    reason?: string;
+    target_files?: string[];
+  }>;
+  failed_evals?: Array<Record<string, unknown>>;
+  workflow?: string;
+  auto_applied?: boolean;
+}
+
 export interface MemoryPatch {
   id: string;
   created_at?: string;
