@@ -375,3 +375,40 @@ def test_web_api_agent_workspace_and_workflow_preview(tmp_path) -> None:
         item["node"]["kind"] == "procedure"
         for item in preview["context_tree_matches"]
     )
+
+
+def test_web_api_goal_tracker_endpoints(tmp_path) -> None:
+    """The web UI should create, update, complete, and list Agent goals."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/goals",
+        json={"objective": "目标：新增 Agent goal 目标功能", "session_id": "goal-ui-session"},
+    )
+    goal_id = create_response.json()["goal"]["id"]
+    progress_response = client.post(
+        f"/api/goals/{goal_id}/progress",
+        json={"note": "已接入 API。"},
+    )
+    complete_response = client.post(
+        f"/api/goals/{goal_id}/complete",
+        json={"note": "已完成 UI 联调。"},
+    )
+    active_response = client.get("/api/goals?status=active")
+    completed_response = client.get("/api/goals?status=completed")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert progress_response.status_code == 200
+    assert progress_response.json()["goal"]["progress"][0]["note"] == "已接入 API。"
+    assert complete_response.status_code == 200
+    assert complete_response.json()["goal"]["status"] == "completed"
+    assert active_response.json()["count"] == 0
+    assert completed_response.json()["count"] == 1
+    assert workspace_response.json()["goals"]["goal_count"] == 1

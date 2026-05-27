@@ -28,6 +28,7 @@ from agent_core import (
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree
+from goals import GoalStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
 from skill_system import SkillRegistry
 from trace_eval import EvalDraftGenerator, EvalRunner, TraceLogger
@@ -1876,6 +1877,7 @@ class DAC3DAgentChatAdapter:
     skill_registry: SkillRegistry | None = None
     context_builder: ContextBuilder | None = None
     context_tree: FileBackedContextTree | None = None
+    goal_store: GoalStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -1898,6 +1900,8 @@ class DAC3DAgentChatAdapter:
         if self.context_tree is None:
             self.context_tree = FileBackedContextTree(self.config.conversation_memory_dir / "context_tree")
             self.context_tree.ensure_defaults()
+        if self.goal_store is None:
+            self.goal_store = GoalStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -1949,6 +1953,7 @@ class DAC3DAgentChatAdapter:
             context_bundle=memory_bundle,
             event_type="agent_chat",
         )
+        self._maybe_capture_goal(session_id=session_id, message=message, response=response)
         self._remember_turn(session_id, message, response)
         return response
 
@@ -1993,6 +1998,11 @@ class DAC3DAgentChatAdapter:
             self.context_tree.describe()
             if self.context_tree is not None
             else {"enabled": False, "backend": "file_context_tree"}
+        )
+        summary["goals"] = (
+            self.goal_store.describe()
+            if self.goal_store is not None
+            else {"enabled": False, "backend": "local_goal_store"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2091,6 +2101,11 @@ class DAC3DAgentChatAdapter:
             if self.memory_provider is not None
             else {"enabled": False, "backend": "local_memory_os"}
         )
+        goals = (
+            self.goal_store.describe()
+            if self.goal_store is not None
+            else {"enabled": False, "backend": "local_goal_store"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2101,8 +2116,10 @@ class DAC3DAgentChatAdapter:
             "skills": skills,
             "context_tree": context_tree,
             "memory_os": memory,
+            "goals": goals,
             "workflow": [
                 "user_task",
+                "goal_tracking",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2112,6 +2129,45 @@ class DAC3DAgentChatAdapter:
                 "trace_feedback",
             ],
         }
+
+    def list_goals(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """List tracked DAC-Agent goals."""
+        if self.goal_store is None:
+            return {"enabled": False, "backend": "local_goal_store", "goals": [], "count": 0}
+        return self.goal_store.list_goals(session_id=session_id, status=status, limit=limit)
+
+    def create_goal(self, objective: str, *, session_id: str = "web") -> dict[str, Any]:
+        """Create a durable Agent goal."""
+        if self.goal_store is None:
+            raise ValueError("Goal store is not enabled.")
+        return {"enabled": True, **self.goal_store.create_goal(objective, session_id=session_id)}
+
+    def append_goal_progress(
+        self,
+        goal_id: str,
+        note: str,
+        *,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        """Append progress to one Agent goal."""
+        if self.goal_store is None:
+            raise ValueError("Goal store is not enabled.")
+        return {
+            "enabled": True,
+            **self.goal_store.append_progress(goal_id, note, status=status),
+        }
+
+    def complete_goal(self, goal_id: str, *, note: str = "") -> dict[str, Any]:
+        """Mark one Agent goal complete."""
+        if self.goal_store is None:
+            raise ValueError("Goal store is not enabled.")
+        return {"enabled": True, **self.goal_store.complete_goal(goal_id, note=note)}
 
     def preview_agent_workflow(
         self,
@@ -2619,6 +2675,30 @@ class DAC3DAgentChatAdapter:
             )
         payload["sources"] = sources
         payload["source_items"] = source_items
+
+    def _maybe_capture_goal(
+        self,
+        *,
+        session_id: str,
+        message: str,
+        response: AssistantResponse,
+    ) -> None:
+        if self.goal_store is None:
+            return
+        try:
+            result = self.goal_store.maybe_create_from_message(message, session_id=session_id)
+        except ValueError:
+            return
+        if not result:
+            return
+        parsed_result = response.parsed_result if isinstance(response.parsed_result, dict) else {}
+        parsed_result["goals"] = {
+            "backend": "local_goal_store",
+            "captured": result.get("created") is True,
+            "goal": result.get("goal"),
+            "workflow": "chat_goal_signal -> goal_store -> agent_workspace",
+        }
+        response.parsed_result = parsed_result
 
     def _record_memory_trace(
         self,

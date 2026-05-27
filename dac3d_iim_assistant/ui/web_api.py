@@ -135,6 +135,56 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         )
         return response.to_ui_payload()
 
+    @app.get("/api/goals")
+    def list_goals(
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        list_goal_items = getattr(assistant, "list_goals", None)
+        if not callable(list_goal_items):
+            raise HTTPException(status_code=503, detail="Goal tracker is unavailable.")
+        return list_goal_items(session_id=session_id, status=status, limit=limit)
+
+    @app.post("/api/goals")
+    def create_goal(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_goal_item = getattr(assistant, "create_goal", None)
+        if not callable(create_goal_item):
+            raise HTTPException(status_code=503, detail="Goal tracker is unavailable.")
+        objective = str(request.get("objective") or "").strip()
+        session_id = str(request.get("session_id") or "web").strip() or "web"
+        if not objective:
+            raise HTTPException(status_code=422, detail="The `objective` field is required.")
+        try:
+            return create_goal_item(objective, session_id=session_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/goals/{goal_id}/progress")
+    def append_goal_progress(goal_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        append_progress = getattr(assistant, "append_goal_progress", None)
+        if not callable(append_progress):
+            raise HTTPException(status_code=503, detail="Goal tracker is unavailable.")
+        note = str(request.get("note") or "").strip()
+        status = str(request.get("status") or "").strip() or None
+        if not note:
+            raise HTTPException(status_code=422, detail="The `note` field is required.")
+        try:
+            return append_progress(goal_id, note, status=status)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/goals/{goal_id}/complete")
+    def complete_goal(goal_id: str, request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+        complete_goal_item = getattr(assistant, "complete_goal", None)
+        if not callable(complete_goal_item):
+            raise HTTPException(status_code=503, detail="Goal tracker is unavailable.")
+        note = str(dict(request or {}).get("note") or "")
+        try:
+            return complete_goal_item(goal_id, note=note)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.post("/api/evals/run")
     def run_evals(request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
         request = dict(request or {})

@@ -1,4 +1,6 @@
 import type {
+  AgentGoalActionResult,
+  AgentGoalListResult,
   AgentWorkflowPreview,
   AgentWorkspace,
   ApproveCommandRequest,
@@ -43,6 +45,34 @@ export function previewAgentWorkflow(task: string, sessionId: string): Promise<A
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ task, session_id: sessionId }),
+  });
+}
+
+export function fetchAgentGoals(status = "active"): Promise<AgentGoalListResult> {
+  return requestJson<AgentGoalListResult>(`/api/goals?status=${encodeURIComponent(status)}`);
+}
+
+export function createAgentGoal(objective: string, sessionId: string): Promise<AgentGoalActionResult> {
+  return requestJson<AgentGoalActionResult>("/api/goals", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ objective, session_id: sessionId }),
+  });
+}
+
+export function appendAgentGoalProgress(goalId: string, note: string): Promise<AgentGoalActionResult> {
+  return requestJson<AgentGoalActionResult>(`/api/goals/${encodeURIComponent(goalId)}/progress`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note }),
+  });
+}
+
+export function completeAgentGoal(goalId: string, note = ""): Promise<AgentGoalActionResult> {
+  return requestJson<AgentGoalActionResult>(`/api/goals/${encodeURIComponent(goalId)}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note }),
   });
 }
 

@@ -44,7 +44,45 @@ export interface AgentWorkspace {
   skills?: Record<string, unknown>;
   context_tree?: Record<string, unknown>;
   memory_os?: Record<string, unknown>;
+  goals?: Record<string, unknown>;
   workflow?: string[];
+}
+
+export interface AgentGoal {
+  id: string;
+  session_id?: string;
+  objective: string;
+  status: string;
+  source?: string;
+  created_at?: string;
+  updated_at?: string;
+  completed_at?: string;
+  progress?: Array<{
+    id?: string;
+    created_at?: string;
+    note?: string;
+    evidence?: Record<string, unknown>;
+  }>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentGoalListResult {
+  enabled: boolean;
+  backend?: string;
+  path?: string;
+  goals: AgentGoal[];
+  count: number;
+  total_count?: number;
+  workflow?: string;
+}
+
+export interface AgentGoalActionResult {
+  enabled?: boolean;
+  goal: AgentGoal;
+  created?: boolean;
+  duplicate?: boolean;
+  completed?: boolean;
+  progress?: Record<string, unknown>;
 }
 
 export interface AgentWorkflowPreview {

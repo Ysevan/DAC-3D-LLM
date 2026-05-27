@@ -2,9 +2,13 @@ import { FormEvent, KeyboardEvent, ReactNode, memo, useCallback, useEffect, useM
 import { createPortal } from "react-dom";
 
 import {
+  appendAgentGoalProgress,
   approveMemoryPatch,
   approvePendingCommand,
   buildKnowledgeBase,
+  completeAgentGoal,
+  createAgentGoal,
+  fetchAgentGoals,
   fetchAgentWorkspace,
   fetchEvalDrafts,
   fetchKnowledgeBaseSummary,
@@ -17,6 +21,8 @@ import {
   streamChat,
 } from "./api";
 import type {
+  AgentGoal,
+  AgentGoalListResult,
   AgentWorkflowPreview,
   AgentWorkspace,
   AssistantPayload,
@@ -59,6 +65,7 @@ type AgentWorkspaceView = {
   skillCount: number;
   contextNodeCount: number;
   memoryTraceCount: number;
+  goalCount: number;
   workflow: string[];
   agentNames: string[];
   contextKinds: Array<{ name: string; count: number }>;
@@ -120,6 +127,10 @@ function App() {
   const [workflowPreview, setWorkflowPreview] = useState<AgentWorkflowPreview | null>(null);
   const [workflowStatus, setWorkflowStatus] = useState("");
   const [isPreviewingWorkflow, setIsPreviewingWorkflow] = useState(false);
+  const [agentGoals, setAgentGoals] = useState<AgentGoalListResult | null>(null);
+  const [goalInput, setGoalInput] = useState("持续升级 DAC-Agent Runtime 功能");
+  const [goalStatus, setGoalStatus] = useState("");
+  const [goalBusyId, setGoalBusyId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const endRef = useRef<HTMLDivElement | null>(null);
   const streamRenderRef = useRef<StreamRenderState>({
@@ -184,12 +195,13 @@ function App() {
 
   async function refreshSidebarData(): Promise<void> {
     try {
-      const [runtime, knowledgeBase, patches, drafts, workspace] = await Promise.all([
+      const [runtime, knowledgeBase, patches, drafts, workspace, goals] = await Promise.all([
         fetchRuntimeSummary(),
         fetchKnowledgeBaseSummary(),
         fetchMemoryPatches().catch(() => null),
         fetchEvalDrafts().catch(() => null),
         fetchAgentWorkspace().catch(() => null),
+        fetchAgentGoals().catch(() => null),
       ]);
       setRuntimeSummary(runtime);
       setKnowledgeBaseSummary(knowledgeBase);
@@ -201,6 +213,9 @@ function App() {
       }
       if (workspace) {
         setAgentWorkspace(workspace);
+      }
+      if (goals) {
+        setAgentGoals(goals);
       }
     } catch (error) {
       setBuildStatus(error instanceof Error ? error.message : String(error));
@@ -606,6 +621,63 @@ function App() {
     }
   }
 
+  async function handleCreateGoal(): Promise<void> {
+    const objective = goalInput.trim();
+    if (!objective || goalBusyId) {
+      return;
+    }
+    setGoalBusyId("create");
+    setGoalStatus("正在创建 Agent 目标...");
+    setPanelMode("settings");
+    try {
+      await createAgentGoal(objective, sessionId);
+      const result = await fetchAgentGoals();
+      setAgentGoals(result);
+      setGoalStatus(`已记录目标：${objective}`);
+    } catch (error) {
+      setGoalStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setGoalBusyId(null);
+    }
+  }
+
+  async function handleGoalProgress(goal: AgentGoal): Promise<void> {
+    if (!goal.id || goalBusyId) {
+      return;
+    }
+    setGoalBusyId(goal.id);
+    setGoalStatus("正在追加目标进度...");
+    try {
+      await appendAgentGoalProgress(goal.id, "已在当前 Agent 工作台继续推进。");
+      const result = await fetchAgentGoals();
+      setAgentGoals(result);
+      setGoalStatus(`已更新目标进度：${goal.id}`);
+    } catch (error) {
+      setGoalStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setGoalBusyId(null);
+    }
+  }
+
+  async function handleGoalComplete(goal: AgentGoal): Promise<void> {
+    if (!goal.id || goalBusyId) {
+      return;
+    }
+    setGoalBusyId(goal.id);
+    setGoalStatus("正在完成 Agent 目标...");
+    try {
+      await completeAgentGoal(goal.id, "用户在 Agent 工作台标记完成。");
+      const result = await fetchAgentGoals();
+      setAgentGoals(result);
+      setGoalStatus(`已完成目标：${goal.id}`);
+      void refreshSidebarData();
+    } catch (error) {
+      setGoalStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setGoalBusyId(null);
+    }
+  }
+
   async function handleRefreshMemoryPatches(): Promise<void> {
     setMemoryPatchStatus("正在读取待审核记忆...");
     try {
@@ -918,6 +990,7 @@ function App() {
                 <DetailRow label="技能数量" value={`${agentWorkspaceView.skillCount}`} />
                 <DetailRow label="Context 节点" value={`${agentWorkspaceView.contextNodeCount}`} />
                 <DetailRow label="记忆 Trace" value={`${agentWorkspaceView.memoryTraceCount}`} />
+                <DetailRow label="Agent 目标" value={`${agentWorkspaceView.goalCount}`} />
               </div>
               {agentWorkspaceView.agentNames.length ? (
                 <div className="agent-chip-list">
@@ -986,6 +1059,60 @@ function App() {
                   ) : null}
                 </div>
               ) : null}
+            </section>
+
+            <section className="data-section">
+              <h3>Agent 目标</h3>
+              <div className="goal-create-form">
+                <input
+                  aria-label="Agent 目标"
+                  onChange={(event) => setGoalInput(event.target.value)}
+                  value={goalInput}
+                />
+                <button
+                  className="btn-run-evals"
+                  disabled={Boolean(goalBusyId) || !goalInput.trim()}
+                  onClick={() => void handleCreateGoal()}
+                  type="button"
+                >
+                  {goalBusyId === "create" ? "记录中..." : "记录目标"}
+                </button>
+              </div>
+              {goalStatus ? <div className="status-msg">{goalStatus}</div> : null}
+              {agentGoals?.goals.length ? (
+                <div className="goal-list">
+                  {agentGoals.goals.map((goal) => (
+                    <div className="goal-item" key={goal.id}>
+                      <div className="goal-meta">
+                        <span>{goal.status || "active"}</span>
+                        <span>{goal.session_id || "web"}</span>
+                      </div>
+                      <strong>{goal.objective}</strong>
+                      <small>
+                        {goal.progress?.length ? `${goal.progress.length} 条进度` : "暂无进度"} / {formatTimestamp(goal.updated_at)}
+                      </small>
+                      <div className="goal-actions">
+                        <button
+                          disabled={Boolean(goalBusyId)}
+                          onClick={() => void handleGoalProgress(goal)}
+                          type="button"
+                        >
+                          {goalBusyId === goal.id ? "处理中..." : "追加进度"}
+                        </button>
+                        <button
+                          disabled={Boolean(goalBusyId)}
+                          onClick={() => void handleGoalComplete(goal)}
+                          type="button"
+                        >
+                          完成
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-note">暂无活跃目标。</div>
+              )}
             </section>
 
             <section className="data-section">
@@ -1648,6 +1775,7 @@ function buildAgentWorkspaceView(workspace: AgentWorkspace | null): AgentWorkspa
   const skills = asRecord(workspace?.skills);
   const contextTree = asRecord(workspace?.context_tree);
   const memoryOs = asRecord(workspace?.memory_os);
+  const goals = asRecord(workspace?.goals);
   const contextKindsRecord = asRecord(contextTree?.kinds);
   const contextKinds = Object.entries(contextKindsRecord ?? {}).map(([name, count]) => ({
     name,
@@ -1659,6 +1787,7 @@ function buildAgentWorkspaceView(workspace: AgentWorkspace | null): AgentWorkspa
     skillCount: Number(skills?.skill_count ?? 0) || 0,
     contextNodeCount: Number(contextTree?.node_count ?? 0) || 0,
     memoryTraceCount: Number(memoryOs?.trace_count ?? 0) || 0,
+    goalCount: Number(goals?.goal_count ?? 0) || 0,
     workflow: Array.isArray(workspace?.workflow) ? workspace.workflow.map(String) : [],
     agentNames: Array.isArray(workspace?.specialist_agents) ? workspace.specialist_agents.map(String) : [],
     contextKinds,
