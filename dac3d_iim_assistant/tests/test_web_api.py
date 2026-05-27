@@ -540,6 +540,7 @@ def test_web_api_repo_context_map_endpoints(tmp_path) -> None:
     build_response = client.post("/api/agent/repo-map/build", json={"max_files": 200})
     read_response = client.get("/api/agent/repo-map")
     search_response = client.get("/api/agent/repo-map/search?q=repo-demo")
+    symbols_response = client.get("/api/agent/symbols?q=demo&kind=function")
     workspace_response = client.get("/api/agent/workspace")
 
     assert build_response.status_code == 200
@@ -548,7 +549,11 @@ def test_web_api_repo_context_map_endpoints(tmp_path) -> None:
     assert read_response.json()["file_count"] >= 2
     assert search_response.status_code == 200
     assert search_response.json()["count"] >= 1
+    assert symbols_response.status_code == 200
+    assert symbols_response.json()["symbols"][0]["name"] == "demo"
+    assert symbols_response.json()["symbols"][0]["line"] == 6
     assert workspace_response.json()["repo_context_map"]["file_count"] >= 2
+    assert workspace_response.json()["code_symbols"]["symbol_count"] >= 1
 
 
 def test_web_api_git_workspace_status_endpoint(tmp_path) -> None:

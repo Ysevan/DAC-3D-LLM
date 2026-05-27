@@ -130,13 +130,21 @@ def test_repo_context_map_builds_and_searches_static_project_map(tmp_path: Path)
 
     built = store.build_map()
     search = store.search("demo")
+    symbols = store.list_symbols("demo", kind="function")
+    symbol_summary = store.describe_symbols()
     summary = store.describe()
 
     assert built["repo_root"] == str(repo_root.resolve())
     assert built["file_count"] == 2
     assert built["api_routes"] == [{"method": "GET", "path": "/api/demo"}]
+    api_file = next(item for item in built["files"] if item["path"].endswith("web_api.py"))
+    assert api_file["symbol_details"][0]["line"] == 6
     assert search["count"] >= 1
     assert any(match["role"] == "api" for match in search["matches"])
+    assert symbols["backend"] == "code_symbol_navigator"
+    assert any(symbol["name"] == "demo" for symbol in symbols["symbols"])
+    assert all(symbol["kind"] == "function" for symbol in symbols["symbols"])
+    assert symbol_summary["symbol_count"] >= 2
     assert summary["module_count"] == 1
     assert summary["api_route_count"] == 1
 

@@ -781,6 +781,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["context_builder"]["backend"] == "context_builder"
     assert summary["context_builder"]["actions"] == ["write", "select", "compress", "isolate"]
     assert summary["repo_context_map"]["backend"] == "static_repo_context_map"
+    assert summary["code_symbols"]["backend"] == "code_symbol_navigator"
     assert summary["git_workspace"]["backend"] == "git_workspace_context"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
     assert summary["automations"]["backend"] == "local_automation_planner"
@@ -1068,6 +1069,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "git_workspace_context" in description["network_capabilities"]
     assert "verification_feedback_runner" in description["network_capabilities"]
     assert "review_handoff_queue" in description["network_capabilities"]
+    assert "code_symbol_navigator" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1313,14 +1315,19 @@ def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:
     built = adapter.build_repo_context_map()
     read = adapter.read_repo_context_map()
     search = adapter.search_repo_context_map("web_api")
+    symbols = adapter.list_code_symbols("demo", kind="function")
     workspace = adapter.agent_workspace()
 
     assert built["file_count"] >= 2
     assert {"method": "POST", "path": "/api/demo"} in built["api_routes"]
     assert read["path"].endswith("repo_context_map.json")
     assert search["count"] >= 1
+    assert symbols["symbols"][0]["name"] == "demo"
+    assert symbols["symbols"][0]["line"] == 6
     assert workspace["repo_context_map"]["file_count"] >= 2
+    assert workspace["code_symbols"]["symbol_count"] >= 1
     assert "repo_context_map" in workspace["workflow"]
+    assert "symbol_navigation" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_git_workspace_context_roundtrip(tmp_path) -> None:

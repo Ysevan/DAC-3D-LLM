@@ -1208,6 +1208,7 @@ class DAC3DAgentRuntime:
                 "git_workspace_context",
                 "verification_feedback_runner",
                 "review_handoff_queue",
+                "code_symbol_navigator",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2335,6 +2336,11 @@ class DAC3DAgentChatAdapter:
             if self.repo_context_map is not None
             else {"enabled": False, "backend": "static_repo_context_map"}
         )
+        summary["code_symbols"] = (
+            self.repo_context_map.describe_symbols()
+            if self.repo_context_map is not None
+            else {"enabled": False, "backend": "code_symbol_navigator"}
+        )
         summary["git_workspace"] = (
             self.git_workspace_context.describe()
             if self.git_workspace_context is not None
@@ -2504,6 +2510,11 @@ class DAC3DAgentChatAdapter:
             if self.repo_context_map is not None
             else {"enabled": False, "backend": "static_repo_context_map"}
         )
+        code_symbols = (
+            self.repo_context_map.describe_symbols()
+            if self.repo_context_map is not None
+            else {"enabled": False, "backend": "code_symbol_navigator"}
+        )
         git_workspace = (
             self.git_workspace_context.describe()
             if self.git_workspace_context is not None
@@ -2575,6 +2586,7 @@ class DAC3DAgentChatAdapter:
             "skill_patches": skill_patches,
             "context_tree": context_tree,
             "repo_context_map": repo_context_map,
+            "code_symbols": code_symbols,
             "git_workspace": git_workspace,
             "memory_os": memory,
             "goals": goals,
@@ -2599,6 +2611,7 @@ class DAC3DAgentChatAdapter:
                 "skill_selection",
                 "context_tree_search",
                 "repo_context_map",
+                "symbol_navigation",
                 "git_workspace_context",
                 "memory_prefetch",
                 "specialist_agent",
@@ -3199,6 +3212,24 @@ class DAC3DAgentChatAdapter:
         if self.repo_context_map is None:
             raise ValueError("Repo context map is not enabled.")
         return self.repo_context_map.search(query, limit=limit)
+
+    def list_code_symbols(
+        self,
+        query: str | None = None,
+        *,
+        kind: str | None = None,
+        module: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List Python code symbols discovered by the static repo context map."""
+        if self.repo_context_map is None:
+            raise ValueError("Code symbol navigator is not enabled.")
+        return self.repo_context_map.list_symbols(
+            query=query,
+            kind=kind,
+            module=module,
+            limit=limit,
+        )
 
     def git_workspace_status(
         self,

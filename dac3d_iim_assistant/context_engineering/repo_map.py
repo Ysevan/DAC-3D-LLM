@@ -37,6 +37,11 @@ IGNORED_DIRS = {
     "vector_store",
 }
 SYMBOL_PATTERN = re.compile(r"^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
+SYMBOL_DETAIL_PATTERN = re.compile(
+    r"^(?P<indent>\s*)(?P<kind>async\s+def|def|class)\s+"
+    r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?P<tail>.*)$",
+    re.MULTILINE,
+)
 ROUTE_PATTERN = re.compile(r"@app\.(get|post|put|patch|delete)\(\"([^\"]+)\"")
 
 
@@ -145,7 +150,8 @@ class RepoContextMapStore:
             if len(module_entry["sample_files"]) < 8:
                 module_entry["sample_files"].append(relative_path)
 
-            symbols = self._symbols_for(path) if suffix == ".py" and stat.st_size <= 200_000 else []
+            symbol_details = self._symbol_details_for(path) if suffix == ".py" and stat.st_size <= 200_000 else []
+            symbols = [str(item["name"]) for item in symbol_details[:20]]
             routes = self._routes_for(path) if relative_path.endswith("web_api.py") else []
             api_routes.extend(routes)
             files.append(
@@ -156,6 +162,7 @@ class RepoContextMapStore:
                     "extension": suffix,
                     "size_bytes": stat.st_size,
                     "symbols": symbols[:20],
+                    "symbol_details": symbol_details[:50],
                     "api_routes": routes,
                 }
             )
@@ -173,6 +180,7 @@ class RepoContextMapStore:
             "extension_counts": dict(extension_counts),
             "role_counts": dict(role_counts),
             "api_routes": api_routes[:200],
+            "symbol_count": sum(len(file_entry.get("symbol_details") or []) for file_entry in files),
             "workflow": "scan_repo -> summarize_modules -> search_context -> agent_workspace",
         }
         _write_json(self.index_path, payload)
@@ -190,6 +198,7 @@ class RepoContextMapStore:
                 "modules": [],
                 "files": [],
                 "api_routes": [],
+                "symbol_count": 0,
             },
         )
         return {"enabled": True, **payload, "path": str(self.index_path)}
@@ -226,6 +235,72 @@ class RepoContextMapStore:
             "total_count": len(matches),
         }
 
+    def list_symbols(
+        self,
+        query: str | None = None,
+        *,
+        kind: str | None = None,
+        module: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        payload = self.read_map()
+        if not payload.get("updated_at"):
+            payload = self.build_map()
+        needle = str(query or "").strip().lower()
+        normalized_kind = str(kind or "").strip().lower()
+        normalized_module = str(module or "").strip()
+        symbols: list[dict[str, Any]] = []
+        for file_entry in payload.get("files", []):
+            if not isinstance(file_entry, dict):
+                continue
+            if normalized_module and str(file_entry.get("module") or "") != normalized_module:
+                continue
+            for symbol in self._symbols_from_file_entry(file_entry):
+                if normalized_kind and str(symbol.get("kind") or "") != normalized_kind:
+                    continue
+                haystack = " ".join(
+                    [
+                        str(symbol.get("name") or ""),
+                        str(symbol.get("signature") or ""),
+                        str(symbol.get("path") or ""),
+                        str(symbol.get("module") or ""),
+                    ]
+                ).lower()
+                if needle and needle not in haystack:
+                    continue
+                symbols.append(symbol)
+        safe_limit = max(1, min(200, int(limit or 50)))
+        return {
+            "enabled": True,
+            "backend": "code_symbol_navigator",
+            "query": query or "",
+            "kind": normalized_kind,
+            "module": normalized_module,
+            "symbols": symbols[:safe_limit],
+            "count": len(symbols[:safe_limit]),
+            "total_count": len(symbols),
+            "workflow": "repo_map -> symbol_index -> definition_hint",
+        }
+
+    def describe_symbols(self) -> dict[str, Any]:
+        payload = self.read_map()
+        symbol_count = 0
+        by_kind: Counter[str] = Counter()
+        for file_entry in payload.get("files", []):
+            if not isinstance(file_entry, dict):
+                continue
+            for symbol in self._symbols_from_file_entry(file_entry):
+                symbol_count += 1
+                by_kind[str(symbol.get("kind") or "unknown")] += 1
+        return {
+            "enabled": True,
+            "backend": "code_symbol_navigator",
+            "path": str(self.index_path),
+            "symbol_count": symbol_count,
+            "by_kind": dict(by_kind),
+            "workflow": "build_repo_map -> list_symbols -> code_context_hint",
+        }
+
     def describe(self) -> dict[str, Any]:
         payload = self.read_map()
         return {
@@ -259,6 +334,60 @@ class RepoContextMapStore:
         except OSError:
             return []
         return [_clip(match, 120) for match in SYMBOL_PATTERN.findall(text)[:30]]
+
+    def _symbol_details_for(self, path: Path) -> list[dict[str, Any]]:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")[:120_000]
+        except OSError:
+            return []
+        details: list[dict[str, Any]] = []
+        for match in SYMBOL_DETAIL_PATTERN.finditer(text):
+            raw_kind = str(match.group("kind") or "")
+            kind = "class" if raw_kind == "class" else "function"
+            name = _clip(match.group("name"), 120)
+            signature = _clip(match.group(0), 240)
+            details.append(
+                {
+                    "name": name,
+                    "kind": kind,
+                    "line": text.count("\n", 0, match.start()) + 1,
+                    "signature": signature,
+                }
+            )
+            if len(details) >= 80:
+                break
+        return details
+
+    def _symbols_from_file_entry(self, file_entry: dict[str, Any]) -> list[dict[str, Any]]:
+        path = str(file_entry.get("path") or "")
+        module = str(file_entry.get("module") or "")
+        details = file_entry.get("symbol_details")
+        if isinstance(details, list) and details:
+            return [
+                {
+                    "name": str(symbol.get("name") or ""),
+                    "kind": str(symbol.get("kind") or "symbol"),
+                    "line": symbol.get("line"),
+                    "signature": str(symbol.get("signature") or symbol.get("name") or ""),
+                    "path": path,
+                    "module": module,
+                    "role": str(file_entry.get("role") or ""),
+                }
+                for symbol in details
+                if isinstance(symbol, dict)
+            ]
+        return [
+            {
+                "name": str(symbol or ""),
+                "kind": "symbol",
+                "line": None,
+                "signature": str(symbol or ""),
+                "path": path,
+                "module": module,
+                "role": str(file_entry.get("role") or ""),
+            }
+            for symbol in file_entry.get("symbols", [])
+        ]
 
     def _routes_for(self, path: Path) -> list[dict[str, str]]:
         try:

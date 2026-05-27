@@ -230,6 +230,21 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/symbols")
+    def list_code_symbols(
+        q: str | None = None,
+        kind: str | None = None,
+        module: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_symbols = getattr(assistant, "list_code_symbols", None)
+        if not callable(list_symbols):
+            raise HTTPException(status_code=503, detail="Code symbol navigator is unavailable.")
+        try:
+            return list_symbols(q, kind=kind, module=module, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/git/status")
     def git_workspace_status(
         recent_limit: int = 5,
