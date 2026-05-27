@@ -1012,6 +1012,10 @@ def test_agent_runtime_local_validation_covers_memory_and_safety_agents(tmp_path
         "这个任务应该加载什么技能？",
         session_id="validation-skill",
     )
+    mcp_payload = runtime.run_chat_payload(
+        "MCP 工具目录和资源目录是什么？",
+        session_id="validation-mcp",
+    )
 
     assert memory_payload["intent"] == "memory_search"
     assert memory_payload["parsed_result"]["tool_calls"][0]["name"] == "conversation_memory_search"
@@ -1019,6 +1023,8 @@ def test_agent_runtime_local_validation_covers_memory_and_safety_agents(tmp_path
     assert safety_payload["parsed_result"]["tool_calls"][0]["name"] == "dac3d_safety_review"
     assert skill_payload["intent"] == "skill_select"
     assert skill_payload["parsed_result"]["tool_calls"][0]["name"] == "dac_skill_select"
+    assert mcp_payload["intent"] == "mcp_manifest"
+    assert mcp_payload["parsed_result"]["tool_calls"][0]["name"] == "dac_mcp_manifest"
 
 
 def test_agent_runtime_describes_agent_project(tmp_path) -> None:
@@ -1043,12 +1049,14 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "reviewed_procedure_memory_markdown" in description["network_capabilities"]
     assert "progressive_skill_selection" in description["network_capabilities"]
     assert "reviewable_skill_patch_queue" in description["network_capabilities"]
+    assert "mcp_capability_manifest" in description["network_capabilities"]
     assert "context_engineering" in description["network_capabilities"]
     assert "runtime_status_context" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
     assert "dac3d_execute_command" in description["tool_groups"]["dac3d_control_agent"]
+    assert "dac_mcp_manifest" in description["tool_groups"]["dac3d_control_agent"]
     assert "conversation_memory_search" in description["tool_groups"]["memory_agent"]
     assert "conversation_knowledge_write" in description["tool_groups"]["memory_agent"]
     assert "conversation_procedure_write" in description["tool_groups"]["memory_agent"]
@@ -1058,6 +1066,12 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert description["skill_system"]["backend"] == "local_agent_skills"
     assert description["skill_patches"]["backend"] == "json_skill_patch_queue"
     assert "dac3d_safety_review" in description["tool_groups"]["safety_agent"]
+    assert "dac_mcp_manifest" in description["tool_groups"]["safety_agent"]
+    assert description["mcp"]["protocol"]["style"] == "mcp-compatible"
+    assert description["mcp"]["capabilities"]["resources"]["count"] >= 4
+    assert "dac3d_command_preview" in {
+        prompt["name"] for prompt in description["mcp"]["prompts"]
+    }
     assert "core_markdown_memory" in description["conversation_memory"]["layers"]
     assert "procedure_markdown_memory" in description["conversation_memory"]["layers"]
     assert description["conversation_memory"]["backend"] == "json+markdown"

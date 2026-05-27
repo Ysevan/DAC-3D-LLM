@@ -55,6 +55,13 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
     def runtime_summary() -> dict[str, Any]:
         return assistant.runtime_summary()
 
+    @app.get("/api/mcp/manifest")
+    def mcp_manifest(session_id: str | None = None) -> dict[str, Any]:
+        manifest = getattr(assistant, "mcp_capability_manifest", None)
+        if not callable(manifest):
+            raise HTTPException(status_code=503, detail="MCP capability manifest is unavailable.")
+        return manifest(session_id=(session_id or "web"))
+
     @app.get("/api/agent/workspace")
     def agent_workspace() -> dict[str, Any]:
         workspace = getattr(assistant, "agent_workspace", None)

@@ -8,7 +8,7 @@ from typing import Any
 from agent_core.schemas import AssistantResponsePayload
 from agent_core.sessions import DAC3DAgentSessionStore
 from machine_agent import MachineAgentService
-from tool_gateway import DAC3DToolGateway
+from tool_gateway import DAC3DToolGateway, to_mcp_capability_manifest
 
 
 class DAC3DAgentToolController:
@@ -122,6 +122,14 @@ class DAC3DAgentToolController:
     def tool_gateway_manifest(self) -> dict[str, Any]:
         """Return Tool Gateway descriptors."""
         return self.gateway.describe()
+
+    def mcp_capability_manifest(self) -> dict[str, Any]:
+        """Return MCP-compatible tools, resources, prompts, and deployment metadata."""
+        gateway_manifest = self.gateway.describe()
+        return to_mcp_capability_manifest(
+            self.gateway.descriptors(),
+            gateway_manifest=gateway_manifest,
+        )
 
     def rebuild_knowledge_base(self) -> dict[str, Any]:
         """Rebuild the local DAC-3D knowledge base."""

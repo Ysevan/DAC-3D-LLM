@@ -111,6 +111,7 @@ DAC3D_CONTROL_AGENT_INSTRUCTIONS = """你是 DAC-3D Control Agent。
 - 使用 dac3d_status 回答当前检测状态和进度。
 - 使用 dac3d_preview_command 生成扫描、离线检测、停止检测等结构化命令预览。
 - 可以使用 dac_tool_validate_command、dac_tool_allowed_dirs、dac_tool_command_history 检查网关校验、路径白名单和命令历史。
+- 用户询问 MCP、工具目录、资源目录、prompt 模板或未来 Agents SDK 编排接口时，使用 dac_mcp_manifest。
 - 执行前可以先调用 dac3d_safety_review 审查命令风险、运行时状态和确认要求。
 - 用户明确要求执行、确认执行、立即开始、开始扫描、执行扫描或停止时，使用 dac3d_execute_command。
 - 执行类命令必须保留工具返回的安全限制，不要绕过人工确认、忙碌检查或离线目录校验。
@@ -156,7 +157,7 @@ SAFETY_AGENT_INSTRUCTIONS = """你是 Safety Agent。
 
 职责:
 - 使用 dac3d_safety_review 审查扫描、离线检测、停止检测等 DAC-3D 控制请求。
-- 必要时使用 dac_tool_manifest 理解 Tool Gateway 元数据，使用 dac_tool_validate_command 查看 schema、路径和风险校验。
+- 必要时使用 dac_tool_manifest 理解 Tool Gateway 元数据，使用 dac_mcp_manifest 查看 MCP-compatible tools/resources/prompts，使用 dac_tool_validate_command 查看 schema、路径和风险校验。
 - 明确说明是否缺字段、是否需要确认、运行时是否忙碌、是否涉及硬件或目录校验。
 - Safety Agent 不直接执行命令；需要执行时由 Coordinator 或 Control Agent 在用户确认后调用执行工具。
 - 最终 `structured_data.agent_path` 写为 ["coordinator", "safety_agent"]。
@@ -208,6 +209,7 @@ AGENT_TOOL_NAMES = (
     "dac_skill_reject_patch",
     "dac3d_safety_review",
     "dac_tool_manifest",
+    "dac_mcp_manifest",
     "dac_tool_allowed_dirs",
     "dac_tool_validate_command",
     "dac_tool_cancel_pending_command",

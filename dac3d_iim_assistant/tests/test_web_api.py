@@ -40,6 +40,28 @@ def test_web_api_runtime_endpoint_returns_runtime_summary(tmp_path) -> None:
     assert "dac3d" in payload
 
 
+def test_web_api_mcp_manifest_endpoint_exposes_discovery_payload(tmp_path) -> None:
+    """The API should expose MCP-compatible tools, resources, and prompts for discovery."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    response = client.get("/api/mcp/manifest", params={"session_id": "mcp-web"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["protocol"]["style"] == "mcp-compatible"
+    assert payload["capabilities"]["tools"]["count"] >= 8
+    assert {resource["uri"] for resource in payload["resources"]} >= {
+        "dac3d://runtime/status",
+        "dac3d://memory/profile",
+    }
+    assert "future_agents_sdk_orchestration" in payload["deployment_modes"]
+
+
 def test_web_api_chat_endpoint_rejects_empty_message(tmp_path) -> None:
     """The API should reject invalid chat payloads with a client error."""
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)

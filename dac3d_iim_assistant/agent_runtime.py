@@ -298,6 +298,24 @@ class LocalValidationAgentModel:
                     },
                 },
             )
+        if any(marker in lowered for marker in ("mcp", "agents sdk", "capability manifest")) or any(
+            marker in current_message for marker in ("资源目录", "prompt 模板", "工具目录")
+        ):
+            return (
+                "dac_mcp_manifest",
+                {},
+                {
+                    "answer": "我已读取 MCP-compatible capability manifest，包含 DAC 工具、资源、prompt 模板和部署模式。",
+                    "structured_data": {
+                        "intent": "mcp_manifest",
+                        "agent_path": ["coordinator", "dac3d_control_agent"],
+                        "tool_calls": [
+                            {"name": "dac_mcp_manifest", "purpose": "读取 MCP-compatible capability manifest"}
+                        ],
+                        "mcp": {"backend": "adapter_manifest_only"},
+                    },
+                },
+            )
         if any(marker in current_message for marker in ("工具网关", "tool gateway", "gateway", "白名单")):
             return (
                 "dac_tool_manifest",
@@ -1176,6 +1194,7 @@ class DAC3DAgentRuntime:
                 "context_engineering",
                 "runtime_status_context",
                 "mcp_style_tool_gateway",
+                "mcp_capability_manifest",
                 "path_allowlist_validation",
                 "command_safety_review",
                 "specialist_tool_isolation",
@@ -1202,6 +1221,7 @@ class DAC3DAgentRuntime:
                     "dac3d_status",
                     "dac3d_safety_review",
                     "dac_tool_manifest",
+                    "dac_mcp_manifest",
                     "dac_tool_allowed_dirs",
                     "dac_tool_validate_command",
                     "dac_tool_cancel_pending_command",
@@ -1247,6 +1267,7 @@ class DAC3DAgentRuntime:
                     "dac3d_preview_command",
                     "dac3d_status",
                     "dac_tool_manifest",
+                    "dac_mcp_manifest",
                     "dac_tool_allowed_dirs",
                     "dac_tool_validate_command",
                     "dac_tool_cancel_pending_command",
@@ -1272,10 +1293,10 @@ class DAC3DAgentRuntime:
                     "core_markdown_memory",
                     "session_recent_json",
                     "session_summary",
-                "topic_knowledge_notes",
-                "procedure_markdown_memory",
-                "long_term_json_search",
-            ],
+                    "topic_knowledge_notes",
+                    "procedure_markdown_memory",
+                    "long_term_json_search",
+                ],
                 "curated_files": ["MEMORY.md", "USER.md"],
                 "topic_notes_dir": "knowledge_notes",
             },
@@ -1298,7 +1319,12 @@ class DAC3DAgentRuntime:
                 "bridge_modes": ["embedded", "command_file_bridge", "mock"],
             },
             "tool_gateway": self.tool_controller("default").tool_gateway_manifest(),
+            "mcp": self.mcp_capability_manifest(session_id="default"),
         }
+
+    def mcp_capability_manifest(self, *, session_id: str = "default") -> dict[str, Any]:
+        """Return MCP-compatible capability discovery metadata for this runtime."""
+        return self.tool_controller(session_id).mcp_capability_manifest()
 
     def resolved_agent_api_type(self) -> str:
         """Resolve the Agent model API mode for OpenAI or OpenAI-compatible providers."""
@@ -1792,6 +1818,17 @@ class DAC3DAgentRuntime:
             return tools.tool_gateway_manifest()
 
         @function_tool(
+            name_override="dac_mcp_manifest",
+            description_override=(
+                "Return MCP-compatible capability metadata for DAC tools, resources, "
+                "prompts, roots, and deployment modes."
+            ),
+        )
+        def dac_mcp_manifest() -> dict[str, Any]:
+            """Describe future MCP/Agents SDK integration surfaces."""
+            return tools.mcp_capability_manifest()
+
+        @function_tool(
             name_override="dac_tool_allowed_dirs",
             description_override="List DAC directories that path-sensitive tools may access.",
         )
@@ -1849,6 +1886,7 @@ class DAC3DAgentRuntime:
             dac3d_status,
             dac3d_safety_review,
             dac_tool_manifest,
+            dac_mcp_manifest,
             dac_tool_allowed_dirs,
             dac_tool_validate_command,
             dac_tool_cancel_pending_command,
@@ -1888,6 +1926,7 @@ class DAC3DAgentRuntime:
             dac3d_preview_command,
             dac3d_status,
             dac_tool_manifest,
+            dac_mcp_manifest,
             dac_tool_allowed_dirs,
             dac_tool_validate_command,
             dac_tool_cancel_pending_command,
@@ -2274,6 +2313,10 @@ class DAC3DAgentChatAdapter:
             },
         }
         return summary
+
+    def mcp_capability_manifest(self, *, session_id: str = "web") -> dict[str, Any]:
+        """Expose MCP-compatible capability discovery through the chat adapter."""
+        return self.runtime.mcp_capability_manifest(session_id=session_id)
 
     def knowledge_base_summary(self) -> dict[str, Any]:
         """Delegate knowledge-base diagnostics to the underlying assistant."""
