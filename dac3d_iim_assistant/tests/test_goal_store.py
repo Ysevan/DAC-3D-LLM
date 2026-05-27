@@ -9,6 +9,7 @@ from goals import (
     AutomationPlannerStore,
     EventQueueStore,
     GoalStore,
+    ReviewHandoffStore,
     TaskBoardStore,
     VerificationRunnerStore,
     WorkflowTemplateStore,
@@ -274,3 +275,32 @@ def test_verification_runner_store_runs_and_records_compileall(tmp_path: Path) -
     assert listed["count"] == 1
     assert listed["runs"][0]["id"] == result["run"]["id"]
     assert summary["by_status"]["passed"] == 1
+
+
+def test_review_handoff_store_tracks_comments_and_decisions(tmp_path: Path) -> None:
+    store = ReviewHandoffStore.from_root(tmp_path)
+
+    created = store.create_review(
+        "Review Verification Feedback Runner",
+        summary="确认 preset、API 和 workspace 输出。",
+        session_id="review-session",
+        priority="high",
+        files=["dac3d_iim_assistant/goals/verification.py"],
+        verification_run_ids=["verification-1"],
+        checklist=["pytest passed", {"label": "docs updated", "checked": True}],
+    )
+    review_id = created["review"]["id"]
+    commented = store.add_comment(review_id, "结构清晰，可以继续。", reviewer="reviewer-agent")
+    approved = store.update_status(review_id, "approved", note="LGTM", reviewer="human")
+    listed = store.list_reviews(session_id="review-session", status="approved")
+    read = store.read_review(review_id)
+    summary = store.describe()
+
+    assert created["review"]["priority"] == "high"
+    assert created["review"]["checklist"][0]["checked"] is False
+    assert commented["comment"]["reviewer"] == "reviewer-agent"
+    assert approved["review"]["status"] == "approved"
+    assert approved["review"]["completed_at"]
+    assert listed["count"] == 1
+    assert read["review"]["comments"][0]["body"] == "结构清晰，可以继续。"
+    assert summary["by_status"]["approved"] == 1

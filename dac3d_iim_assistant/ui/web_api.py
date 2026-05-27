@@ -107,6 +107,94 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/reviews")
+    def list_agent_review_handoffs(
+        session_id: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_reviews = getattr(assistant, "list_agent_review_handoffs", None)
+        if not callable(list_reviews):
+            raise HTTPException(status_code=503, detail="Review handoff queue is unavailable.")
+        try:
+            return list_reviews(session_id=session_id, status=status, priority=priority, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/reviews/{review_id}")
+    def read_agent_review_handoff(review_id: str) -> dict[str, Any]:
+        read_review = getattr(assistant, "read_agent_review_handoff", None)
+        if not callable(read_review):
+            raise HTTPException(status_code=503, detail="Review handoff queue is unavailable.")
+        try:
+            return read_review(review_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/reviews")
+    def create_agent_review_handoff(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_review = getattr(assistant, "create_agent_review_handoff", None)
+        if not callable(create_review):
+            raise HTTPException(status_code=503, detail="Review handoff queue is unavailable.")
+        title = str(request.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        try:
+            return create_review(
+                title,
+                summary=str(request.get("summary") or ""),
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                status=str(request.get("status") or "pending"),
+                priority=str(request.get("priority") or "normal"),
+                task_id=str(request.get("task_id") or ""),
+                workflow_id=str(request.get("workflow_id") or ""),
+                trace_id=str(request.get("trace_id") or ""),
+                files=request.get("files") if isinstance(request.get("files"), list) else None,
+                verification_run_ids=request.get("verification_run_ids")
+                if isinstance(request.get("verification_run_ids"), list)
+                else None,
+                checklist=request.get("checklist") if isinstance(request.get("checklist"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/reviews/{review_id}/comments")
+    def add_agent_review_comment(review_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        add_comment = getattr(assistant, "add_agent_review_comment", None)
+        if not callable(add_comment):
+            raise HTTPException(status_code=503, detail="Review handoff queue is unavailable.")
+        body = str(request.get("body") or "").strip()
+        if not body:
+            raise HTTPException(status_code=422, detail="The `body` field is required.")
+        try:
+            return add_comment(
+                review_id,
+                body,
+                reviewer=str(request.get("reviewer") or "human"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/reviews/{review_id}/status")
+    def update_agent_review_status(review_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_review = getattr(assistant, "update_agent_review_status", None)
+        if not callable(update_review):
+            raise HTTPException(status_code=503, detail="Review handoff queue is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_review(
+                review_id,
+                status,
+                note=str(request.get("note") or ""),
+                reviewer=str(request.get("reviewer") or "human"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/repo-map")
     def read_repo_context_map() -> dict[str, Any]:
         read_map = getattr(assistant, "read_repo_context_map", None)

@@ -3,6 +3,7 @@
 from goals.artifacts import ArtifactStore
 from goals.automation_planner import AutomationPlannerStore
 from goals.event_queue import EventQueueStore
+from goals.review_handoff import ReviewHandoffStore
 from goals.store import GoalStore
 from goals.task_board import TaskBoardStore
 from goals.verification import VerificationRunnerStore
@@ -13,6 +14,7 @@ __all__ = [
     "AutomationPlannerStore",
     "EventQueueStore",
     "GoalStore",
+    "ReviewHandoffStore",
     "TaskBoardStore",
     "VerificationRunnerStore",
     "WorkflowTemplateStore",

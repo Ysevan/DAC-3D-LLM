@@ -720,6 +720,53 @@ def test_web_api_agent_verification_feedback_endpoints(tmp_path) -> None:
     assert workspace_response.json()["verification_feedback"]["run_count"] == 1
 
 
+def test_web_api_agent_review_handoff_endpoints(tmp_path) -> None:
+    """The web UI should create, comment on, decide, and list review handoffs."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/reviews",
+        json={
+            "title": "Review Agent workspace upgrade",
+            "summary": "检查 review handoff 是否进入 workspace。",
+            "session_id": "review-ui-session",
+            "priority": "high",
+            "files": ["dac3d_iim_assistant/ui/web_api.py"],
+            "verification_run_ids": ["verification-web"],
+            "checklist": ["API returns 200"],
+        },
+    )
+    review_id = create_response.json()["review"]["id"]
+    comment_response = client.post(
+        f"/api/agent/reviews/{review_id}/comments",
+        json={"body": "API roundtrip ok.", "reviewer": "reviewer-agent"},
+    )
+    approve_response = client.post(
+        f"/api/agent/reviews/{review_id}/status",
+        json={"status": "approved", "note": "LGTM", "reviewer": "human"},
+    )
+    read_response = client.get(f"/api/agent/reviews/{review_id}")
+    list_response = client.get("/api/agent/reviews?session_id=review-ui-session&status=approved")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["review"]["priority"] == "high"
+    assert comment_response.status_code == 200
+    assert comment_response.json()["comment"]["reviewer"] == "reviewer-agent"
+    assert approve_response.status_code == 200
+    assert approve_response.json()["review"]["status"] == "approved"
+    assert read_response.status_code == 200
+    assert read_response.json()["review"]["verification_run_ids"] == ["verification-web"]
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert workspace_response.json()["review_handoffs"]["review_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

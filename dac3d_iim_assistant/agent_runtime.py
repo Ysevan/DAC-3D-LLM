@@ -34,6 +34,7 @@ from goals import (
     AutomationPlannerStore,
     EventQueueStore,
     GoalStore,
+    ReviewHandoffStore,
     TaskBoardStore,
     VerificationRunnerStore,
     WorkflowTemplateStore,
@@ -1206,6 +1207,7 @@ class DAC3DAgentRuntime:
                 "static_repo_context_map",
                 "git_workspace_context",
                 "verification_feedback_runner",
+                "review_handoff_queue",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2169,6 +2171,7 @@ class DAC3DAgentChatAdapter:
     artifact_store: ArtifactStore | None = None
     event_queue_store: EventQueueStore | None = None
     verification_store: VerificationRunnerStore | None = None
+    review_handoff_store: ReviewHandoffStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -2223,6 +2226,8 @@ class DAC3DAgentChatAdapter:
                 self.config.conversation_memory_dir,
                 self.config.base_dir,
             )
+        if self.review_handoff_store is None:
+            self.review_handoff_store = ReviewHandoffStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2369,6 +2374,11 @@ class DAC3DAgentChatAdapter:
             self.verification_store.describe()
             if self.verification_store is not None
             else {"enabled": False, "backend": "local_verification_runner"}
+        )
+        summary["review_handoffs"] = (
+            self.review_handoff_store.describe()
+            if self.review_handoff_store is not None
+            else {"enabled": False, "backend": "local_review_handoff_queue"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2549,6 +2559,11 @@ class DAC3DAgentChatAdapter:
             if self.verification_store is not None
             else {"enabled": False, "backend": "local_verification_runner"}
         )
+        review_handoffs = (
+            self.review_handoff_store.describe()
+            if self.review_handoff_store is not None
+            else {"enabled": False, "backend": "local_review_handoff_queue"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2569,6 +2584,7 @@ class DAC3DAgentChatAdapter:
             "artifacts": artifacts,
             "event_queue": event_queue,
             "verification_feedback": verification_feedback,
+            "review_handoffs": review_handoffs,
             "workflow": [
                 "user_task",
                 "goal_tracking",
@@ -2578,6 +2594,7 @@ class DAC3DAgentChatAdapter:
                 "artifact_store",
                 "event_queue",
                 "verification_feedback",
+                "review_handoff",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2628,6 +2645,108 @@ class DAC3DAgentChatAdapter:
         if self.verification_store is None:
             raise ValueError("Verification feedback runner is not enabled.")
         return self.verification_store.run_preset(preset_id, timeout_seconds=timeout_seconds)
+
+    def list_agent_review_handoffs(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent review handoff packets."""
+        if self.review_handoff_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_review_handoff_queue",
+                "reviews": [],
+                "count": 0,
+            }
+        return self.review_handoff_store.list_reviews(
+            session_id=session_id,
+            status=status,
+            priority=priority,
+            limit=limit,
+        )
+
+    def read_agent_review_handoff(self, review_id: str) -> dict[str, Any]:
+        """Read one local Agent review handoff packet."""
+        if self.review_handoff_store is None:
+            raise ValueError("Review handoff queue is not enabled.")
+        return self.review_handoff_store.read_review(review_id)
+
+    def create_agent_review_handoff(
+        self,
+        title: str,
+        *,
+        summary: str = "",
+        session_id: str = "web",
+        status: str = "pending",
+        priority: str = "normal",
+        task_id: str = "",
+        workflow_id: str = "",
+        trace_id: str = "",
+        files: list[Any] | None = None,
+        verification_run_ids: list[Any] | None = None,
+        checklist: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a review handoff packet for a human or reviewer agent."""
+        if self.review_handoff_store is None:
+            raise ValueError("Review handoff queue is not enabled.")
+        return {
+            "enabled": True,
+            **self.review_handoff_store.create_review(
+                title,
+                summary=summary,
+                session_id=session_id,
+                status=status,
+                priority=priority,
+                task_id=task_id,
+                workflow_id=workflow_id,
+                trace_id=trace_id,
+                files=files,
+                verification_run_ids=verification_run_ids,
+                checklist=checklist,
+                metadata=metadata,
+            ),
+        }
+
+    def add_agent_review_comment(
+        self,
+        review_id: str,
+        body: str,
+        *,
+        reviewer: str = "human",
+    ) -> dict[str, Any]:
+        """Append a reviewer comment to one handoff packet."""
+        if self.review_handoff_store is None:
+            raise ValueError("Review handoff queue is not enabled.")
+        return {
+            "enabled": True,
+            **self.review_handoff_store.add_comment(review_id, body, reviewer=reviewer),
+        }
+
+    def update_agent_review_status(
+        self,
+        review_id: str,
+        status: str,
+        *,
+        note: str = "",
+        reviewer: str = "human",
+    ) -> dict[str, Any]:
+        """Move one review handoff through its decision states."""
+        if self.review_handoff_store is None:
+            raise ValueError("Review handoff queue is not enabled.")
+        return {
+            "enabled": True,
+            **self.review_handoff_store.update_status(
+                review_id,
+                status,
+                note=note,
+                reviewer=reviewer,
+            ),
+        }
 
     def list_goals(
         self,

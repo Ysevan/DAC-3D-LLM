@@ -788,6 +788,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["artifacts"]["backend"] == "local_agent_artifact_store"
     assert summary["event_queue"]["backend"] == "local_agent_event_queue"
     assert summary["verification_feedback"]["backend"] == "local_verification_runner"
+    assert summary["review_handoffs"]["backend"] == "local_review_handoff_queue"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1066,6 +1067,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "static_repo_context_map" in description["network_capabilities"]
     assert "git_workspace_context" in description["network_capabilities"]
     assert "verification_feedback_runner" in description["network_capabilities"]
+    assert "review_handoff_queue" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1261,6 +1263,39 @@ def test_agent_chat_adapter_verification_feedback_roundtrip(tmp_path) -> None:
     assert listed["count"] == 1
     assert workspace["verification_feedback"]["run_count"] == 1
     assert "verification_feedback" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_review_handoff_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    created = adapter.create_agent_review_handoff(
+        "Review DAC Agent workspace",
+        summary="检查 workspace 输出是否包含 review queue。",
+        session_id="review-agent",
+        files=["dac3d_iim_assistant/agent_runtime.py"],
+        verification_run_ids=["verification-agent"],
+    )
+    review_id = created["review"]["id"]
+    commented = adapter.add_agent_review_comment(
+        review_id,
+        "需要确认 API roundtrip。",
+        reviewer="reviewer-agent",
+    )
+    approved = adapter.update_agent_review_status(review_id, "approved", note="已确认。")
+    listed = adapter.list_agent_review_handoffs(session_id="review-agent", status="approved")
+    read = adapter.read_agent_review_handoff(review_id)
+    workspace = adapter.agent_workspace()
+
+    assert created["review"]["files"] == ["dac3d_iim_assistant/agent_runtime.py"]
+    assert commented["comment"]["reviewer"] == "reviewer-agent"
+    assert approved["review"]["status"] == "approved"
+    assert listed["count"] == 1
+    assert read["review"]["verification_run_ids"] == ["verification-agent"]
+    assert workspace["review_handoffs"]["review_count"] == 1
+    assert "review_handoff" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:
