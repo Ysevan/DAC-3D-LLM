@@ -10,6 +10,19 @@ from tests.test_assistant import make_config
 from ui.web_api import create_api_app
 
 
+SESSION_HEADERS = {"X-DAC3D-Session-ID": "test-session"}
+OPERATOR_HEADERS = {
+    "X-DAC3D-Session-ID": "test-session",
+    "X-DAC3D-Operator-ID": "operator-1",
+    "X-DAC3D-Roles": "operator",
+}
+ADMIN_HEADERS = {
+    "X-DAC3D-Session-ID": "test-session",
+    "X-DAC3D-Operator-ID": "admin-1",
+    "X-DAC3D-Roles": "admin",
+}
+
+
 def test_web_api_chat_endpoint_returns_structured_payload(tmp_path) -> None:
     """The API should expose the assistant response schema for the React client."""
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
@@ -18,6 +31,7 @@ def test_web_api_chat_endpoint_returns_structured_payload(tmp_path) -> None:
     response = client.post(
         "/api/chat",
         json={"message": "这个参数是什么意思？", "history": []},
+        headers=SESSION_HEADERS,
     )
 
     assert response.status_code == 200
@@ -32,7 +46,7 @@ def test_web_api_runtime_endpoint_returns_runtime_summary(tmp_path) -> None:
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
     client = TestClient(create_api_app(assistant))
 
-    response = client.get("/api/runtime")
+    response = client.get("/api/runtime", headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -45,7 +59,11 @@ def test_web_api_chat_endpoint_rejects_empty_message(tmp_path) -> None:
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
     client = TestClient(create_api_app(assistant))
 
-    response = client.post("/api/chat", json={"message": "   ", "history": []})
+    response = client.post(
+        "/api/chat",
+        json={"message": "   ", "history": []},
+        headers=SESSION_HEADERS,
+    )
 
     assert response.status_code == 422
 
@@ -58,6 +76,7 @@ def test_web_api_chat_stream_emits_sse_events(tmp_path) -> None:
     response = client.post(
         "/api/chat/stream",
         json={"message": "what does this parameter mean?", "history": []},
+        headers=SESSION_HEADERS,
     )
 
     assert response.status_code == 200
@@ -75,6 +94,7 @@ def test_web_api_chat_stream_emits_multiple_deltas_progressively(tmp_path) -> No
     response = client.post(
         "/api/chat/stream",
         json={"message": "样品太反光怎么办？", "history": []},
+        headers=SESSION_HEADERS,
     )
 
     assert response.status_code == 200
@@ -88,7 +108,7 @@ def test_machine_agent_snapshot_endpoint_returns_dashboard_payload(tmp_path) -> 
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
     client = TestClient(create_api_app(assistant))
 
-    response = client.get("/api/machine-agent/snapshot")
+    response = client.get("/api/machine-agent/snapshot", headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -105,6 +125,7 @@ def test_machine_agent_chat_endpoint_exposes_tool_calls(tmp_path) -> None:
     response = client.post(
         "/api/machine-agent/chat",
         json={"message": "为什么最近温度报警变多了？"},
+        headers=SESSION_HEADERS,
     )
 
     assert response.status_code == 200
@@ -146,6 +167,7 @@ def test_unified_chat_endpoint_enters_agent_runtime_first(tmp_path, monkeypatch)
             "history": [],
             "session_id": "chrome-session-1",
         },
+        headers={"X-DAC3D-Session-ID": "chrome-session-1"},
     )
 
     assert response.status_code == 200
@@ -187,6 +209,7 @@ def test_unified_chat_stream_uses_client_session_id(tmp_path, monkeypatch) -> No
             "history": [],
             "session_id": "ui-session-42",
         },
+        headers={"X-DAC3D-Session-ID": "ui-session-42"},
     )
 
     assert response.status_code == 200
@@ -210,6 +233,7 @@ def test_web_api_approval_endpoint_submits_pending_gateway_command(tmp_path) -> 
             "history": [],
             "session_id": "approval-ui-session",
         },
+        headers={"X-DAC3D-Session-ID": "approval-ui-session"},
     )
 
     assert preview_response.status_code == 200
@@ -225,6 +249,11 @@ def test_web_api_approval_endpoint_submits_pending_gateway_command(tmp_path) -> 
             "session_id": "approval-ui-session",
             "preview_id": gateway["preview_id"],
             "confirmation_token": gateway["confirmation_token"],
+        },
+        headers={
+            "X-DAC3D-Session-ID": "approval-ui-session",
+            "X-DAC3D-Operator-ID": "operator-1",
+            "X-DAC3D-Roles": "operator",
         },
     )
 
@@ -245,7 +274,7 @@ def test_web_api_eval_endpoint_runs_local_regression_cases(tmp_path) -> None:
     )
     client = TestClient(create_api_app(agent_runtime))
 
-    response = client.post("/api/evals/run", json={})
+    response = client.post("/api/evals/run", json={}, headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -266,10 +295,11 @@ def test_web_api_eval_draft_endpoint_generates_reviewable_trace_cases(tmp_path) 
     chat_response = client.post(
         "/api/chat",
         json={"message": "当前检测状态是什么？", "history": [], "session_id": "draft-ui-session"},
+        headers={"X-DAC3D-Session-ID": "draft-ui-session"},
     )
     trace_id = chat_response.json()["parsed_result"]["trace_eval"]["trace_id"]
 
-    response = client.post("/api/evals/drafts", json={"trace_ids": [trace_id]})
+    response = client.post("/api/evals/drafts", json={"trace_ids": [trace_id]}, headers=OPERATOR_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -282,7 +312,7 @@ def test_web_api_eval_draft_endpoint_generates_reviewable_trace_cases(tmp_path) 
     assert (tmp_path / "evals" / "drafts" / f"{draft['id']}.json").exists()
     assert not (tmp_path / "evals" / "cases" / f"{draft['id']}.json").exists()
 
-    list_response = client.get("/api/evals/drafts")
+    list_response = client.get("/api/evals/drafts", headers=SESSION_HEADERS)
     assert list_response.status_code == 200
     assert list_response.json()["count"] == 1
 
@@ -320,24 +350,25 @@ def test_web_api_memory_patch_review_endpoints(tmp_path) -> None:
     patches = agent_runtime.memory_provider.propose_writes(trace)
     client = TestClient(create_api_app(agent_runtime))
 
-    list_response = client.get("/api/memory/patches")
+    list_response = client.get("/api/memory/patches", headers=SESSION_HEADERS)
 
     assert list_response.status_code == 200
     listed = list_response.json()
     assert listed["enabled"] is True
     assert listed["count"] == 2
 
-    approve_response = client.post(f"/api/memory/patches/{patches[0]['id']}/approve")
+    approve_response = client.post(f"/api/memory/patches/{patches[0]['id']}/approve", headers=ADMIN_HEADERS)
     reject_response = client.post(
         f"/api/memory/patches/{patches[1]['id']}/reject",
         json={"reason": "test_rejected"},
+        headers=ADMIN_HEADERS,
     )
 
     assert approve_response.status_code == 200
     assert approve_response.json()["applied"] is True
     assert reject_response.status_code == 200
     assert reject_response.json()["rejected"] is True
-    pending_response = client.get("/api/memory/patches")
+    pending_response = client.get("/api/memory/patches", headers=SESSION_HEADERS)
     assert pending_response.json()["count"] == 0
 
 
@@ -350,13 +381,14 @@ def test_web_api_agent_workspace_and_workflow_preview(tmp_path) -> None:
     )
     client = TestClient(create_api_app(agent_runtime))
 
-    workspace_response = client.get("/api/agent/workspace")
+    workspace_response = client.get("/api/agent/workspace", headers=SESSION_HEADERS)
     preview_response = client.post(
         "/api/agent/workflow/preview",
         json={
             "task": "选择 pre_fusion_images 下的图片进行离线检测",
             "session_id": "workspace-ui-session",
         },
+        headers={"X-DAC3D-Session-ID": "workspace-ui-session"},
     )
 
     assert workspace_response.status_code == 200
@@ -389,19 +421,26 @@ def test_web_api_goal_tracker_endpoints(tmp_path) -> None:
     create_response = client.post(
         "/api/goals",
         json={"objective": "目标：新增 Agent goal 目标功能", "session_id": "goal-ui-session"},
+        headers={
+            "X-DAC3D-Session-ID": "goal-ui-session",
+            "X-DAC3D-Operator-ID": "operator-1",
+            "X-DAC3D-Roles": "operator",
+        },
     )
     goal_id = create_response.json()["goal"]["id"]
     progress_response = client.post(
         f"/api/goals/{goal_id}/progress",
         json={"note": "已接入 API。"},
+        headers=OPERATOR_HEADERS,
     )
     complete_response = client.post(
         f"/api/goals/{goal_id}/complete",
         json={"note": "已完成 UI 联调。"},
+        headers=OPERATOR_HEADERS,
     )
-    active_response = client.get("/api/goals?status=active")
-    completed_response = client.get("/api/goals?status=completed")
-    workspace_response = client.get("/api/agent/workspace")
+    active_response = client.get("/api/goals?status=active", headers=SESSION_HEADERS)
+    completed_response = client.get("/api/goals?status=completed", headers=SESSION_HEADERS)
+    workspace_response = client.get("/api/agent/workspace", headers=SESSION_HEADERS)
 
     assert create_response.status_code == 200
     assert create_response.json()["created"] is True

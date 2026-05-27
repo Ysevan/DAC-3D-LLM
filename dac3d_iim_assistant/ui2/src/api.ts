@@ -15,6 +15,8 @@ import type {
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const SESSION_STORAGE_KEY = "dac3d.session_id";
+const OPERATOR_STORAGE_KEY = "dac3d.operator_id";
 
 type StreamHandlers = {
   onMeta?: (payload: Omit<AssistantPayload, "answer">) => void;
@@ -25,7 +27,7 @@ type StreamHandlers = {
 };
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, init);
+  const response = await fetch(`${API_BASE}${path}`, withSecurityHeaders(init));
   if (!response.ok) {
     throw new Error(await response.text());
   }
@@ -41,11 +43,11 @@ export function fetchAgentWorkspace(): Promise<AgentWorkspace> {
 }
 
 export function previewAgentWorkflow(task: string, sessionId: string): Promise<AgentWorkflowPreview> {
-  return requestJson<AgentWorkflowPreview>("/api/agent/workflow/preview", {
+  return requestJson<AgentWorkflowPreview>("/api/agent/workflow/preview", withSecurityHeaders({
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ task, session_id: sessionId }),
-  });
+  }, { sessionId }));
 }
 
 export function fetchAgentGoals(status = "active"): Promise<AgentGoalListResult> {
@@ -53,27 +55,27 @@ export function fetchAgentGoals(status = "active"): Promise<AgentGoalListResult>
 }
 
 export function createAgentGoal(objective: string, sessionId: string): Promise<AgentGoalActionResult> {
-  return requestJson<AgentGoalActionResult>("/api/goals", {
+  return requestJson<AgentGoalActionResult>("/api/goals", withSecurityHeaders({
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ objective, session_id: sessionId }),
-  });
+  }, { includeOperator: true, sessionId }));
 }
 
 export function appendAgentGoalProgress(goalId: string, note: string): Promise<AgentGoalActionResult> {
-  return requestJson<AgentGoalActionResult>(`/api/goals/${encodeURIComponent(goalId)}/progress`, {
+  return requestJson<AgentGoalActionResult>(`/api/goals/${encodeURIComponent(goalId)}/progress`, withSecurityHeaders({
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ note }),
-  });
+  }, { includeOperator: true }));
 }
 
 export function completeAgentGoal(goalId: string, note = ""): Promise<AgentGoalActionResult> {
-  return requestJson<AgentGoalActionResult>(`/api/goals/${encodeURIComponent(goalId)}/complete`, {
+  return requestJson<AgentGoalActionResult>(`/api/goals/${encodeURIComponent(goalId)}/complete`, withSecurityHeaders({
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ note }),
-  });
+  }, { includeOperator: true }));
 }
 
 export function fetchKnowledgeBaseSummary(): Promise<KnowledgeBaseSummary> {
@@ -81,19 +83,20 @@ export function fetchKnowledgeBaseSummary(): Promise<KnowledgeBaseSummary> {
 }
 
 export function sendChat(request: ChatRequest): Promise<AssistantPayload> {
-  return requestJson<AssistantPayload>("/api/chat", {
+  const sessionId = request.session_id ?? getSessionId();
+  return requestJson<AssistantPayload>("/api/chat", withSecurityHeaders({
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
+    body: JSON.stringify({ ...request, session_id: sessionId }),
+  }, { sessionId }));
 }
 
 export function approvePendingCommand(request: ApproveCommandRequest): Promise<AssistantPayload> {
-  return requestJson<AssistantPayload>("/api/commands/approve", {
+  return requestJson<AssistantPayload>("/api/commands/approve", withSecurityHeaders({
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
-  });
+  }, { includeOperator: true, sessionId: request.session_id }));
 }
 
 export function runAgentEvals(categories?: string[]): Promise<EvalRunResult> {
@@ -109,11 +112,11 @@ export function fetchEvalDrafts(): Promise<EvalDraftListResult> {
 }
 
 export function generateEvalDrafts(limit = 5): Promise<EvalDraftListResult> {
-  return requestJson<EvalDraftListResult>("/api/evals/drafts", {
+  return requestJson<EvalDraftListResult>("/api/evals/drafts", withSecurityHeaders({
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ limit }),
-  });
+  }, { includeOperator: true }));
 }
 
 export function fetchMemoryPatches(status = "pending"): Promise<MemoryPatchListResult> {
@@ -121,24 +124,28 @@ export function fetchMemoryPatches(status = "pending"): Promise<MemoryPatchListR
 }
 
 export function approveMemoryPatch(patchId: string): Promise<MemoryPatchActionResult> {
-  return requestJson<MemoryPatchActionResult>(`/api/memory/patches/${encodeURIComponent(patchId)}/approve`, {
+  return requestJson<MemoryPatchActionResult>(`/api/memory/patches/${encodeURIComponent(patchId)}/approve`, withSecurityHeaders({
     method: "POST",
-  });
+  }, { includeOperator: true, role: "admin" }));
 }
 
 export function rejectMemoryPatch(patchId: string, reason = "ui_rejected"): Promise<MemoryPatchActionResult> {
-  return requestJson<MemoryPatchActionResult>(`/api/memory/patches/${encodeURIComponent(patchId)}/reject`, {
+  return requestJson<MemoryPatchActionResult>(`/api/memory/patches/${encodeURIComponent(patchId)}/reject`, withSecurityHeaders({
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason }),
-  });
+  }, { includeOperator: true, role: "admin" }));
 }
 
 export async function streamChat(request: ChatRequest, handlers: StreamHandlers): Promise<void> {
+  const sessionId = request.session_id ?? getSessionId();
   const response = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
+    headers: withSecurityHeaders(
+      { headers: { "Content-Type": "application/json" } },
+      { sessionId },
+    ).headers,
+    body: JSON.stringify({ ...request, session_id: sessionId }),
   });
   if (!response.ok || !response.body) {
     throw new Error(await response.text());
@@ -171,10 +178,44 @@ export async function buildKnowledgeBase(files: File[]): Promise<{
 }> {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
-  return requestJson("/api/knowledge-base/build", {
+  return requestJson("/api/knowledge-base/build", withSecurityHeaders({
     method: "POST",
     body: formData,
-  });
+  }, { includeOperator: true }));
+}
+
+function withSecurityHeaders(
+  init?: RequestInit,
+  options: { includeOperator?: boolean; role?: string; sessionId?: string } = {},
+): RequestInit {
+  const headers = new Headers(init?.headers);
+  headers.set("X-DAC3D-Session-ID", options.sessionId ?? headers.get("X-DAC3D-Session-ID") ?? getSessionId());
+  if (options.includeOperator || options.role) {
+    headers.set("X-DAC3D-Operator-ID", getOperatorId());
+    headers.set("X-DAC3D-Roles", options.role ?? "operator");
+  }
+  return { ...init, headers };
+}
+
+function getSessionId(): string {
+  return getOrCreateBrowserId(SESSION_STORAGE_KEY, "web-session");
+}
+
+function getOperatorId(): string {
+  return getOrCreateBrowserId(OPERATOR_STORAGE_KEY, "web-operator");
+}
+
+function getOrCreateBrowserId(storageKey: string, prefix: string): string {
+  const storage = window.localStorage;
+  const existing = storage.getItem(storageKey);
+  if (existing) return existing;
+  const randomId =
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const value = `${prefix}-${randomId}`;
+  storage.setItem(storageKey, value);
+  return value;
 }
 
 function processSseBuffer(buffer: string, handlers: StreamHandlers): string {
