@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 from collections.abc import Iterator, Sequence
 from html.parser import HTMLParser
@@ -11,6 +10,9 @@ from inspect import signature
 from pathlib import Path
 from typing import Any
 
+from security.production_config import ProductionSecurityConfig, SecurityConfigError
+from tracing.logger import AuditTraceLogger
+from tracing.redaction import redact_exception
 from ui.auth import ApiSecurityError, PRIVILEGED_ROLES, require_api_actor
 from ui.security_middleware import install_security_middleware
 from ui.session import ConfirmationTokenStore
@@ -39,8 +41,27 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         ) from exc
 
     app = FastAPI(title="DAC-3D IIM Assistant API")
+    security_config = ProductionSecurityConfig.from_env(
+        base_dir=assistant.config.base_dir,
+        mock_mode=assistant.config.mock_mode,
+        debug_mode=getattr(assistant.config, "debug_logging_enabled", False),
+    )
+    try:
+        security_config.validate_or_raise()
+    except SecurityConfigError as exc:
+        raise RuntimeError(f"Unsafe production security configuration: {exc}") from exc
+    app.state.security_config = security_config
     app.state.command_confirmations = ConfirmationTokenStore()
-    install_security_middleware(app)
+    app.state.audit_logger = (
+        AuditTraceLogger(assistant.config.audit_trace_path)
+        if getattr(assistant.config, "audit_trace_enabled", True)
+        else None
+    )
+    install_security_middleware(
+        app,
+        rate_limit_enabled=security_config.rate_limit_enabled,
+        audit_logger=app.state.audit_logger,
+    )
     try:
         from machine_agent import MachineAgentService
 
@@ -48,14 +69,17 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
     except Exception:
         machine_agent = None
     frontend_dev_url = assistant.config.frontend_dev_url
-    is_production = os.getenv("DAC3D_ENV", "dev").strip().lower() in {"prod", "production"}
+    is_production = security_config.is_prod
     allowed_origins = [
         origin
-        for origin in {
-            "http://127.0.0.1:5173",
-            "http://localhost:5173",
-            frontend_dev_url,
-        }
+        for origin in (
+            security_config.cors_allowed_origins
+            or (
+                "http://127.0.0.1:5173",
+                "http://localhost:5173",
+                frontend_dev_url,
+            )
+        )
         if origin and (not is_production or origin != "*")
     ]
     app.add_middleware(
@@ -197,11 +221,36 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
                 }
             else:
                 payload["confirmation"] = {"required": False}
+        _audit_event(
+            http_request,
+            actor=actor,
+            event_type="command_preview",
+            tool_call={
+                "action": command_preview.get("action") if isinstance(command_preview, dict) else None,
+                "message_length": len(message),
+            },
+            policy_decision={
+                "missing_fields": command_preview.get("missing_fields") if isinstance(command_preview, dict) else [],
+                "needs_confirmation": bool(payload.get("confirmation", {}).get("required")),
+            },
+            confirmation={
+                key: value
+                for key, value in dict(payload.get("confirmation") or {}).items()
+                if key != "confirmation_token"
+            },
+        )
         return _attach_trace(http_request, payload)
 
     @app.post("/api/commands/confirm")
     def command_confirm(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
         actor = _require_actor(http_request, payload=request, write=True, require_operator=True)
+        security_config: ProductionSecurityConfig = http_request.app.state.security_config
+        if not security_config.allow_command_submit:
+            raise ApiSecurityError(
+                code="COMMAND_SUBMIT_DISABLED",
+                message="Command submission is disabled by security configuration.",
+                status_code=403,
+            )
         token_store: ConfirmationTokenStore = http_request.app.state.command_confirmations
         stored = token_store.consume(
             preview_id=str(request.get("preview_id") or ""),
@@ -221,6 +270,14 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             "preview_hash": stored.preview_hash,
             "used": True,
         }
+        _audit_event(
+            http_request,
+            actor=actor,
+            event_type="command_confirm",
+            tool_call={"action": stored.command_preview.get("action")},
+            policy_decision={"status": "submitted"},
+            confirmation=payload["confirmation"],
+        )
         return _attach_trace(http_request, payload)
 
     @app.post("/api/commands/approve")
@@ -596,7 +653,7 @@ def _stream_chat_events(
                 payload.setdefault("trace_id", trace_id)
             yield _sse_event(event_name, payload)
     except Exception as exc:  # pragma: no cover - defensive streaming guard
-        yield _sse_event("error", {"message": str(exc), "request_id": request_id, "trace_id": trace_id})
+        yield _sse_event("error", {"message": redact_exception(exc), "request_id": request_id, "trace_id": trace_id})
 
 
 def _parse_chat_request(
@@ -779,6 +836,37 @@ def _attach_trace(request: Any, payload: dict[str, Any]) -> dict[str, Any]:
     result.setdefault("request_id", getattr(request.state, "request_id", None))
     result.setdefault("trace_id", getattr(request.state, "trace_id", None))
     return result
+
+
+def _audit_event(
+    request: Any,
+    *,
+    actor: Any,
+    event_type: str,
+    tool_call: dict[str, Any],
+    policy_decision: dict[str, Any] | None = None,
+    confirmation: dict[str, Any] | None = None,
+) -> None:
+    logger = getattr(request.app.state, "audit_logger", None)
+    if logger is None:
+        return
+    try:
+        logger.append_event(
+            event_type=event_type,
+            trace_id=getattr(request.state, "trace_id", None),
+            request_id=getattr(request.state, "request_id", None),
+            session_id=getattr(actor, "session_id", None),
+            actor={
+                "session_id": getattr(actor, "session_id", None),
+                "operator_id": getattr(actor, "operator_id", None),
+                "roles": list(getattr(actor, "roles", ()) or ()),
+            },
+            tool_call=tool_call,
+            policy_decision=policy_decision or {},
+            confirmation=confirmation or {},
+        )
+    except Exception:
+        return
 
 
 def _message_requires_confirmation(message: str) -> bool:

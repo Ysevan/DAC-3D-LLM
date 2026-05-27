@@ -1932,6 +1932,92 @@ button {
   box-shadow: 0 18px 40px rgba(20, 86, 160, 0.22);
 }
 
+.command-security-panel {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(180, 83, 9, 0.34);
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+
+.command-security-panel.high-risk-command {
+  border-color: rgba(185, 28, 28, 0.42);
+  background: #fef2f2;
+  color: #7f1d1d;
+}
+
+.command-security-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.command-security-heading span,
+.trace-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.command-security-summary,
+.preview-hash-line,
+.validation-failure {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.command-warning-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.validation-failure {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(220, 38, 38, 0.12);
+  font-weight: 700;
+}
+
+.preview-hash-line code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.btn-confirm-command {
+  justify-self: start;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #b91c1c;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-confirm-command:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.trace-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.07);
+  color: var(--text-muted);
+}
+
 @media (max-width: 768px) {
   .ui-switch-link {
     top: 10px;

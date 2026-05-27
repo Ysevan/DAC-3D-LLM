@@ -12,6 +12,8 @@ from threading import RLock
 from typing import Any
 
 from config import AppConfig
+from security.secrets import assert_no_secrets
+from tracing.redaction import redact_value
 
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
@@ -338,6 +340,19 @@ class ConversationMemoryStore:
         normalized = _safe_session_id(session_id)
         if not str(user or "").strip() and not str(assistant or "").strip():
             return self.load_session(normalized)
+        safe_structured_data = (
+            redact_value(structured_data)
+            if isinstance(structured_data, dict)
+            else {}
+        )
+        assert_no_secrets(
+            {
+                "user": user,
+                "assistant": assistant,
+                "structured_data": safe_structured_data,
+            },
+            location="conversation_memory",
+        )
 
         with self._lock:
             now = _utc_now_iso()
@@ -350,7 +365,7 @@ class ConversationMemoryStore:
                 "user": _clip_text(user, self.max_field_chars),
                 "assistant": _clip_text(assistant, self.max_field_chars),
                 "intent": str(intent or ""),
-                "structured_data": structured_data if isinstance(structured_data, dict) else {},
+                "structured_data": safe_structured_data,
             }
             turns.append(turn)
             if len(turns) > self.max_turns_per_session:

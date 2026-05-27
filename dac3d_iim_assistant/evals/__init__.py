@@ -1,1 +1,1 @@
-"""Bundled local eval fixtures for DAC-Agent Runtime."""
+"""Evaluation helpers and bundled local fixtures for DAC-Agent Runtime."""

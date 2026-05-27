@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ui.auth import ApiSecurityError, REQUEST_ID_HEADER, SESSION_HEADER
+from tracing.redaction import redact_text
 
 
 class InMemoryRateLimiter:
@@ -31,7 +32,13 @@ class InMemoryRateLimiter:
         return True
 
 
-def install_security_middleware(app: Any, *, rate_limit: int = 120) -> None:
+def install_security_middleware(
+    app: Any,
+    *,
+    rate_limit: int = 120,
+    rate_limit_enabled: bool = True,
+    audit_logger: Any | None = None,
+) -> None:
     """Install request id, trace id, rate-limit, and structured error handlers."""
     try:
         from fastapi import HTTPException, Request
@@ -53,7 +60,7 @@ def install_security_middleware(app: Any, *, rate_limit: int = 120) -> None:
             _safe_header(request.headers.get(SESSION_HEADER))
             or (request.client.host if request.client else "unknown")
         )
-        if request.url.path.startswith("/api/") and not limiter.allow(rate_key):
+        if rate_limit_enabled and request.url.path.startswith("/api/") and not limiter.allow(rate_key):
             return structured_error_response(
                 status_code=429,
                 code="RATE_LIMITED",
@@ -81,6 +88,14 @@ def install_security_middleware(app: Any, *, rate_limit: int = 120) -> None:
                 trace_id=trace_id,
             )
 
+        _record_api_audit(
+            audit_logger,
+            request=request,
+            response=response,
+            request_id=request_id,
+            trace_id=trace_id,
+            session_id=_safe_header(request.headers.get(SESSION_HEADER)),
+        )
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Trace-ID"] = trace_id
         return response
@@ -97,7 +112,7 @@ def install_security_middleware(app: Any, *, rate_limit: int = 120) -> None:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-        detail = exc.detail if isinstance(exc.detail, str) else "Request failed."
+        detail = redact_text(exc.detail if isinstance(exc.detail, str) else "Request failed.")
         return structured_error_response(
             status_code=exc.status_code,
             code="HTTP_ERROR",
@@ -145,7 +160,7 @@ def structured_error_response(
         content={
             "error": {
                 "code": code,
-                "message": message,
+                "message": redact_text(message),
                 "request_id": request_id,
                 "trace_id": trace_id,
             }
@@ -158,3 +173,33 @@ def _safe_header(value: str | None) -> str | None:
     if not text:
         return None
     return text[:120]
+
+
+def _record_api_audit(
+    audit_logger: Any | None,
+    *,
+    request: Any,
+    response: Any,
+    request_id: str,
+    trace_id: str,
+    session_id: str | None,
+) -> None:
+    if audit_logger is None or not request.url.path.startswith("/api/"):
+        return
+    try:
+        audit_logger.append_event(
+            event_type="api_request",
+            trace_id=trace_id,
+            request_id=request_id,
+            session_id=session_id,
+            actor={"session_id": session_id},
+            tool_call={
+                "kind": "http",
+                "method": request.method,
+                "path": request.url.path,
+                "query_keys": sorted(request.query_params.keys()),
+            },
+            policy_decision={"status_code": getattr(response, "status_code", None)},
+        )
+    except Exception:
+        return

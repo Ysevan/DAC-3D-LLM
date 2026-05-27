@@ -7,6 +7,7 @@ import {
   approvePendingCommand,
   buildKnowledgeBase,
   completeAgentGoal,
+  confirmCommand,
   createAgentGoal,
   fetchAgentGoals,
   fetchAgentWorkspace,
@@ -16,6 +17,7 @@ import {
   fetchRuntimeSummary,
   generateCodexHandoff,
   generateEvalDrafts,
+  previewCommand,
   previewAgentWorkflow,
   rejectMemoryPatch,
   runAgentEvals,
@@ -113,6 +115,8 @@ function App() {
   const [isSending, setIsSending] = useState(false);
   const [approvalInFlight, setApprovalInFlight] = useState<string | null>(null);
   const [approvedPreviewIds, setApprovedPreviewIds] = useState<string[]>([]);
+  const [confirmingPreviewId, setConfirmingPreviewId] = useState<string | null>(null);
+  const [confirmedPreviewIds, setConfirmedPreviewIds] = useState<Set<string>>(() => new Set());
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildStatus, setBuildStatus] = useState("");
   const [evalResult, setEvalResult] = useState<EvalRunResult | null>(null);
@@ -249,6 +253,25 @@ function App() {
     setDetailsPayload(EMPTY_DETAILS);
 
     try {
+      if (messageLooksLikeCommand(prompt)) {
+        setRequestStage("生成命令预览");
+        const payload = await previewCommand({ message: prompt, history, session_id: sessionId });
+        const answer = buildCommandPreviewAnswer(payload);
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantId
+              ? { ...message, content: answer, status: "ready", payload: { ...payload, answer } }
+              : message,
+          ),
+        );
+        setHistory((current) => [...current, { user: prompt, assistant: answer }]);
+        setDetailsPayload({ ...payload, answer });
+        setRequestStage(null);
+        setIsSending(false);
+        clearStreamTimer();
+        return;
+      }
+
       await streamChat(
         { message: prompt, history, session_id: sessionId },
         {
@@ -390,6 +413,56 @@ function App() {
       setApprovalInFlight(null);
       setRequestStage(null);
       void refreshSidebarData();
+    }
+  }
+
+  async function handleConfirmCommand(message: MessageRecord): Promise<void> {
+    const confirmation = message.payload?.confirmation;
+    if (!confirmation?.preview_id || !confirmation.preview_hash || !confirmation.confirmation_token) {
+      return;
+    }
+    const previewSummary = buildCommandSummary(message.payload?.command_preview);
+    const shortHash = confirmation.preview_hash.slice(0, 16);
+    const approved = window.confirm(
+      `确认只执行本次命令？\n\n${previewSummary}\npreview_hash: ${shortHash}\n\n不会确认未来命令。`,
+    );
+    if (!approved) {
+      return;
+    }
+
+    setConfirmingPreviewId(confirmation.preview_id);
+    try {
+      const payload = await confirmCommand(confirmation, sessionId);
+      const answer = payload.answer || "命令已提交。";
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id
+            ? { ...item, content: answer, status: "ready", payload: { ...payload, answer } }
+            : item,
+        ),
+      );
+      setConfirmedPreviewIds((current) => new Set(current).add(confirmation.preview_id!));
+      setHistory((current) => [...current, { user: "确认执行本次命令", assistant: answer }]);
+      setDetailsPayload({ ...payload, answer });
+      void refreshSidebarData();
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      const answer = `确认失败: ${errorText}`;
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id
+            ? {
+                ...item,
+                content: answer,
+                status: "error",
+                payload: { ...(item.payload || EMPTY_DETAILS), intent: "error", answer },
+              }
+            : item,
+        ),
+      );
+      setDetailsPayload({ ...(message.payload || EMPTY_DETAILS), intent: "error", answer });
+    } finally {
+      setConfirmingPreviewId(null);
     }
   }
 
@@ -887,6 +960,9 @@ function App() {
                 onCopy={handleCopyMessage}
                 onAction={handleMessageUtilityAction}
                 onApproveCommand={handleApproveCommand}
+                onConfirmCommand={handleConfirmCommand}
+                confirmingPreviewId={confirmingPreviewId}
+                confirmedPreviewIds={confirmedPreviewIds}
               />
             ))}
             <div ref={endRef} />
@@ -1473,6 +1549,9 @@ const MessageRow = memo(function MessageRow(props: {
   onCopy: (message: MessageRecord) => Promise<void>;
   onAction: (message: MessageRecord) => void;
   onApproveCommand: (message: MessageRecord) => Promise<void>;
+  onConfirmCommand: (message: MessageRecord) => Promise<void>;
+  confirmingPreviewId: string | null;
+  confirmedPreviewIds: Set<string>;
 }) {
   const {
     message,
@@ -1483,12 +1562,20 @@ const MessageRow = memo(function MessageRow(props: {
     onCopy,
     onAction,
     onApproveCommand,
+    onConfirmCommand,
+    confirmingPreviewId,
+    confirmedPreviewIds,
   } = props;
   const displayContent = getDisplayContent(message);
+  const confirmationPreviewId = message.payload?.confirmation?.preview_id ?? null;
+  const isConfirming = Boolean(confirmationPreviewId && confirmingPreviewId === confirmationPreviewId);
+  const isConfirmed = Boolean(confirmationPreviewId && confirmedPreviewIds.has(confirmationPreviewId));
   const approvalCandidate =
     message.role === "assistant" && message.status === "ready" ? getApprovalRequest(message.payload) : null;
   const approval =
-    approvalCandidate && !approvedPreviewIds.includes(approvalCandidate.previewId) ? approvalCandidate : null;
+    approvalCandidate && !confirmationPreviewId && !approvedPreviewIds.includes(approvalCandidate.previewId)
+      ? approvalCandidate
+      : null;
 
   return (
     <div
@@ -1522,7 +1609,14 @@ const MessageRow = memo(function MessageRow(props: {
             showCursor={message.status === "streaming" && displayContent.length > 0}
           />
         </div>
-        {message.role === "assistant" && message.payload ? <MessageFooter payload={message.payload} /> : null}
+        {message.role === "assistant" && message.payload ? (
+          <MessageFooter
+            confirming={isConfirming}
+            confirmed={isConfirmed}
+            onConfirm={() => void onConfirmCommand(message)}
+            payload={message.payload}
+          />
+        ) : null}
         {approval ? (
             <CommandApprovalCard
               approval={approval}
@@ -1663,13 +1757,16 @@ function MessageContent(props: { content: string; renderMode: "plain" | "rich"; 
 function areMessageRowPropsEqual(
   previous: {
     message: MessageRecord;
-  copiedMessageId: string | null;
-  requestStage: string | null;
-  approvalInFlight: string | null;
-  approvedPreviewIds: string[];
-  onCopy: (message: MessageRecord) => Promise<void>;
-  onAction: (message: MessageRecord) => void;
-  onApproveCommand: (message: MessageRecord) => Promise<void>;
+    copiedMessageId: string | null;
+    requestStage: string | null;
+    approvalInFlight: string | null;
+    approvedPreviewIds: string[];
+    onCopy: (message: MessageRecord) => Promise<void>;
+    onAction: (message: MessageRecord) => void;
+    onApproveCommand: (message: MessageRecord) => Promise<void>;
+    onConfirmCommand: (message: MessageRecord) => Promise<void>;
+    confirmingPreviewId: string | null;
+    confirmedPreviewIds: Set<string>;
   },
   next: {
     message: MessageRecord;
@@ -1680,6 +1777,9 @@ function areMessageRowPropsEqual(
     onCopy: (message: MessageRecord) => Promise<void>;
     onAction: (message: MessageRecord) => void;
     onApproveCommand: (message: MessageRecord) => Promise<void>;
+    onConfirmCommand: (message: MessageRecord) => Promise<void>;
+    confirmingPreviewId: string | null;
+    confirmedPreviewIds: Set<string>;
   },
 ): boolean {
   if (previous.message !== next.message) {
@@ -1688,7 +1788,8 @@ function areMessageRowPropsEqual(
   if (
     previous.onCopy !== next.onCopy ||
     previous.onAction !== next.onAction ||
-    previous.onApproveCommand !== next.onApproveCommand
+    previous.onApproveCommand !== next.onApproveCommand ||
+    previous.onConfirmCommand !== next.onConfirmCommand
   ) {
     return false;
   }
@@ -1707,7 +1808,12 @@ function areMessageRowPropsEqual(
 
   const previousStage = previous.message.role === "assistant" && previous.message.status === "streaming" ? previous.requestStage : null;
   const nextStage = next.message.role === "assistant" && next.message.status === "streaming" ? next.requestStage : null;
-  return previousStage === nextStage;
+  const previewId = previous.message.payload?.confirmation?.preview_id ?? null;
+  const previousConfirming = Boolean(previewId && previous.confirmingPreviewId === previewId);
+  const nextConfirming = Boolean(previewId && next.confirmingPreviewId === previewId);
+  const previousConfirmed = Boolean(previewId && previous.confirmedPreviewIds.has(previewId));
+  const nextConfirmed = Boolean(previewId && next.confirmedPreviewIds.has(previewId));
+  return previousStage === nextStage && previousConfirming === nextConfirming && previousConfirmed === nextConfirmed;
 }
 
 function renderRichText(content: string, showCursor: boolean): ReactNode[] {
@@ -1953,8 +2059,13 @@ function clampCadence(value: number): number {
   return Math.min(42, Math.max(10, Math.round(value)));
 }
 
-function MessageFooter(props: { payload?: AssistantPayload }) {
-  const { payload } = props;
+function MessageFooter(props: {
+  confirming: boolean;
+  confirmed: boolean;
+  onConfirm: () => void;
+  payload?: AssistantPayload;
+}) {
+  const { confirming, confirmed, onConfirm, payload } = props;
   const [isOpen, setIsOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [activeSourceIndex, setActiveSourceIndex] = useState<number | null>(null);
@@ -1969,9 +2080,11 @@ function MessageFooter(props: { payload?: AssistantPayload }) {
   }
 
   const hasSources = payload.sources && payload.sources.length > 0;
-  const hasDetails = payload.command_preview || payload.status_summary || payload.parsed_result;
+  const hasTrace = Boolean(payload.trace_id);
+  const hasDetails = payload.command_preview || payload.status_summary || payload.parsed_result || hasTrace;
+  const hasCommandPreview = Boolean(payload.command_preview);
 
-  if (!hasSources && !hasDetails) {
+  if (!hasSources && !hasDetails && !hasCommandPreview) {
     return null;
   }
 
@@ -2124,6 +2237,12 @@ function MessageFooter(props: { payload?: AssistantPayload }) {
                 <pre>{formatJson(payload.command_preview)}</pre>
               </div>
             )}
+            {payload.trace_id && (
+              <div className="popover-detail-item">
+                <div className="popover-detail-label">Trace ID</div>
+                <pre>{payload.trace_id}</pre>
+              </div>
+            )}
             {payload.status_summary && (
               <div className="popover-detail-item">
                 <div className="popover-detail-label">状态摘要</div>
@@ -2144,6 +2263,14 @@ function MessageFooter(props: { payload?: AssistantPayload }) {
 
   return (
     <div className="message-footer">
+      {hasCommandPreview ? (
+        <CommandConfirmationPanel
+          confirmed={confirmed}
+          confirming={confirming}
+          onConfirm={onConfirm}
+          payload={payload}
+        />
+      ) : null}
       <div 
         className="footer-interactive-area" 
         tabIndex={0}
@@ -2179,11 +2306,118 @@ function MessageFooter(props: { payload?: AssistantPayload }) {
               <span className="source-name">结构化数据</span>
             </button>
           )}
+          {payload.trace_id ? (
+            <span className="trace-chip" title={payload.trace_id}>
+              trace_id {payload.trace_id.slice(0, 8)}
+            </span>
+          ) : null}
         </div>
       </div>
       {popoverContent && createPortal(popoverContent, document.body)}
     </div>
   );
+}
+
+function CommandConfirmationPanel(props: {
+  confirmed: boolean;
+  confirming: boolean;
+  onConfirm: () => void;
+  payload: AssistantPayload;
+}) {
+  const { confirmed, confirming, onConfirm, payload } = props;
+  const preview = payload.command_preview;
+  const confirmation = payload.confirmation;
+  const warnings = getCommandWarnings(preview);
+  const missingFields = getMissingFields(preview);
+  const previewHash = confirmation?.preview_hash ?? "";
+  const requiresConfirm = Boolean(confirmation?.required && confirmation.confirmation_token);
+  const safety = asRecord(asRecord(preview)?.safety);
+  const hardwareRequired = Boolean(safety?.hardware_required);
+
+  return (
+    <section className={`command-security-panel ${hardwareRequired ? "high-risk-command" : ""}`}>
+      <div className="command-security-heading">
+        <strong>{hardwareRequired ? "高风险操作确认" : "命令预览确认"}</strong>
+        {payload.trace_id ? <span>trace_id {payload.trace_id.slice(0, 8)}</span> : null}
+      </div>
+      <div className="command-security-summary">{buildCommandSummary(preview)}</div>
+      {warnings.length ? (
+        <ul className="command-warning-list">
+          {warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+      {missingFields.length ? (
+        <div className="validation-failure">
+          缺少字段：{missingFields.join(", ")}
+        </div>
+      ) : null}
+      {previewHash ? (
+        <div className="preview-hash-line">
+          preview_hash <code>{previewHash.slice(0, 16)}</code>
+        </div>
+      ) : null}
+      <button
+        className="btn-confirm-command"
+        disabled={!requiresConfirm || confirming || confirmed || missingFields.length > 0}
+        onClick={onConfirm}
+        type="button"
+      >
+        {confirmed ? "本次命令已确认" : confirming ? "正在确认..." : "确认执行本次命令"}
+      </button>
+    </section>
+  );
+}
+
+function messageLooksLikeCommand(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (/(不要执行|不执行|不要下发|不下发|只预览|仅预览|preview only|do not execute|don't execute)/i.test(normalized)) {
+    return false;
+  }
+  return /(开始扫描|执行扫描|立即开始|马上扫描|开始在线扫描|执行在线扫描|离线检测|离线测试|停止检测|中止检测|提交命令|扫描\s*\d|execute|submit|run now|start now|stop detection|abort detection)/i.test(normalized);
+}
+
+function buildCommandPreviewAnswer(payload: AssistantPayload): string {
+  const baseAnswer = payload.answer || "已生成命令预览。";
+  const warnings = getCommandWarnings(payload.command_preview);
+  const missingFields = getMissingFields(payload.command_preview);
+  const hash = payload.confirmation?.preview_hash ? `\npreview_hash: ${payload.confirmation.preview_hash.slice(0, 16)}` : "";
+  const warningText = warnings.length ? `\n风险提示: ${warnings.join("；")}` : "";
+  const validationText = missingFields.length ? `\n校验失败: 缺少 ${missingFields.join(", ")}` : "";
+  return `${baseAnswer}${warningText}${validationText}${hash}`;
+}
+
+function buildCommandSummary(preview: Record<string, unknown> | null | undefined): string {
+  const record = asRecord(preview);
+  if (!record) {
+    return "暂无命令摘要";
+  }
+  const action = stringValue(record.action);
+  const mode = stringValue(record.mode);
+  const region = stringValue(record.region);
+  return `动作: ${action} / 模式: ${mode} / 区域: ${region}`;
+}
+
+function getCommandWarnings(preview: Record<string, unknown> | null | undefined): string[] {
+  const record = asRecord(preview);
+  const warnings = record?.warnings;
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+  return warnings.map((warning) => String(warning)).filter(Boolean);
+}
+
+function getMissingFields(preview: Record<string, unknown> | null | undefined): string[] {
+  const record = asRecord(preview);
+  const missing = record?.missing_fields;
+  if (!Array.isArray(missing)) {
+    return [];
+  }
+  return missing.map((field) => String(field)).filter(Boolean);
 }
 
 export default App;

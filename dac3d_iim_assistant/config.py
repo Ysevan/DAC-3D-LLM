@@ -98,6 +98,9 @@ class AppConfig:
     context_skill_limit: int = 2
     context_char_limit: int = 7200
     command_confirmation_ttl_seconds: int = 300
+    audit_trace_enabled: bool = True
+    audit_log_sensitive_input: bool = False
+    debug_logging_enabled: bool = False
     base_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent)
     knowledge_base_dir: Path = field(init=False)
     documents_dir: Path = field(init=False)
@@ -113,6 +116,8 @@ class AppConfig:
     upload_temp_dir: Path = field(init=False)
     conversation_memory_dir: Path = field(init=False)
     agent_skills_dir: Path = field(init=False)
+    trace_dir: Path = field(init=False)
+    audit_trace_path: Path = field(init=False)
 
     def __post_init__(self) -> None:
         self.knowledge_base_dir = self.base_dir / "knowledge_base"
@@ -129,6 +134,9 @@ class AppConfig:
         self.upload_temp_dir = self.temp_root_dir / "uploads"
         self.conversation_memory_dir = self.temp_root_dir / "conversation_memory"
         self.agent_skills_dir = self.base_dir / "skills"
+        self.agent_skills_dir = self.base_dir / "skills"
+        self.trace_dir = self.temp_root_dir / "traces"
+        self.audit_trace_path = self.trace_dir / "audit.jsonl"
         local_status_file = self.temp_root_dir / "dac3d_runtime_status.json"
         if self.dac3d_endpoint == "mock://dac3d" and local_status_file.exists():
             self.dac3d_endpoint = local_status_file.resolve().as_uri()
@@ -232,6 +240,9 @@ class AppConfig:
                 0,
                 int(os.getenv("DAC3D_COMMAND_CONFIRMATION_TTL_SECONDS", "300")),
             ),
+            audit_trace_enabled=_read_bool("DAC3D_AUDIT_TRACE_ENABLED", True),
+            audit_log_sensitive_input=_read_bool("DAC3D_AUDIT_LOG_SENSITIVE_INPUT", False),
+            debug_logging_enabled=_read_bool("DAC3D_DEBUG_LOGGING_ENABLED", False),
             base_dir=resolved_base_dir,
         )
 
@@ -242,6 +253,8 @@ class AppConfig:
         self.upload_temp_dir.mkdir(parents=True, exist_ok=True)
         if self.memory_enabled:
             self.conversation_memory_dir.mkdir(parents=True, exist_ok=True)
+        if self.audit_trace_enabled:
+            self.trace_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def vector_store_ready(self) -> bool:

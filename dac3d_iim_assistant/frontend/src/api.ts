@@ -19,8 +19,12 @@ type StreamHandlers = {
   onError?: (message: string) => void;
 };
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, withSecurityHeaders(init));
+async function requestJson<T>(
+  path: string,
+  init?: RequestInit,
+  options: { includeOperator?: boolean; sessionId?: string } = {},
+): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, withSecurityHeaders(init, options));
   if (!response.ok) {
     throw new Error(await response.text());
   }
@@ -98,10 +102,10 @@ export async function buildKnowledgeBase(files: File[]): Promise<{
 }> {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
-  return requestJson("/api/knowledge-base/build", withSecurityHeaders({
+  return requestJson("/api/knowledge-base/build", {
     method: "POST",
     body: formData,
-  }, { includeOperator: true }));
+  }, { includeOperator: true });
 }
 
 function withSecurityHeaders(
