@@ -899,6 +899,46 @@ def test_web_api_agent_shared_state_endpoints(tmp_path) -> None:
     assert workspace_response.json()["shared_state"]["state_count"] == 1
 
 
+def test_web_api_agent_registry_endpoints(tmp_path) -> None:
+    """The web UI should discover, register, read, and route Agent registry entries."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/registry",
+        json={
+            "name": "Calibration Agent",
+            "role": "calibration",
+            "description": "负责标定流程建议。",
+            "capabilities": ["calibration_guidance"],
+            "tools": ["dac3d_answer"],
+            "triggers": ["标定"],
+            "tags": ["qa"],
+        },
+    )
+    list_response = client.get("/api/agent/registry?capability=calibration_guidance")
+    read_response = client.get("/api/agent/registry/calibration")
+    route_response = client.post(
+        "/api/agent/registry/route",
+        json={"task": "标定流程应该怎么做？", "limit": 3},
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert read_response.json()["agent"]["role"] == "calibration"
+    assert route_response.status_code == 200
+    assert route_response.json()["candidates"][0]["agent"]["role"] == "calibration"
+    assert workspace_response.json()["agent_registry"]["agent_count"] >= 8
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

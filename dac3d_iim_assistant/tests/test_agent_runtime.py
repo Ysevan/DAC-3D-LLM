@@ -783,6 +783,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["repo_context_map"]["backend"] == "static_repo_context_map"
     assert summary["code_symbols"]["backend"] == "code_symbol_navigator"
     assert summary["git_workspace"]["backend"] == "git_workspace_context"
+    assert summary["agent_registry"]["backend"] == "local_agent_registry"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
     assert summary["automations"]["backend"] == "local_automation_planner"
     assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
@@ -1076,6 +1077,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "workflow_checkpoint_store" in description["network_capabilities"]
     assert "agent_observability_snapshot" in description["network_capabilities"]
     assert "scoped_shared_state" in description["network_capabilities"]
+    assert "agent_registry_discovery" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1407,6 +1409,34 @@ def test_agent_chat_adapter_shared_state_roundtrip(tmp_path) -> None:
     assert read["state"]["value"]["step"] == "review"
     assert workspace["shared_state"]["state_count"] == 1
     assert "shared_state" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_agent_registry_routes_specialists(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    registered = adapter.register_agent_entry(
+        "Calibration Agent",
+        role="calibration",
+        description="负责标定流程建议。",
+        capabilities=["calibration_guidance"],
+        tools=["dac3d_answer"],
+        triggers=["标定", "calibration"],
+        tags=["qa"],
+    )
+    listed = adapter.list_agent_registry(capability="calibration_guidance")
+    routed = adapter.route_agent_candidates("标定流程应该怎么做？")
+    read = adapter.read_agent_registry_entry("calibration")
+    workspace = adapter.agent_workspace()
+
+    assert registered["created"] is True
+    assert listed["count"] == 1
+    assert routed["candidates"][0]["agent"]["role"] == "calibration"
+    assert read["agent"]["id"] == registered["agent"]["id"]
+    assert workspace["agent_registry"]["agent_count"] >= 8
+    assert "agent_registry" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

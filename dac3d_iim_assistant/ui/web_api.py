@@ -69,6 +69,82 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             raise HTTPException(status_code=503, detail="Agent workspace is unavailable.")
         return workspace()
 
+    @app.get("/api/agent/registry")
+    def list_agent_registry(
+        status: str | None = None,
+        role: str | None = None,
+        capability: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_registry = getattr(assistant, "list_agent_registry", None)
+        if not callable(list_registry):
+            raise HTTPException(status_code=503, detail="Agent registry is unavailable.")
+        try:
+            return list_registry(
+                status=status,
+                role=role,
+                capability=capability,
+                query=q,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/registry")
+    def register_agent_entry(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        register_entry = getattr(assistant, "register_agent_entry", None)
+        if not callable(register_entry):
+            raise HTTPException(status_code=503, detail="Agent registry is unavailable.")
+        name = str(request.get("name") or "").strip()
+        role = str(request.get("role") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        if not role:
+            raise HTTPException(status_code=422, detail="The `role` field is required.")
+        try:
+            return register_entry(
+                name,
+                role=role,
+                description=str(request.get("description") or ""),
+                status=str(request.get("status") or "active"),
+                handoff_name=str(request.get("handoff_name") or ""),
+                agent_type=str(request.get("agent_type") or "specialist"),
+                capabilities=request.get("capabilities")
+                if isinstance(request.get("capabilities"), list)
+                else None,
+                tools=request.get("tools") if isinstance(request.get("tools"), list) else None,
+                triggers=request.get("triggers") if isinstance(request.get("triggers"), list) else None,
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                owner_agent=str(request.get("owner_agent") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/registry/route")
+    def route_agent_candidates(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        route_candidates = getattr(assistant, "route_agent_candidates", None)
+        if not callable(route_candidates):
+            raise HTTPException(status_code=503, detail="Agent registry is unavailable.")
+        task = str(request.get("task") or request.get("message") or "").strip()
+        if not task:
+            raise HTTPException(status_code=422, detail="The `task` field is required.")
+        try:
+            return route_candidates(task, limit=int(request.get("limit") or 5))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/registry/{agent_id_or_role}")
+    def read_agent_registry_entry(agent_id_or_role: str) -> dict[str, Any]:
+        read_entry = getattr(assistant, "read_agent_registry_entry", None)
+        if not callable(read_entry):
+            raise HTTPException(status_code=503, detail="Agent registry is unavailable.")
+        try:
+            return read_entry(agent_id_or_role)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/api/agent/observability")
     def agent_observability(recent_trace_limit: int = 20) -> dict[str, Any]:
         observability = getattr(assistant, "agent_observability", None)

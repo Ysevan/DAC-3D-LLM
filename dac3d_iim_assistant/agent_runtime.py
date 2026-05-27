@@ -31,6 +31,7 @@ from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree, GitWorkspaceContext, RepoContextMapStore
 from goals import (
     ArtifactStore,
+    AgentRegistryStore,
     AutomationPlannerStore,
     CheckpointStore,
     EventQueueStore,
@@ -85,6 +86,125 @@ def _looks_like_local_validation_model(model_name: str) -> bool:
     """Return whether the Agent should use the local validation model."""
     normalized = str(model_name or "").strip().lower()
     return normalized in {LOCAL_VALIDATION_MODEL_NAME, "local_validation", "validation"}
+
+
+def _default_agent_registry_entries() -> list[dict[str, Any]]:
+    """Return built-in DAC-Agent registry entries for local discovery."""
+    return [
+        {
+            "role": "coordinator",
+            "name": "DAC-3D Multi-Agent Coordinator",
+            "agent_type": "coordinator",
+            "description": "统一入口 Agent，负责理解用户问题、选择 specialist、组合上下文和工具结果。",
+            "capabilities": ["intent_routing", "handoff", "context_planning"],
+            "tools": [],
+            "triggers": ["任何问题", "统一入口", "router", "handoff", "agent"],
+            "tags": ["entrypoint", "multi-agent"],
+        },
+        {
+            "role": "dac3d_qa",
+            "name": "DAC-3D QA Agent",
+            "handoff_name": "handoff_dac3d_qa_agent",
+            "description": "回答 DAC-3D 文档、参数、流程、故障排查和操作建议问题。",
+            "capabilities": ["document_qa", "parameter_explain", "operator_guidance"],
+            "tools": ["dac3d_answer", "dac3d_rebuild_knowledge_base"],
+            "triggers": ["参数", "文档", "手册", "反光", "怎么办", "知识库"],
+            "tags": ["qa", "rag"],
+        },
+        {
+            "role": "dac3d_control",
+            "name": "DAC-3D Control Agent",
+            "handoff_name": "handoff_dac3d_control_agent",
+            "description": "生成 DAC-3D 命令预览，读取状态，并协调受控命令提交。",
+            "capabilities": ["command_preview", "runtime_status", "operation_control"],
+            "tools": [
+                "dac3d_operation",
+                "dac3d_preview_command",
+                "dac3d_execute_command",
+                "dac3d_status",
+            ],
+            "triggers": ["扫描", "离线检测", "停止", "状态", "进度", "执行", "command"],
+            "tags": ["control", "dac3d"],
+        },
+        {
+            "role": "dac3d_result",
+            "name": "DAC-3D Result Agent",
+            "handoff_name": "handoff_dac3d_result_agent",
+            "description": "读取和解释 DAC-3D 最新检测结果、样品缺陷摘要和复核建议。",
+            "capabilities": ["result_lookup", "defect_explain", "sample_summary"],
+            "tools": ["dac3d_latest_result"],
+            "triggers": ["结果", "样品", "缺陷", "复检", "result"],
+            "tags": ["result", "inspection"],
+        },
+        {
+            "role": "machine",
+            "name": "Machine Agent",
+            "handoff_name": "handoff_machine_agent",
+            "description": "分析设备状态、报警趋势、历史采样、维护文档和异常归因。",
+            "capabilities": ["machine_status", "alarm_analysis", "maintenance_guidance"],
+            "tools": [
+                "machine_agent_chat",
+                "machine_snapshot",
+                "machine_status",
+                "machine_history",
+                "machine_alarms",
+                "machine_docs",
+                "machine_condition_summary",
+                "machine_abnormal_analysis",
+            ],
+            "triggers": ["设备", "报警", "温度", "维护", "异常", "machine"],
+            "tags": ["machine", "ops"],
+        },
+        {
+            "role": "memory",
+            "name": "Memory Agent",
+            "handoff_name": "handoff_memory_agent",
+            "description": "检索和维护 JSON/Markdown 多层记忆、历史对话、知识笔记和流程经验。",
+            "capabilities": ["memory_search", "profile_memory", "procedure_memory"],
+            "tools": [
+                "conversation_memory_search",
+                "conversation_memory_recent",
+                "conversation_memory_profile",
+                "conversation_memory_update",
+                "conversation_knowledge_notes",
+                "conversation_procedure_memories",
+            ],
+            "triggers": ["记忆", "历史", "上次", "刚才", "以后", "流程经验", "memory"],
+            "tags": ["memory-os", "context"],
+        },
+        {
+            "role": "skill",
+            "name": "Skill Agent",
+            "handoff_name": "handoff_skill_agent",
+            "description": "发现、选择、读取和提出 DAC-Agent skills 的可审核改进建议。",
+            "capabilities": ["skill_selection", "skill_read", "skill_patch_proposal"],
+            "tools": [
+                "dac_skill_list",
+                "dac_skill_select",
+                "dac_skill_read",
+                "dac_skill_propose_patch",
+                "dac_skill_patches",
+            ],
+            "triggers": ["技能", "skill", "流程模板", "可用流程", "加载什么"],
+            "tags": ["skills", "workflow"],
+        },
+        {
+            "role": "safety",
+            "name": "Safety Agent",
+            "handoff_name": "handoff_safety_agent",
+            "description": "提供命令风险、工具网关和执行前检查的解释型审查。",
+            "capabilities": ["safety_review", "tool_manifest", "command_validation"],
+            "tools": [
+                "dac3d_safety_review",
+                "dac_tool_manifest",
+                "dac_mcp_manifest",
+                "dac_tool_allowed_dirs",
+                "dac_tool_validate_command",
+            ],
+            "triggers": ["安全", "风险", "能不能执行", "执行前检查", "工具网关"],
+            "tags": ["safety", "tool-gateway"],
+        },
+    ]
 
 
 class LocalValidationAgentModel:
@@ -1215,6 +1335,7 @@ class DAC3DAgentRuntime:
                 "workflow_checkpoint_store",
                 "agent_observability_snapshot",
                 "scoped_shared_state",
+                "agent_registry_discovery",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2171,6 +2292,7 @@ class DAC3DAgentChatAdapter:
     context_tree: FileBackedContextTree | None = None
     repo_context_map: RepoContextMapStore | None = None
     git_workspace_context: GitWorkspaceContext | None = None
+    agent_registry_store: AgentRegistryStore | None = None
     goal_store: GoalStore | None = None
     task_board_store: TaskBoardStore | None = None
     automation_store: AutomationPlannerStore | None = None
@@ -2219,6 +2341,9 @@ class DAC3DAgentChatAdapter:
             )
         if self.git_workspace_context is None:
             self.git_workspace_context = GitWorkspaceContext.from_config_root(self.config.base_dir)
+        if self.agent_registry_store is None:
+            self.agent_registry_store = AgentRegistryStore.from_root(self.config.conversation_memory_dir)
+            self.agent_registry_store.seed_defaults(_default_agent_registry_entries())
         if self.goal_store is None:
             self.goal_store = GoalStore.from_root(self.config.conversation_memory_dir)
         if self.task_board_store is None:
@@ -2366,6 +2491,11 @@ class DAC3DAgentChatAdapter:
             self.git_workspace_context.describe()
             if self.git_workspace_context is not None
             else {"enabled": False, "backend": "git_workspace_context"}
+        )
+        summary["agent_registry"] = (
+            self.agent_registry_store.describe()
+            if self.agent_registry_store is not None
+            else {"enabled": False, "backend": "local_agent_registry"}
         )
         summary["goals"] = (
             self.goal_store.describe()
@@ -2556,6 +2686,11 @@ class DAC3DAgentChatAdapter:
             if self.git_workspace_context is not None
             else {"enabled": False, "backend": "git_workspace_context"}
         )
+        agent_registry = (
+            self.agent_registry_store.describe()
+            if self.agent_registry_store is not None
+            else {"enabled": False, "backend": "local_agent_registry"}
+        )
         skills = (
             self.skill_registry.describe()
             if self.skill_registry is not None
@@ -2639,6 +2774,7 @@ class DAC3DAgentChatAdapter:
             "repo_context_map": repo_context_map,
             "code_symbols": code_symbols,
             "git_workspace": git_workspace,
+            "agent_registry": agent_registry,
             "memory_os": memory,
             "goals": goals,
             "task_board": task_board,
@@ -2670,6 +2806,7 @@ class DAC3DAgentChatAdapter:
                 "repo_context_map",
                 "symbol_navigation",
                 "git_workspace_context",
+                "agent_registry",
                 "memory_prefetch",
                 "specialist_agent",
                 "tool_loop",
@@ -2685,6 +2822,7 @@ class DAC3DAgentChatAdapter:
             "entry_agent": workspace.get("entry_agent"),
             "workflow": workspace.get("workflow", []),
             "counts": {
+                "agents": (workspace.get("agent_registry") or {}).get("agent_count", 0),
                 "goals": (workspace.get("goals") or {}).get("goal_count", 0),
                 "tasks": (workspace.get("task_board") or {}).get("task_count", 0),
                 "events": (workspace.get("event_queue") or {}).get("event_count", 0),
@@ -2699,6 +2837,75 @@ class DAC3DAgentChatAdapter:
         if self.observability_reporter is None:
             raise ValueError("Agent observability is not enabled.")
         return self.observability_reporter.snapshot(recent_trace_limit=recent_trace_limit)
+
+    def list_agent_registry(
+        self,
+        *,
+        status: str | None = None,
+        role: str | None = None,
+        capability: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent registry entries for workspace discovery."""
+        if self.agent_registry_store is None:
+            return {"enabled": False, "backend": "local_agent_registry", "agents": [], "count": 0}
+        return self.agent_registry_store.list_agents(
+            status=status,
+            role=role,
+            capability=capability,
+            query=query,
+            limit=limit,
+        )
+
+    def read_agent_registry_entry(self, agent_id_or_role: str) -> dict[str, Any]:
+        """Read one Agent registry entry by id or role."""
+        if self.agent_registry_store is None:
+            raise ValueError("Agent registry is not enabled.")
+        return self.agent_registry_store.read_agent(agent_id_or_role)
+
+    def register_agent_entry(
+        self,
+        name: str,
+        *,
+        role: str,
+        description: str = "",
+        status: str = "active",
+        handoff_name: str = "",
+        agent_type: str = "specialist",
+        capabilities: list[Any] | None = None,
+        tools: list[Any] | None = None,
+        triggers: list[Any] | None = None,
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        owner_agent: str = "web",
+    ) -> dict[str, Any]:
+        """Create or update one Agent registry entry."""
+        if self.agent_registry_store is None:
+            raise ValueError("Agent registry is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_registry_store.register_agent(
+                name,
+                role=role,
+                description=description,
+                status=status,
+                handoff_name=handoff_name,
+                agent_type=agent_type,
+                capabilities=capabilities,
+                tools=tools,
+                triggers=triggers,
+                tags=tags,
+                metadata=metadata,
+                owner_agent=owner_agent,
+            ),
+        }
+
+    def route_agent_candidates(self, task: str, *, limit: int = 5) -> dict[str, Any]:
+        """Return registry-ranked specialist Agent candidates for a task."""
+        if self.agent_registry_store is None:
+            raise ValueError("Agent registry is not enabled.")
+        return self.agent_registry_store.route_candidates(task, limit=limit)
 
     def list_agent_shared_state(
         self,

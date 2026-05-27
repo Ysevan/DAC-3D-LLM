@@ -6,6 +6,7 @@ from pathlib import Path
 
 from goals import (
     ArtifactStore,
+    AgentRegistryStore,
     AutomationPlannerStore,
     CheckpointStore,
     EventQueueStore,
@@ -421,3 +422,42 @@ def test_shared_state_store_upserts_scoped_json_state(tmp_path: Path) -> None:
     assert listed["count"] == 1
     assert read["state"]["key"] == "current_batch"
     assert summary["by_scope"]["workflow"] == 1
+
+
+def test_agent_registry_store_registers_and_routes_agents(tmp_path: Path) -> None:
+    store = AgentRegistryStore.from_root(tmp_path)
+
+    created = store.register_agent(
+        "Offline Control Agent",
+        role="offline_control",
+        description="生成离线检测命令预览。",
+        capabilities=["command_preview", "offline_inspection"],
+        tools=["dac3d_preview_command"],
+        triggers=["离线检测", "扫描"],
+        tags=["control"],
+    )
+    updated = store.register_agent(
+        "Offline Control Agent",
+        role="offline_control",
+        description="生成离线检测命令预览，并读取任务状态。",
+        capabilities=["command_preview", "runtime_status"],
+        tools=["dac3d_preview_command", "dac3d_status"],
+        triggers=["离线检测", "扫描", "状态"],
+        tags=["control", "offline"],
+        owner_agent="registry-test",
+    )
+    listed = store.list_agents(capability="runtime_status")
+    routed = store.route_candidates("选择图片做离线检测并查看状态", limit=3)
+    read = store.read_agent("offline_control")
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert updated["created"] is False
+    assert updated["agent"]["tools"] == ["dac3d_preview_command", "dac3d_status"]
+    assert updated["history"]["actor"] == "registry-test"
+    assert listed["count"] == 1
+    assert routed["candidates"][0]["agent"]["role"] == "offline_control"
+    assert "triggers:离线检测" in routed["candidates"][0]["matched"]
+    assert read["agent"]["id"] == created["agent"]["id"]
+    assert summary["agent_count"] == 1
+    assert summary["by_status"]["active"] == 1
