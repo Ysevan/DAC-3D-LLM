@@ -1,0 +1,13 @@
+{
+  "id": "command_preview_scan_area",
+  "category": "command_preview",
+  "input": "扫描 10mm × 10mm 区域",
+  "expected": {
+    "intent": "operation_preview",
+    "must_call_tools": ["dac3d_preview_command"],
+    "command_action": "scan",
+    "requires_confirmation": true,
+    "can_submit": true,
+    "risk_level": "medium"
+  }
+}

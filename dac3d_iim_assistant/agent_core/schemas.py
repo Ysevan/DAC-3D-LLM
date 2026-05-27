@@ -50,6 +50,13 @@ class PendingCommand(BaseModel):
     command_preview: dict[str, Any]
     warnings: list[str] = Field(default_factory=list)
     created_at: str = Field(default_factory=utc_now_iso)
+    preview_id: str = ""
+    preview_hash: str = ""
+    confirmation_token: str = ""
+    expires_at: str = ""
+    ttl_seconds: int = 300
+    lifecycle_state: str = "awaiting_confirmation"
+    lifecycle_events: list[dict[str, Any]] = Field(default_factory=list)
 
     @property
     def action(self) -> str:
@@ -68,6 +75,9 @@ class AgentSessionSnapshot(BaseModel):
     has_pending_command: bool = False
     pending_action: str | None = None
     pending_created_at: str | None = None
+    pending_expires_at: str | None = None
+    pending_lifecycle_state: str | None = None
+    pending_preview_id: str | None = None
     sdk_session_enabled: bool = True
 
     def to_dict(self) -> dict[str, Any]:

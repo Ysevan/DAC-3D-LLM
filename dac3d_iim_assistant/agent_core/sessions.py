@@ -8,6 +8,7 @@ from threading import RLock
 from typing import Any
 
 from agent_core.schemas import AgentSessionSnapshot, PendingCommand
+from commands import CommandLifecycleStore
 
 
 CONFIRMATION_MARKERS = (
@@ -56,6 +57,8 @@ class DAC3DAgentSessionStore:
         self._lock = RLock()
         self._sdk_sessions: dict[str, Any] = {}
         self._pending_commands: dict[str, PendingCommand] = {}
+        self._command_history: dict[str, list[dict[str, Any]]] = {}
+        self.command_lifecycle = CommandLifecycleStore()
 
     def normalize_session_id(self, session_id: str | None) -> str:
         """Return a safe stable session id."""
@@ -92,14 +95,43 @@ class DAC3DAgentSessionStore:
         *,
         source_message: str,
         command_preview: dict[str, Any],
+        ttl_seconds: int = 300,
     ) -> PendingCommand:
         """Store the latest command preview that still needs confirmation."""
         normalized = self.normalize_session_id(session_id)
+        preview = dict(command_preview)
+        gateway = preview.get("gateway") if isinstance(preview.get("gateway"), dict) else {}
+        preview["gateway"] = dict(gateway)
+        lifecycle = self.command_lifecycle.create_pending(
+            session_id=normalized,
+            source_message=source_message,
+            command_preview=preview,
+            ttl_seconds=ttl_seconds,
+        )
+        preview["gateway"].update(
+            {
+                "preview_id": lifecycle.preview_id,
+                "preview_hash": lifecycle.preview_hash,
+                "confirmation_token": lifecycle.confirmation_token,
+                "confirmation_expires_at": lifecycle.expires_at,
+                "confirmation_ttl_seconds": lifecycle.ttl_seconds,
+                "lifecycle_state": lifecycle.state,
+                "lifecycle_events": list(lifecycle.events),
+            }
+        )
         pending = PendingCommand(
             session_id=normalized,
             source_message=source_message,
-            command_preview=dict(command_preview),
-            warnings=list(command_preview.get("warnings") or []),
+            command_preview=preview,
+            warnings=list(preview.get("warnings") or []),
+            created_at=lifecycle.created_at,
+            preview_id=lifecycle.preview_id,
+            preview_hash=lifecycle.preview_hash,
+            confirmation_token=lifecycle.confirmation_token,
+            expires_at=lifecycle.expires_at,
+            ttl_seconds=lifecycle.ttl_seconds,
+            lifecycle_state=lifecycle.state,
+            lifecycle_events=list(lifecycle.events),
         )
         with self._lock:
             self._pending_commands[normalized] = pending
@@ -116,6 +148,73 @@ class DAC3DAgentSessionStore:
         normalized = self.normalize_session_id(session_id)
         with self._lock:
             self._pending_commands.pop(normalized, None)
+        self.command_lifecycle.clear(normalized)
+
+    def pending_command_expired(self, pending: PendingCommand) -> bool:
+        """Return whether a pending command's confirmation token is expired."""
+        lifecycle = self.command_lifecycle.get(pending.session_id)
+        return lifecycle.is_expired() if lifecycle is not None else True
+
+    def mark_pending_confirmation_failed(self, session_id: str | None, reason: str) -> None:
+        """Record a failed confirmation transition for audit."""
+        normalized = self.normalize_session_id(session_id)
+        self.command_lifecycle.mark_confirmation_failed(normalized, reason)
+        self._sync_pending_lifecycle(normalized)
+
+    def mark_pending_confirmed(self, session_id: str | None) -> None:
+        """Record a successful user confirmation transition."""
+        normalized = self.normalize_session_id(session_id)
+        self.command_lifecycle.mark_confirmed(normalized)
+        self._sync_pending_lifecycle(normalized)
+
+    def mark_pending_submitted(self, session_id: str | None) -> None:
+        """Record a Tool Gateway submit transition."""
+        normalized = self.normalize_session_id(session_id)
+        self.command_lifecycle.mark_submitted(normalized)
+        self._sync_pending_lifecycle(normalized)
+
+    def mark_pending_expired(self, session_id: str | None) -> None:
+        """Record and clear an expired pending command."""
+        normalized = self.normalize_session_id(session_id)
+        self.command_lifecycle.mark_expired(normalized)
+        self._sync_pending_lifecycle(normalized)
+
+    def mark_pending_cancelled(self, session_id: str | None) -> None:
+        """Record a cancelled pending command transition."""
+        normalized = self.normalize_session_id(session_id)
+        self.command_lifecycle.mark_cancelled(normalized)
+        self._sync_pending_lifecycle(normalized)
+
+    def confirmation_token_consumed(self, session_id: str | None, preview_id: str, token: str) -> bool:
+        """Return whether a confirmation token was already used."""
+        normalized = self.normalize_session_id(session_id)
+        return self.command_lifecycle.is_consumed(normalized, preview_id, token)
+
+    def consume_confirmation_token(self, session_id: str | None, preview_id: str, token: str) -> None:
+        """Mark a confirmation token as consumed."""
+        normalized = self.normalize_session_id(session_id)
+        self.command_lifecycle.consume(normalized, preview_id, token)
+        self._sync_pending_lifecycle(normalized)
+
+    def pending_preview_hash_matches(self, pending: PendingCommand) -> bool:
+        """Return whether the pending preview still matches its original hash."""
+        return self.command_lifecycle.verify_preview_hash(pending.session_id, pending.command_preview)
+
+    def append_command_history(self, session_id: str | None, event: dict[str, Any]) -> None:
+        """Append one Tool Gateway command event for audit/debugging."""
+        normalized = self.normalize_session_id(session_id)
+        with self._lock:
+            events = self._command_history.setdefault(normalized, [])
+            events.append(dict(event))
+            del events[:-100]
+
+    def read_command_history(self, session_id: str | None, *, limit: int = 20) -> list[dict[str, Any]]:
+        """Return recent Tool Gateway command events."""
+        normalized = self.normalize_session_id(session_id)
+        safe_limit = max(1, min(100, int(limit or 20)))
+        with self._lock:
+            events = list(self._command_history.get(normalized, []))
+        return events[-safe_limit:]
 
     def should_use_pending_confirmation(self, text: str) -> bool:
         """Return whether the text is a confirmation-only response."""
@@ -135,5 +234,34 @@ class DAC3DAgentSessionStore:
             has_pending_command=pending is not None,
             pending_action=pending.action if pending is not None else None,
             pending_created_at=pending.created_at if pending is not None else None,
+            pending_expires_at=pending.expires_at if pending is not None else None,
+            pending_lifecycle_state=pending.lifecycle_state if pending is not None else None,
+            pending_preview_id=pending.preview_id if pending is not None else None,
             sdk_session_enabled=True,
         ).to_dict()
+
+    def _sync_pending_lifecycle(self, session_id: str) -> None:
+        lifecycle = self.command_lifecycle.get(session_id)
+        if lifecycle is None:
+            return
+        with self._lock:
+            pending = self._pending_commands.get(session_id)
+            if pending is None:
+                return
+            gateway = pending.command_preview.get("gateway")
+            if not isinstance(gateway, dict):
+                gateway = {}
+                pending.command_preview["gateway"] = gateway
+            gateway.update(
+                {
+                    "preview_id": lifecycle.preview_id,
+                    "preview_hash": lifecycle.preview_hash,
+                    "confirmation_token": lifecycle.confirmation_token,
+                    "confirmation_expires_at": lifecycle.expires_at,
+                    "confirmation_ttl_seconds": lifecycle.ttl_seconds,
+                    "lifecycle_state": lifecycle.state,
+                    "lifecycle_events": list(lifecycle.events),
+                }
+            )
+            pending.lifecycle_state = lifecycle.state
+            pending.lifecycle_events = list(lifecycle.events)

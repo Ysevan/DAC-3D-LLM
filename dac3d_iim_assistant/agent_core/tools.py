@@ -8,6 +8,7 @@ from typing import Any
 from agent_core.schemas import AssistantResponsePayload
 from agent_core.sessions import DAC3DAgentSessionStore
 from machine_agent import MachineAgentService
+from tool_gateway import DAC3DToolGateway
 
 
 class DAC3DAgentToolController:
@@ -25,6 +26,11 @@ class DAC3DAgentToolController:
         self.sessions = sessions
         self.session_id = self.sessions.normalize_session_id(session_id)
         self.machine_agent = machine_agent or MachineAgentService()
+        self.gateway = DAC3DToolGateway(
+            assistant=assistant,
+            sessions=sessions,
+            session_id=self.session_id,
+        )
 
     def handle_with_assistant(self, message: str) -> dict[str, Any]:
         """Run a message through the deterministic DAC-3D assistant router."""
@@ -34,9 +40,7 @@ class DAC3DAgentToolController:
 
     def preview_command(self, instruction: str) -> dict[str, Any]:
         """Generate and remember a command preview without submitting it."""
-        payload = self._payload(self.assistant.preview_operation_command(instruction))
-        self._update_pending_state(instruction, payload, confirmed=False)
-        return payload
+        return self.gateway.preview_command(instruction)
 
     def execute_command(
         self,
@@ -48,22 +52,76 @@ class DAC3DAgentToolController:
         if confirmed_by_user and self.sessions.should_use_pending_confirmation(instruction):
             pending = self.sessions.get_pending_command(self.session_id)
             if pending is not None:
-                response = self.assistant.execute_prepared_command(
-                    deepcopy(pending.command_preview),
-                    confirmed_by_user=True,
+                preview = deepcopy(pending.command_preview)
+                gateway = dict(preview.get("gateway") or {})
+                return self.gateway.submit_command(
+                    str(gateway.get("preview_id") or ""),
+                    str(gateway.get("confirmation_token") or ""),
                 )
-                payload = self._payload(response)
-                self._update_pending_state(instruction, payload, confirmed=True)
-                return payload
 
-        payload = self._payload(
-            self.assistant.execute_operation_command(
-                instruction,
-                confirmed_by_user=confirmed_by_user,
+        preview_payload = self.gateway.preview_command(instruction)
+        preview = preview_payload.get("command_preview")
+        if confirmed_by_user and isinstance(preview, dict) and not preview.get("missing_fields"):
+            gateway = dict(preview.get("gateway") or {})
+            return self.gateway.submit_command(
+                str(gateway.get("preview_id") or ""),
+                str(gateway.get("confirmation_token") or ""),
             )
-        )
-        self._update_pending_state(instruction, payload, confirmed=confirmed_by_user)
-        return payload
+        if isinstance(preview, dict) and dict(preview.get("safety") or {}).get("needs_confirmation"):
+            preview_payload["answer"] = (
+                "已生成 DAC-3D 控制命令，但该命令需要用户明确确认后才会下发。"
+                "如果确认执行，请明确说明“确认执行”或“立即开始”。"
+            )
+        return preview_payload
+
+    def read_dac_status(self) -> dict[str, Any]:
+        """Read current DAC status through the Tool Gateway."""
+        payload = self.gateway.read_dac_status().to_dict()
+        return {
+            "intent": "status",
+            "answer": self._status_answer(payload["result"]["status"]),
+            "sources": [],
+            "source_items": [],
+            "command_preview": None,
+            "status_summary": payload["result"]["status"],
+            "parsed_result": {"tool_gateway": payload},
+            "agent_session": self.sessions.describe_session(self.session_id),
+        }
+
+    def read_latest_result(self, sample_position: int = 0) -> dict[str, Any]:
+        """Read latest DAC result through the Tool Gateway."""
+        payload = self.gateway.read_latest_result(sample_position=sample_position).to_dict()
+        return {
+            "intent": "interpretation",
+            "answer": "已通过 Tool Gateway 读取 DAC-3D 最近检测结果。",
+            "sources": [],
+            "source_items": [],
+            "command_preview": None,
+            "status_summary": None,
+            "parsed_result": payload["result"].get("result"),
+            "tool_gateway": payload,
+            "agent_session": self.sessions.describe_session(self.session_id),
+        }
+
+    def list_allowed_dirs(self) -> dict[str, Any]:
+        """List Tool Gateway path allowlist roots."""
+        return self.gateway.list_allowed_dirs().to_dict()
+
+    def validate_command(self, command_preview: dict[str, Any]) -> dict[str, Any]:
+        """Validate a command preview through the Tool Gateway."""
+        return self.gateway.validate_command(command_preview).to_dict()
+
+    def cancel_pending_command(self, command_preview_id: str = "") -> dict[str, Any]:
+        """Cancel the pending command through the Tool Gateway."""
+        return self.gateway.cancel_pending_command(command_preview_id or None).to_dict()
+
+    def read_command_history(self, limit: int = 20) -> dict[str, Any]:
+        """Read Tool Gateway command history."""
+        return self.gateway.read_command_history(limit=limit).to_dict()
+
+    def tool_gateway_manifest(self) -> dict[str, Any]:
+        """Return Tool Gateway descriptors."""
+        return self.gateway.describe()
 
     def rebuild_knowledge_base(self) -> dict[str, Any]:
         """Rebuild the local DAC-3D knowledge base."""
@@ -144,3 +202,9 @@ class DAC3DAgentToolController:
                 command_preview=command_preview,
             )
             payload["agent_session"] = self.sessions.describe_session(self.session_id)
+
+    def _status_answer(self, status: dict[str, Any]) -> str:
+        state = status.get("state", "unknown")
+        progress = status.get("progress", "unknown")
+        message = status.get("message", "无状态消息")
+        return f"当前 DAC-3D 状态为 {state}，进度 {progress}%，最新消息: {message}"

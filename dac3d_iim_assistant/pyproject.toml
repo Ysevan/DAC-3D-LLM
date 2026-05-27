@@ -33,8 +33,9 @@ py-modules = ["app", "agent_runtime", "config"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agent_core*", "intent*", "integration*", "knowledge_base*", "machine_agent*", "rag*", "ui*", "pytest*"]
+include = ["agent_core*", "context_engineering*", "evals*", "intent*", "integration*", "knowledge_base*", "machine_agent*", "memory*", "rag*", "safety*", "skill_system*", "tool_gateway*", "trace_eval*", "ui*", "pytest*"]
 namespaces = true
 
 [tool.setuptools.package-data]
 machine_agent = ["documents/*.md"]
+evals = ["cases/*.json"]

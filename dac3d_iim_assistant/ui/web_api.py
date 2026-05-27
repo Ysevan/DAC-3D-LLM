@@ -55,6 +55,27 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
     def runtime_summary() -> dict[str, Any]:
         return assistant.runtime_summary()
 
+    @app.get("/api/agent/workspace")
+    def agent_workspace() -> dict[str, Any]:
+        workspace = getattr(assistant, "agent_workspace", None)
+        if not callable(workspace):
+            raise HTTPException(status_code=503, detail="Agent workspace is unavailable.")
+        return workspace()
+
+    @app.post("/api/agent/workflow/preview")
+    def preview_agent_workflow(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        preview = getattr(assistant, "preview_agent_workflow", None)
+        if not callable(preview):
+            raise HTTPException(status_code=503, detail="Agent workflow preview is unavailable.")
+        task = str(request.get("task") or "").strip()
+        session_id = str(request.get("session_id") or "web-preview").strip() or "web-preview"
+        if not task:
+            raise HTTPException(status_code=422, detail="The `task` field is required.")
+        try:
+            return preview(task, session_id=session_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/knowledge-base/summary")
     def knowledge_base_summary() -> dict[str, Any]:
         return assistant.knowledge_base_summary()
@@ -100,6 +121,103 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.post("/api/commands/approve")
+    def approve_command(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        session_id = str(request.get("session_id") or "web").strip() or "web"
+        preview_id = str(request.get("preview_id") or "").strip() or None
+        confirmation_token = str(request.get("confirmation_token") or "").strip() or None
+        response = _approve_pending_command(
+            assistant,
+            session_id=session_id,
+            preview_id=preview_id,
+            confirmation_token=confirmation_token,
+        )
+        return response.to_ui_payload()
+
+    @app.post("/api/evals/run")
+    def run_evals(request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+        request = dict(request or {})
+        categories = request.get("categories")
+        if categories is not None and not isinstance(categories, list):
+            raise HTTPException(status_code=422, detail="The `categories` field must be a list.")
+        run = getattr(assistant, "run_evals", None)
+        if not callable(run):
+            raise HTTPException(status_code=503, detail="Eval runner is unavailable.")
+        return run(categories=[str(item) for item in categories] if categories else None)
+
+    @app.get("/api/evals/drafts")
+    def list_eval_drafts() -> dict[str, Any]:
+        list_drafts = getattr(assistant, "list_eval_drafts", None)
+        if not callable(list_drafts):
+            raise HTTPException(status_code=503, detail="Eval draft generator is unavailable.")
+        try:
+            return list_drafts()
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post("/api/evals/drafts")
+    def generate_eval_drafts(request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+        request = dict(request or {})
+        trace_ids = request.get("trace_ids")
+        limit = request.get("limit", 5)
+        if trace_ids is not None and not isinstance(trace_ids, list):
+            raise HTTPException(status_code=422, detail="The `trace_ids` field must be a list.")
+        try:
+            safe_limit = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="The `limit` field must be an integer.") from exc
+        generate = getattr(assistant, "generate_eval_drafts", None)
+        if not callable(generate):
+            raise HTTPException(status_code=503, detail="Eval draft generator is unavailable.")
+        try:
+            return generate(
+                trace_ids=[str(item) for item in trace_ids] if trace_ids else None,
+                limit=safe_limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/api/traces/{trace_id}")
+    def read_trace(trace_id: str) -> dict[str, Any]:
+        read = getattr(assistant, "read_trace", None)
+        if not callable(read):
+            raise HTTPException(status_code=503, detail="Trace logger is unavailable.")
+        try:
+            return read(trace_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/memory/patches")
+    def list_memory_patches(status: str = "pending") -> dict[str, Any]:
+        list_patches = getattr(assistant, "list_memory_patches", None)
+        if not callable(list_patches):
+            raise HTTPException(status_code=503, detail="Memory patch review is unavailable.")
+        return list_patches(status=status)
+
+    @app.post("/api/memory/patches/{patch_id}/approve")
+    def approve_memory_patch(patch_id: str) -> dict[str, Any]:
+        approve = getattr(assistant, "approve_memory_patch", None)
+        if not callable(approve):
+            raise HTTPException(status_code=503, detail="Memory patch review is unavailable.")
+        try:
+            return approve(patch_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/memory/patches/{patch_id}/reject")
+    def reject_memory_patch(
+        patch_id: str,
+        request: dict[str, Any] | None = Body(default=None),
+    ) -> dict[str, Any]:
+        reject = getattr(assistant, "reject_memory_patch", None)
+        if not callable(reject):
+            raise HTTPException(status_code=503, detail="Memory patch review is unavailable.")
+        reason = str(dict(request or {}).get("reason") or "ui_rejected")
+        try:
+            return reject(patch_id, reason=reason)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/knowledge-base/build")
     async def build_knowledge_base(files: list[UploadFile] | None = File(default=None)) -> dict[str, Any]:
@@ -224,6 +342,26 @@ def _call_assistant_stream(
         yield from assistant.stream_message(message, history, session_id=session_id)
         return
     yield from assistant.stream_message(message, history)
+
+
+def _approve_pending_command(
+    assistant: Any,
+    *,
+    session_id: str,
+    preview_id: str | None,
+    confirmation_token: str | None,
+) -> Any:
+    """Approve a command preview through the Agent gateway when available."""
+    approve = getattr(assistant, "approve_pending_command", None)
+    if callable(approve):
+        return approve(
+            session_id=session_id,
+            preview_id=preview_id,
+            confirmation_token=confirmation_token,
+        )
+    if _supports_session_id(assistant.handle_message):
+        return assistant.handle_message("确认执行", [], session_id=session_id)
+    return assistant.handle_message("确认执行", [])
 
 
 def _supports_session_id(callable_obj: Any) -> bool:

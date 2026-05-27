@@ -74,10 +74,15 @@ class AppConfig:
     memory_max_turns: int = 200
     memory_index_limit: int = 2000
     memory_max_field_chars: int = 1800
+    memory_core_char_limit: int = 2200
+    memory_user_char_limit: int = 1375
+    memory_note_char_limit: int = 4000
     language: str = "zh-CN"
     document_globs: tuple[str, ...] = ("**/*",)
     mock_mode: bool = True
     dac3d_endpoint: str = "mock://dac3d"
+    dac3d_allowed_dirs: tuple[str, ...] = ()
+    dac3d_command_output_dir: str = ""
     gradio_host: str = "127.0.0.1"
     gradio_port: int = 7860
     gradio_share: bool = False
@@ -90,6 +95,9 @@ class AppConfig:
     agent_api_type: str = "auto"
     agent_max_turns: int = 8
     agent_tracing_disabled: bool = True
+    context_skill_limit: int = 2
+    context_char_limit: int = 7200
+    command_confirmation_ttl_seconds: int = 300
     base_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent)
     knowledge_base_dir: Path = field(init=False)
     documents_dir: Path = field(init=False)
@@ -104,6 +112,7 @@ class AppConfig:
     temp_root_dir: Path = field(init=False)
     upload_temp_dir: Path = field(init=False)
     conversation_memory_dir: Path = field(init=False)
+    agent_skills_dir: Path = field(init=False)
 
     def __post_init__(self) -> None:
         self.knowledge_base_dir = self.base_dir / "knowledge_base"
@@ -119,6 +128,7 @@ class AppConfig:
         self.temp_root_dir = self.base_dir / ".tmp"
         self.upload_temp_dir = self.temp_root_dir / "uploads"
         self.conversation_memory_dir = self.temp_root_dir / "conversation_memory"
+        self.agent_skills_dir = self.base_dir / "skills"
         local_status_file = self.temp_root_dir / "dac3d_runtime_status.json"
         if self.dac3d_endpoint == "mock://dac3d" and local_status_file.exists():
             self.dac3d_endpoint = local_status_file.resolve().as_uri()
@@ -176,6 +186,9 @@ class AppConfig:
             memory_max_turns=int(os.getenv("DAC3D_MEMORY_MAX_TURNS", "200")),
             memory_index_limit=int(os.getenv("DAC3D_MEMORY_INDEX_LIMIT", "2000")),
             memory_max_field_chars=int(os.getenv("DAC3D_MEMORY_MAX_FIELD_CHARS", "1800")),
+            memory_core_char_limit=int(os.getenv("DAC3D_MEMORY_CORE_CHAR_LIMIT", "2200")),
+            memory_user_char_limit=int(os.getenv("DAC3D_MEMORY_USER_CHAR_LIMIT", "1375")),
+            memory_note_char_limit=int(os.getenv("DAC3D_MEMORY_NOTE_CHAR_LIMIT", "4000")),
             language=os.getenv("DAC3D_LANGUAGE", "zh-CN"),
             document_globs=_read_csv(
                 "DAC3D_DOCUMENT_GLOBS",
@@ -183,6 +196,8 @@ class AppConfig:
             ),
             mock_mode=_read_bool("DAC3D_MOCK_MODE", True),
             dac3d_endpoint=os.getenv("DAC3D_ENDPOINT", "mock://dac3d"),
+            dac3d_allowed_dirs=_read_csv("DAC3D_ALLOWED_DIRS", ()),
+            dac3d_command_output_dir=os.getenv("DAC3D_COMMAND_OUTPUT_DIR", "").strip(),
             gradio_host=os.getenv("DAC3D_GRADIO_HOST", "127.0.0.1"),
             gradio_port=int(os.getenv("DAC3D_GRADIO_PORT", "7860")),
             gradio_share=_read_bool("DAC3D_GRADIO_SHARE", False),
@@ -211,6 +226,12 @@ class AppConfig:
             ).strip().lower(),
             agent_max_turns=int(os.getenv("DAC3D_AGENT_MAX_TURNS", "8")),
             agent_tracing_disabled=_read_bool("DAC3D_AGENT_TRACING_DISABLED", True),
+            context_skill_limit=int(os.getenv("DAC3D_CONTEXT_SKILL_LIMIT", "2")),
+            context_char_limit=int(os.getenv("DAC3D_CONTEXT_CHAR_LIMIT", "7200")),
+            command_confirmation_ttl_seconds=max(
+                0,
+                int(os.getenv("DAC3D_COMMAND_CONFIRMATION_TTL_SECONDS", "300")),
+            ),
             base_dir=resolved_base_dir,
         )
 

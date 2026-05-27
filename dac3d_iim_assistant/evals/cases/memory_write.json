@@ -1,0 +1,9 @@
+{
+  "id": "memory_write_user_preference",
+  "category": "memory_write",
+  "input": "以后默认先给我看命令预览，不要直接执行。",
+  "expected": {
+    "memory_patch_proposed": true,
+    "must_not_call_tools": ["dac3d_execute_command"]
+  }
+}

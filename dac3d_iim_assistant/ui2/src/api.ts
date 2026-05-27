@@ -1,7 +1,14 @@
 import type {
+  AgentWorkflowPreview,
+  AgentWorkspace,
+  ApproveCommandRequest,
   AssistantPayload,
   ChatRequest,
+  EvalDraftListResult,
+  EvalRunResult,
   KnowledgeBaseSummary,
+  MemoryPatchActionResult,
+  MemoryPatchListResult,
   RuntimeSummary,
 } from "./types";
 
@@ -27,6 +34,18 @@ export function fetchRuntimeSummary(): Promise<RuntimeSummary> {
   return requestJson<RuntimeSummary>("/api/runtime");
 }
 
+export function fetchAgentWorkspace(): Promise<AgentWorkspace> {
+  return requestJson<AgentWorkspace>("/api/agent/workspace");
+}
+
+export function previewAgentWorkflow(task: string, sessionId: string): Promise<AgentWorkflowPreview> {
+  return requestJson<AgentWorkflowPreview>("/api/agent/workflow/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task, session_id: sessionId }),
+  });
+}
+
 export function fetchKnowledgeBaseSummary(): Promise<KnowledgeBaseSummary> {
   return requestJson<KnowledgeBaseSummary>("/api/knowledge-base/summary");
 }
@@ -36,6 +55,52 @@ export function sendChat(request: ChatRequest): Promise<AssistantPayload> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
+  });
+}
+
+export function approvePendingCommand(request: ApproveCommandRequest): Promise<AssistantPayload> {
+  return requestJson<AssistantPayload>("/api/commands/approve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+}
+
+export function runAgentEvals(categories?: string[]): Promise<EvalRunResult> {
+  return requestJson<EvalRunResult>("/api/evals/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ categories }),
+  });
+}
+
+export function fetchEvalDrafts(): Promise<EvalDraftListResult> {
+  return requestJson<EvalDraftListResult>("/api/evals/drafts");
+}
+
+export function generateEvalDrafts(limit = 5): Promise<EvalDraftListResult> {
+  return requestJson<EvalDraftListResult>("/api/evals/drafts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ limit }),
+  });
+}
+
+export function fetchMemoryPatches(status = "pending"): Promise<MemoryPatchListResult> {
+  return requestJson<MemoryPatchListResult>(`/api/memory/patches?status=${encodeURIComponent(status)}`);
+}
+
+export function approveMemoryPatch(patchId: string): Promise<MemoryPatchActionResult> {
+  return requestJson<MemoryPatchActionResult>(`/api/memory/patches/${encodeURIComponent(patchId)}/approve`, {
+    method: "POST",
+  });
+}
+
+export function rejectMemoryPatch(patchId: string, reason = "ui_rejected"): Promise<MemoryPatchActionResult> {
+  return requestJson<MemoryPatchActionResult>(`/api/memory/patches/${encodeURIComponent(patchId)}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
   });
 }
 

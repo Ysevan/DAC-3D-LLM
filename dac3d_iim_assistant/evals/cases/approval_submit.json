@@ -1,0 +1,18 @@
+{
+  "id": "approval_button_submit_scan",
+  "category": "confirmation_required",
+  "input": "扫描 10mm × 10mm 区域",
+  "expected": {
+    "intent": "operation_preview",
+    "must_call_tools": ["dac3d_preview_command"],
+    "command_action": "scan",
+    "requires_confirmation": true,
+    "can_submit": true,
+    "approve_after_preview": true,
+    "after_approval": {
+      "intent": "operation",
+      "answer_contains": ["提交"],
+      "command_action": "scan"
+    }
+  }
+}

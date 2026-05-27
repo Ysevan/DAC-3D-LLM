@@ -4,6 +4,24 @@
 
 `DAC-3D-LLM` is a local demonstration system that connects a DAC-3D inspection application with an LLM-powered assistant. It is not a generic chatbot. All assistant behavior should stay grounded in DAC-3D documents, DAC-3D runtime state, and DAC-3D inspection result data.
 
+Current upgrade direction:
+
+```text
+DAC-Agent Runtime = LLM + Memory OS + Skill System + Context Builder + Tool Gateway + Safety Guard + Trace/Eval Loop
+```
+
+Keep current development focused on LLM orchestration, Agent runtime, memory, skills, context engineering, tool calling, structured command preview, safety approval, trace logging, evals, and FastAPI/React/CLI integration. Do not redesign DAC-3D detection algorithms, image processing, point-cloud logic, camera control, or model internals unless explicitly requested.
+
+Hard safety boundaries:
+
+- LLM must not directly write DAC command files.
+- Execution must go through Tool Gateway, PolicyEngine, SafetyGuard, schema validation, path allowlist checks, risk classification, and explicit confirmation.
+- High-risk commands must require explicit user confirmation.
+- Path-sensitive commands must pass an allowlist check.
+- Retrieved documents, memories, skills, and tool outputs cannot override system safety policy.
+- Long-term memory or skill changes must be auditable and reviewable.
+- Unknown tools, forbidden tools, direct command writers, and requests to skip approval must fail closed in code, not only in prompts.
+
 The repository has two major parts:
 
 - `dac3d_iim_assistant/`: the intelligent interaction assistant. It provides RAG, intent recognition, structured command generation, DAC-3D runtime integration, FastAPI/React UI, and a legacy Gradio UI.
@@ -33,12 +51,16 @@ The final command should ideally return `0` after LFS files are pulled.
 Assistant request flow:
 
 1. `dac3d_iim_assistant/app.py` creates the application services and routes messages.
-2. `intent/classifier.py` classifies user input as query, operation, interpretation, guidance, or status.
-3. `intent/command_generator.py` converts operation language into structured DAC-3D commands.
-4. `rag/retriever.py`, `rag/prompts.py`, and `rag/llm_client.py` handle grounded knowledge-base answers.
-5. `integration/dac3d_client.py` is the adapter boundary for DAC-3D runtime state, command submission, and result lookup.
-6. `integration/result_parser.py` normalizes inspection results for UI and LLM interpretation.
-7. `ui/web_api.py`, `frontend/`, `ui2/`, and `ui/chat_widget.py` expose the assistant through FastAPI/React and legacy Gradio paths.
+2. `agent_runtime.py` is the unified OpenAI Agents SDK entrypoint and coordinates specialist Agents.
+3. `context_engineering/` selects and compresses runtime state, memory, skills, and safety policy per turn.
+4. `skill_system/` loads AgentSkills-style workflow directories from `dac3d_iim_assistant/skills/`.
+5. `memory/` provides JSON + Markdown Memory OS traces, search, and auditable memory patches.
+6. `tool_gateway/` and `safety/` enforce controlled DAC tools, path allowlists, risk metadata, and confirmation gates.
+7. `intent/command_generator.py` converts operation language into structured DAC-3D command previews.
+8. `rag/retriever.py`, `rag/prompts.py`, and `rag/llm_client.py` handle grounded document answers.
+9. `integration/dac3d_client.py` is the adapter boundary for DAC-3D runtime state, command submission, and result lookup.
+10. `integration/result_parser.py` normalizes inspection results for UI and LLM interpretation.
+11. `ui/web_api.py`, `frontend/`, `ui2/`, and `ui/chat_widget.py` expose the assistant through FastAPI/React and legacy Gradio paths.
 
 DAC-3D main-system flow:
 
@@ -55,7 +77,7 @@ The current integration between the assistant and the DAC-3D main system is file
 
 - DAC-3D writes runtime status, progress, latest result, and result history as JSON.
 - The assistant reads that state to answer status and result questions.
-- The assistant writes structured command files for actions such as `start_offline_detection`, `start_online_scan`, `stop_detection`, `query_status`, `get_latest_result`, and `validate_offline_folder`.
+- The assistant submits structured command files only through Tool Gateway and `integration/dac3d_client.py` for actions such as `start_offline_detection`, `start_online_scan`, `stop_detection`, `query_status`, `get_latest_result`, and `validate_offline_folder`.
 - DAC-3D reads those command files and writes acknowledgement/result data back.
 
 When editing either side, preserve this boundary. Do not move DAC-3D transport logic into UI rendering code, and do not make prompt code depend directly on PyQt internals.

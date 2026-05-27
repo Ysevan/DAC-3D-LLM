@@ -292,6 +292,10 @@ class DAC3DClient:
         """Compatibility wrapper for the scaffold contract."""
         return self.submit_scan_command(command)
 
+    def command_bridge_path(self) -> Path | None:
+        """Return the file bridge command path, if this client writes one."""
+        return self._command_file_path()
+
     def _validate_command(self, command: dict[str, Any]) -> None:
         action = command.get("action")
         if not action:
@@ -467,7 +471,7 @@ class DAC3DClient:
         status = {
             "state": "command_sent",
             "progress": 0,
-            "message": f"已向 DAC-3D 主系统下发结构化命令: {action}",
+            "message": f"已提交并向 DAC-3D 主系统下发结构化命令: {action}",
             "step": "assistant_command_bridge",
             "source": "command_file_bridge",
             "command_id": command_id,

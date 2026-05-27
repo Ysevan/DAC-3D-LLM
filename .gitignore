@@ -8,3 +8,4 @@ node_modules/
 dist/
 .npm-cache/
 *.tsbuildinfo
+dac3d_iim_assistant/evals/drafts/*.json

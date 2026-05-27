@@ -2,21 +2,67 @@ import { FormEvent, KeyboardEvent, ReactNode, memo, useCallback, useEffect, useM
 import { createPortal } from "react-dom";
 
 import {
+  approveMemoryPatch,
+  approvePendingCommand,
   buildKnowledgeBase,
+  fetchAgentWorkspace,
+  fetchEvalDrafts,
   fetchKnowledgeBaseSummary,
+  fetchMemoryPatches,
   fetchRuntimeSummary,
+  generateEvalDrafts,
+  previewAgentWorkflow,
+  rejectMemoryPatch,
+  runAgentEvals,
   streamChat,
 } from "./api";
 import type {
+  AgentWorkflowPreview,
+  AgentWorkspace,
   AssistantPayload,
   ChatHistoryTurn,
+  EvalDraftListResult,
+  EvalRunResult,
   KnowledgeBaseSummary,
+  MemoryPatch,
+  MemoryPatchListResult,
   MessageRecord,
   RuntimeSummary,
 } from "./types";
 
 type PanelMode = "hidden" | "details" | "settings";
 type ThemeMode = "auto" | "light" | "dark";
+type ToolGatewayToolView = {
+  name: string;
+  riskLevel: string;
+  requiresConfirmation: boolean;
+  readOnlyHint: boolean;
+  destructiveHint: boolean;
+  idempotentHint: boolean;
+  openWorldHint: boolean;
+};
+
+type ToolGatewayView = {
+  enabled: boolean;
+  toolCount: number;
+  workflow: string;
+  metadataPolicy: string;
+  policyEngineEnabled: boolean;
+  policyMode: string;
+  policyEnforcement: string;
+  tools: ToolGatewayToolView[];
+};
+
+type AgentWorkspaceView = {
+  entryAgent: string;
+  specialistCount: number;
+  skillCount: number;
+  contextNodeCount: number;
+  memoryTraceCount: number;
+  workflow: string[];
+  agentNames: string[];
+  contextKinds: Array<{ name: string; count: number }>;
+};
 
 type StreamRenderState = {
   assistantId: string | null;
@@ -56,8 +102,24 @@ function App() {
   const [runtimeSummary, setRuntimeSummary] = useState<RuntimeSummary | null>(null);
   const [knowledgeBaseSummary, setKnowledgeBaseSummary] = useState<KnowledgeBaseSummary | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [approvalInFlight, setApprovalInFlight] = useState<string | null>(null);
+  const [approvedPreviewIds, setApprovedPreviewIds] = useState<string[]>([]);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildStatus, setBuildStatus] = useState("");
+  const [evalResult, setEvalResult] = useState<EvalRunResult | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [evalStatus, setEvalStatus] = useState("");
+  const [evalDrafts, setEvalDrafts] = useState<EvalDraftListResult | null>(null);
+  const [isGeneratingEvalDrafts, setIsGeneratingEvalDrafts] = useState(false);
+  const [evalDraftStatus, setEvalDraftStatus] = useState("");
+  const [memoryPatches, setMemoryPatches] = useState<MemoryPatchListResult | null>(null);
+  const [memoryPatchStatus, setMemoryPatchStatus] = useState("");
+  const [memoryPatchBusyId, setMemoryPatchBusyId] = useState<string | null>(null);
+  const [agentWorkspace, setAgentWorkspace] = useState<AgentWorkspace | null>(null);
+  const [workflowTask, setWorkflowTask] = useState("选择 pre_fusion_images 下的图片进行离线检测");
+  const [workflowPreview, setWorkflowPreview] = useState<AgentWorkflowPreview | null>(null);
+  const [workflowStatus, setWorkflowStatus] = useState("");
+  const [isPreviewingWorkflow, setIsPreviewingWorkflow] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const endRef = useRef<HTMLDivElement | null>(null);
   const streamRenderRef = useRef<StreamRenderState>({
@@ -73,6 +135,8 @@ function App() {
   const hasConversation = messages.length > 0;
   const theme = themeMode === "auto" ? systemTheme : themeMode;
   const dac3dRuntime = useMemo(() => buildDac3dRuntimeView(runtimeSummary), [runtimeSummary]);
+  const toolGateway = useMemo(() => buildToolGatewayView(runtimeSummary), [runtimeSummary]);
+  const agentWorkspaceView = useMemo(() => buildAgentWorkspaceView(agentWorkspace), [agentWorkspace]);
 
   useEffect(() => {
     void refreshSidebarData();
@@ -120,12 +184,24 @@ function App() {
 
   async function refreshSidebarData(): Promise<void> {
     try {
-      const [runtime, knowledgeBase] = await Promise.all([
+      const [runtime, knowledgeBase, patches, drafts, workspace] = await Promise.all([
         fetchRuntimeSummary(),
         fetchKnowledgeBaseSummary(),
+        fetchMemoryPatches().catch(() => null),
+        fetchEvalDrafts().catch(() => null),
+        fetchAgentWorkspace().catch(() => null),
       ]);
       setRuntimeSummary(runtime);
       setKnowledgeBaseSummary(knowledgeBase);
+      if (patches) {
+        setMemoryPatches(patches);
+      }
+      if (drafts) {
+        setEvalDrafts(drafts);
+      }
+      if (workspace) {
+        setAgentWorkspace(workspace);
+      }
     } catch (error) {
       setBuildStatus(error instanceof Error ? error.message : String(error));
     }
@@ -232,6 +308,68 @@ function App() {
       });
       setRequestStage(null);
       setIsSending(false);
+    }
+  }
+
+  async function handleApproveCommand(message: MessageRecord): Promise<void> {
+    const approval = getApprovalRequest(message.payload);
+    if (!approval || isSending || approvalInFlight) {
+      return;
+    }
+
+    const timestamp = Date.now();
+    const userId = `approval-user-${timestamp}`;
+    const assistantId = `approval-assistant-${timestamp}`;
+    setMessages((current) => [
+      ...current,
+      { id: userId, role: "user", content: "批准执行", status: "ready" },
+      { id: assistantId, role: "assistant", content: "正在提交已批准的 DAC-3D 命令…", status: "streaming" },
+    ]);
+    setIsSending(true);
+    setApprovalInFlight(approval.previewId);
+    setRequestStage("提交批准中");
+    setDetailsPayload(message.payload ?? EMPTY_DETAILS);
+
+    try {
+      const payload = await approvePendingCommand({
+        session_id: sessionId,
+        preview_id: approval.previewId,
+        confirmation_token: approval.confirmationToken,
+      });
+      const answer = payload.answer || "命令已提交。";
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === assistantId
+            ? { ...item, content: answer, status: "ready", payload: { ...payload, answer } }
+            : item,
+        ),
+      );
+      setHistory((current) => [...current, { user: "批准执行", assistant: answer }]);
+      setDetailsPayload({ ...payload, answer });
+      setApprovedPreviewIds((current) =>
+        current.includes(approval.previewId) ? current : [...current, approval.previewId],
+      );
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
+      const answer = `批准执行失败: ${errorText}`;
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === assistantId
+            ? {
+                ...item,
+                content: answer,
+                status: "error",
+                payload: { ...EMPTY_DETAILS, intent: "operation", answer },
+              }
+            : item,
+        ),
+      );
+      setDetailsPayload({ ...EMPTY_DETAILS, intent: "operation", answer });
+    } finally {
+      setIsSending(false);
+      setApprovalInFlight(null);
+      setRequestStage(null);
+      void refreshSidebarData();
     }
   }
 
@@ -411,6 +549,112 @@ function App() {
     }
   }
 
+  async function handleRunEvals(): Promise<void> {
+    if (isEvaluating) {
+      return;
+    }
+    setIsEvaluating(true);
+    setEvalStatus("正在运行本地 Agent 评测...");
+    setPanelMode("settings");
+    try {
+      const result = await runAgentEvals();
+      setEvalResult(result);
+      setEvalStatus(`评测完成：${result.passed}/${result.case_count} 通过`);
+      void refreshSidebarData();
+    } catch (error) {
+      setEvalStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsEvaluating(false);
+    }
+  }
+
+  async function handleGenerateEvalDrafts(): Promise<void> {
+    if (isGeneratingEvalDrafts) {
+      return;
+    }
+    setIsGeneratingEvalDrafts(true);
+    setEvalDraftStatus("正在从最近 trace 生成评测草稿...");
+    setPanelMode("settings");
+    try {
+      const result = await generateEvalDrafts(5);
+      setEvalDrafts(result);
+      setEvalDraftStatus(`已生成 ${result.count} 条评测草稿，尚未加入正式回归集。`);
+      void refreshSidebarData();
+    } catch (error) {
+      setEvalDraftStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsGeneratingEvalDrafts(false);
+    }
+  }
+
+  async function handlePreviewWorkflow(): Promise<void> {
+    const task = workflowTask.trim();
+    if (!task || isPreviewingWorkflow) {
+      return;
+    }
+    setIsPreviewingWorkflow(true);
+    setWorkflowStatus("正在预览 Agent 工作流...");
+    setPanelMode("settings");
+    try {
+      const result = await previewAgentWorkflow(task, sessionId);
+      setWorkflowPreview(result);
+      setWorkflowStatus(`已选择 ${result.agent_path.length} 个 Agent / ${result.tool_candidates.length} 个候选工具。`);
+    } catch (error) {
+      setWorkflowStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsPreviewingWorkflow(false);
+    }
+  }
+
+  async function handleRefreshMemoryPatches(): Promise<void> {
+    setMemoryPatchStatus("正在读取待审核记忆...");
+    try {
+      const result = await fetchMemoryPatches();
+      setMemoryPatches(result);
+      setMemoryPatchStatus(`待审核记忆：${result.count} 条`);
+    } catch (error) {
+      setMemoryPatchStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleApproveMemoryPatch(patch: MemoryPatch): Promise<void> {
+    if (!patch.id || memoryPatchBusyId) {
+      return;
+    }
+    setMemoryPatchBusyId(patch.id);
+    setMemoryPatchStatus("正在批准记忆补丁...");
+    try {
+      await approveMemoryPatch(patch.id);
+      const result = await fetchMemoryPatches();
+      setMemoryPatches(result);
+      setMemoryPatchStatus(`已批准记忆补丁：${patch.id}`);
+      void refreshSidebarData();
+    } catch (error) {
+      setMemoryPatchStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryPatchBusyId(null);
+    }
+  }
+
+  async function handleRejectMemoryPatch(patch: MemoryPatch): Promise<void> {
+    if (!patch.id || memoryPatchBusyId) {
+      return;
+    }
+    setMemoryPatchBusyId(patch.id);
+    setMemoryPatchStatus("正在拒绝记忆补丁...");
+    try {
+      await rejectMemoryPatch(patch.id);
+      const result = await fetchMemoryPatches();
+      setMemoryPatches(result);
+      setMemoryPatchStatus(`已拒绝记忆补丁：${patch.id}`);
+      void refreshSidebarData();
+    } catch (error) {
+      setMemoryPatchStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryPatchBusyId(null);
+    }
+  }
+
   function handleKnowledgeBaseFilesChange(files: FileList | null): void {
     const pickedFiles = Array.from(files ?? []);
     setSelectedFiles(pickedFiles);
@@ -436,6 +680,7 @@ function App() {
     setSessionId(createChatSessionId());
     setInput("");
     setDetailsPayload(EMPTY_DETAILS);
+    setApprovedPreviewIds([]);
     setPanelMode("hidden");
   }, []);
 
@@ -541,8 +786,11 @@ function App() {
                 message={message}
                 copiedMessageId={copiedMessageId}
                 requestStage={requestStage}
+                approvalInFlight={approvalInFlight}
+                approvedPreviewIds={approvedPreviewIds}
                 onCopy={handleCopyMessage}
                 onAction={handleMessageUtilityAction}
+                onApproveCommand={handleApproveCommand}
               />
             ))}
             <div ref={endRef} />
@@ -660,6 +908,236 @@ function App() {
 
             <section className="data-section">
               <Dac3dRuntimeDetails runtime={dac3dRuntime} onRefresh={() => void refreshSidebarData()} />
+            </section>
+
+            <section className="data-section">
+              <h3>Agent 工作区</h3>
+              <div className="data-grid">
+                <DetailRow label="入口 Agent" value={agentWorkspaceView.entryAgent} />
+                <DetailRow label="专家 Agent" value={`${agentWorkspaceView.specialistCount}`} />
+                <DetailRow label="技能数量" value={`${agentWorkspaceView.skillCount}`} />
+                <DetailRow label="Context 节点" value={`${agentWorkspaceView.contextNodeCount}`} />
+                <DetailRow label="记忆 Trace" value={`${agentWorkspaceView.memoryTraceCount}`} />
+              </div>
+              {agentWorkspaceView.agentNames.length ? (
+                <div className="agent-chip-list">
+                  {agentWorkspaceView.agentNames.map((name) => (
+                    <span className="agent-chip" key={name}>{name}</span>
+                  ))}
+                </div>
+              ) : null}
+              {agentWorkspaceView.contextKinds.length ? (
+                <div className="context-kind-list">
+                  {agentWorkspaceView.contextKinds.map((item) => (
+                    <span key={item.name}>{item.name}: {item.count}</span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="workflow-preview-form">
+                <input
+                  aria-label="Agent 工作流任务"
+                  onChange={(event) => setWorkflowTask(event.target.value)}
+                  value={workflowTask}
+                />
+                <button
+                  className="btn-run-evals"
+                  disabled={isPreviewingWorkflow || !workflowTask.trim()}
+                  onClick={() => void handlePreviewWorkflow()}
+                  type="button"
+                >
+                  {isPreviewingWorkflow ? "预览中..." : "预览工作流"}
+                </button>
+              </div>
+              {workflowStatus ? <div className="status-msg">{workflowStatus}</div> : null}
+              {workflowPreview ? (
+                <div className="workflow-preview-card">
+                  <div className="workflow-path">
+                    {workflowPreview.agent_path.map((agent, index) => (
+                      <span key={`${agent}-${index}`}>{agent}</span>
+                    ))}
+                  </div>
+                  <div className="workflow-node-grid">
+                    {workflowPreview.nodes.map((node) => (
+                      <div className={`workflow-node ${node.status}`} key={node.id}>
+                        <strong>{node.label}</strong>
+                        <span>{node.kind}{typeof node.count === "number" ? ` / ${node.count}` : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="workflow-tool-list">
+                    {workflowPreview.tool_candidates.map((tool) => (
+                      <span key={tool}>{tool}</span>
+                    ))}
+                  </div>
+                  {workflowPreview.context_tree_matches.length ? (
+                    <div className="workflow-match-list">
+                      {workflowPreview.context_tree_matches.slice(0, 4).map((match, index) => {
+                        const node = asRecord(match.node);
+                        return (
+                          <div className="workflow-match-item" key={`${stringValue(node?.id)}-${index}`}>
+                            <strong>{stringValue(node?.title)}</strong>
+                            <span>
+                              {stringValue(node?.kind)} / {formatScore(Number.isFinite(Number(match.score)) ? Number(match.score) : undefined)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="data-section">
+              <h3>Tool Gateway 风险提示</h3>
+              <div className="data-grid">
+                <DetailRow label="网关状态" value={toolGateway.enabled ? "已开启" : "未开启"} />
+                <DetailRow label="工具数量" value={`${toolGateway.toolCount}`} />
+                <DetailRow label="工作流" value={toolGateway.workflow} />
+                <DetailRow label="提示策略" value={toolGateway.metadataPolicy} />
+                <DetailRow label="策略引擎" value={toolGateway.policyEngineEnabled ? "已开启" : "未开启"} />
+                <DetailRow label="策略模式" value={toolGateway.policyMode} />
+                <DetailRow label="执行约束" value={toolGateway.policyEnforcement} />
+              </div>
+              {toolGateway.tools.length ? (
+                <div className="tool-hint-list">
+                  {toolGateway.tools.map((tool) => (
+                    <div className="tool-hint-item" key={tool.name}>
+                      <div className="tool-hint-title">
+                        <strong>{tool.name}</strong>
+                        <span>{tool.riskLevel}</span>
+                      </div>
+                      <div className="tool-hint-flags">
+                        <span className={tool.readOnlyHint ? "active" : ""}>
+                          readOnly {tool.readOnlyHint ? "是" : "否"}
+                        </span>
+                        <span className={tool.destructiveHint ? "danger" : ""}>
+                          destructive {tool.destructiveHint ? "是" : "否"}
+                        </span>
+                        <span className={tool.idempotentHint ? "active" : ""}>
+                          idempotent {tool.idempotentHint ? "是" : "否"}
+                        </span>
+                        <span className={tool.openWorldHint ? "danger" : ""}>
+                          openWorld {tool.openWorldHint ? "是" : "否"}
+                        </span>
+                        <span className={tool.requiresConfirmation ? "danger" : ""}>
+                          confirm {tool.requiresConfirmation ? "是" : "否"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="data-section">
+              <h3>Agent 评测</h3>
+              <div className="eval-summary-card">
+                <div>
+                  <span>本地回归集</span>
+                  <strong>
+                    {evalResult
+                      ? `${evalResult.passed}/${evalResult.case_count} 通过`
+                      : "尚未运行"}
+                  </strong>
+                </div>
+                <button
+                  className="btn-run-evals"
+                  disabled={isEvaluating}
+                  onClick={() => void handleRunEvals()}
+                  type="button"
+                >
+                  {isEvaluating ? "评测中…" : "运行评测"}
+                </button>
+              </div>
+              {evalStatus ? <div className="status-msg">{evalStatus}</div> : null}
+              {evalResult ? (
+                <div className="eval-result-list">
+                  {evalResult.results.map((result) => (
+                    <div className={`eval-result-item ${result.passed ? "passed" : "failed"}`} key={result.id}>
+                      <span>{result.category}</span>
+                      <strong>{result.id}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <div className="eval-draft-card">
+                <div>
+                  <span>Trace 评测草稿</span>
+                  <strong>{evalDrafts ? `${evalDrafts.count} 条` : "未生成"}</strong>
+                </div>
+                <button
+                  className="btn-run-evals"
+                  disabled={isGeneratingEvalDrafts}
+                  onClick={() => void handleGenerateEvalDrafts()}
+                  type="button"
+                >
+                  {isGeneratingEvalDrafts ? "生成中…" : "生成草稿"}
+                </button>
+              </div>
+              {evalDraftStatus ? <div className="status-msg">{evalDraftStatus}</div> : null}
+              {evalDrafts?.drafts.length ? (
+                <div className="eval-draft-list">
+                  {evalDrafts.drafts.slice(-5).map((item) => (
+                    <div className="eval-draft-item" key={item.draft.id}>
+                      <span>{item.draft.category}</span>
+                      <strong>{item.draft.id}</strong>
+                      <p>{item.draft.input}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="data-section">
+              <h3>记忆补丁审核</h3>
+              <div className="memory-review-header">
+                <div>
+                  <span>待审核候选</span>
+                  <strong>{memoryPatches ? `${memoryPatches.count} 条` : "未读取"}</strong>
+                </div>
+                <button
+                  className="btn-run-evals"
+                  disabled={Boolean(memoryPatchBusyId)}
+                  onClick={() => void handleRefreshMemoryPatches()}
+                  type="button"
+                >
+                  刷新
+                </button>
+              </div>
+              {memoryPatchStatus ? <div className="status-msg">{memoryPatchStatus}</div> : null}
+              {memoryPatches?.patches.length ? (
+                <div className="memory-patch-list">
+                  {memoryPatches.patches.map((patch) => (
+                    <div className="memory-patch-item" key={patch.id}>
+                      <div className="memory-patch-meta">
+                        <span>{patch.target || "memory"}</span>
+                        <span>{patch.topic || patch.status || "pending"}</span>
+                      </div>
+                      <p>{patch.content || "空记忆补丁"}</p>
+                      <small>{patch.reason || patch.source_trace_id || patch.id}</small>
+                      <div className="memory-patch-actions">
+                        <button
+                          disabled={Boolean(memoryPatchBusyId)}
+                          onClick={() => void handleApproveMemoryPatch(patch)}
+                          type="button"
+                        >
+                          {memoryPatchBusyId === patch.id ? "处理中..." : "批准"}
+                        </button>
+                        <button
+                          disabled={Boolean(memoryPatchBusyId)}
+                          onClick={() => void handleRejectMemoryPatch(patch)}
+                          type="button"
+                        >
+                          拒绝
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-note">暂无待审核记忆。</div>
+              )}
             </section>
 
             <section className="data-section">
@@ -815,11 +1293,27 @@ const MessageRow = memo(function MessageRow(props: {
   message: MessageRecord;
   copiedMessageId: string | null;
   requestStage: string | null;
+  approvalInFlight: string | null;
+  approvedPreviewIds: string[];
   onCopy: (message: MessageRecord) => Promise<void>;
   onAction: (message: MessageRecord) => void;
+  onApproveCommand: (message: MessageRecord) => Promise<void>;
 }) {
-  const { message, copiedMessageId, requestStage, onCopy, onAction } = props;
+  const {
+    message,
+    copiedMessageId,
+    requestStage,
+    approvalInFlight,
+    approvedPreviewIds,
+    onCopy,
+    onAction,
+    onApproveCommand,
+  } = props;
   const displayContent = getDisplayContent(message);
+  const approvalCandidate =
+    message.role === "assistant" && message.status === "ready" ? getApprovalRequest(message.payload) : null;
+  const approval =
+    approvalCandidate && !approvedPreviewIds.includes(approvalCandidate.previewId) ? approvalCandidate : null;
 
   return (
     <div
@@ -854,6 +1348,14 @@ const MessageRow = memo(function MessageRow(props: {
           />
         </div>
         {message.role === "assistant" && message.payload ? <MessageFooter payload={message.payload} /> : null}
+        {approval ? (
+            <CommandApprovalCard
+              approval={approval}
+              disabled={Boolean(approvalInFlight) || approval.expired}
+              isSubmitting={approvalInFlight === approval.previewId}
+              onApprove={() => void onApproveCommand(message)}
+            />
+        ) : null}
         <div className="log-actions">
           <button onClick={() => void onCopy(message)} title="复制内容">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
@@ -882,6 +1384,94 @@ function getDisplayContent(message: MessageRecord): string {
   return message.content || message.payload?.answer || "";
 }
 
+type ApprovalRequest = {
+  previewId: string;
+  confirmationToken: string;
+  action: string;
+  message: string;
+  expiresAt: string;
+  ttlSeconds: number | null;
+  lifecycleState: string;
+  expired: boolean;
+};
+
+function getApprovalRequest(payload?: AssistantPayload): ApprovalRequest | null {
+  const parsedResult = asRecord(payload?.parsed_result);
+  const gatewayResult = asRecord(parsedResult?.tool_gateway);
+  if (gatewayResult?.tool === "submit_command" || gatewayResult?.blocked === true) {
+    return null;
+  }
+  const validation = asRecord(gatewayResult?.validation);
+  if (validation?.can_submit === false) {
+    return null;
+  }
+
+  const commandPreview = asRecord(payload?.command_preview);
+  const gateway = asRecord(commandPreview?.gateway);
+  if (!gateway || gateway.confirmation_required !== true) {
+    return null;
+  }
+
+  const previewId = stringValue(gateway.preview_id);
+  const confirmationToken = stringValue(gateway.confirmation_token);
+  if (previewId === "未知" || confirmationToken === "未知") {
+    return null;
+  }
+
+  return {
+    previewId,
+    confirmationToken,
+    action: stringValue(commandPreview?.action),
+    expiresAt: stringValue(gateway.confirmation_expires_at),
+    ttlSeconds:
+      typeof gateway.confirmation_ttl_seconds === "number"
+        ? gateway.confirmation_ttl_seconds
+        : Number.isFinite(Number(gateway.confirmation_ttl_seconds))
+          ? Number(gateway.confirmation_ttl_seconds)
+          : null,
+    lifecycleState: stringValue(gateway.lifecycle_state),
+    expired: isPastTimestamp(gateway.confirmation_expires_at),
+    message:
+      stringValue(gateway.confirmation_message) === "未知"
+        ? "该命令需要人工批准后才能继续下发。"
+        : stringValue(gateway.confirmation_message),
+  };
+}
+
+function CommandApprovalCard(props: {
+  approval: ApprovalRequest;
+  disabled: boolean;
+  isSubmitting: boolean;
+  onApprove: () => void;
+}) {
+  const { approval, disabled, isSubmitting, onApprove } = props;
+  return (
+    <div className="command-approval-card">
+      <div className="command-approval-copy">
+        <strong>等待批准</strong>
+        <span>{approval.action}</span>
+        <p>{approval.message}</p>
+        <div className="command-approval-meta">
+          <span>状态 {approval.lifecycleState}</span>
+          {approval.ttlSeconds !== null ? <span>TTL {approval.ttlSeconds}s</span> : null}
+          <span>过期 {formatTimestamp(approval.expiresAt)}</span>
+        </div>
+      </div>
+      <button
+        className="btn-approve-command"
+        disabled={disabled}
+        onClick={onApprove}
+        type="button"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+        {approval.expired ? "已过期" : isSubmitting ? "提交中…" : "批准执行"}
+      </button>
+    </div>
+  );
+}
+
 function MessageContent(props: { content: string; renderMode: "plain" | "rich"; showCursor: boolean }) {
   const richContent = useMemo(() => renderRichText(props.content, props.showCursor), [props.content, props.showCursor]);
   if (props.renderMode === "plain") {
@@ -898,23 +1488,39 @@ function MessageContent(props: { content: string; renderMode: "plain" | "rich"; 
 function areMessageRowPropsEqual(
   previous: {
     message: MessageRecord;
-    copiedMessageId: string | null;
-    requestStage: string | null;
-    onCopy: (message: MessageRecord) => Promise<void>;
-    onAction: (message: MessageRecord) => void;
+  copiedMessageId: string | null;
+  requestStage: string | null;
+  approvalInFlight: string | null;
+  approvedPreviewIds: string[];
+  onCopy: (message: MessageRecord) => Promise<void>;
+  onAction: (message: MessageRecord) => void;
+  onApproveCommand: (message: MessageRecord) => Promise<void>;
   },
   next: {
     message: MessageRecord;
     copiedMessageId: string | null;
     requestStage: string | null;
+    approvalInFlight: string | null;
+    approvedPreviewIds: string[];
     onCopy: (message: MessageRecord) => Promise<void>;
     onAction: (message: MessageRecord) => void;
+    onApproveCommand: (message: MessageRecord) => Promise<void>;
   },
 ): boolean {
   if (previous.message !== next.message) {
     return false;
   }
-  if (previous.onCopy !== next.onCopy || previous.onAction !== next.onAction) {
+  if (
+    previous.onCopy !== next.onCopy ||
+    previous.onAction !== next.onAction ||
+    previous.onApproveCommand !== next.onApproveCommand
+  ) {
+    return false;
+  }
+  if (previous.approvalInFlight !== next.approvalInFlight) {
+    return false;
+  }
+  if (previous.approvedPreviewIds !== next.approvedPreviewIds) {
     return false;
   }
 
@@ -1038,11 +1644,70 @@ function buildDac3dRuntimeView(runtimeSummary: RuntimeSummary | null): Dac3dRunt
   };
 }
 
+function buildAgentWorkspaceView(workspace: AgentWorkspace | null): AgentWorkspaceView {
+  const skills = asRecord(workspace?.skills);
+  const contextTree = asRecord(workspace?.context_tree);
+  const memoryOs = asRecord(workspace?.memory_os);
+  const contextKindsRecord = asRecord(contextTree?.kinds);
+  const contextKinds = Object.entries(contextKindsRecord ?? {}).map(([name, count]) => ({
+    name,
+    count: Number(count) || 0,
+  }));
+  return {
+    entryAgent: stringValue(workspace?.entry_agent),
+    specialistCount: Array.isArray(workspace?.specialist_agents) ? workspace.specialist_agents.length : 0,
+    skillCount: Number(skills?.skill_count ?? 0) || 0,
+    contextNodeCount: Number(contextTree?.node_count ?? 0) || 0,
+    memoryTraceCount: Number(memoryOs?.trace_count ?? 0) || 0,
+    workflow: Array.isArray(workspace?.workflow) ? workspace.workflow.map(String) : [],
+    agentNames: Array.isArray(workspace?.specialist_agents) ? workspace.specialist_agents.map(String) : [],
+    contextKinds,
+  };
+}
+
+function buildToolGatewayView(runtimeSummary: RuntimeSummary | null): ToolGatewayView {
+  const agent = asRecord(runtimeSummary?.agent);
+  const gateway = asRecord(agent?.tool_gateway);
+  const policyEngine = asRecord(gateway?.policy_engine);
+  const rawTools = Array.isArray(gateway?.tools) ? gateway.tools : [];
+  const tools = rawTools
+    .map((item) => asRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .map((item) => ({
+      name: stringValue(item.name),
+      riskLevel: stringValue(item.risk_level),
+      requiresConfirmation: item.requires_confirmation === true,
+      readOnlyHint: item.readOnlyHint === true,
+      destructiveHint: item.destructiveHint === true,
+      idempotentHint: item.idempotentHint === true,
+      openWorldHint: item.openWorldHint === true,
+    }));
+  return {
+    enabled: gateway?.enabled === true,
+    toolCount: Number(gateway?.tool_count ?? tools.length) || tools.length,
+    workflow: stringValue(gateway?.workflow),
+    metadataPolicy: stringValue(gateway?.metadata_policy),
+    policyEngineEnabled: policyEngine?.enabled === true,
+    policyMode: stringValue(policyEngine?.mode),
+    policyEnforcement: stringValue(policyEngine?.enforcement),
+    tools,
+  };
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
   return value as Record<string, unknown>;
+}
+
+function isPastTimestamp(value: unknown): boolean {
+  const timestamp = stringValue(value);
+  if (timestamp === "未知") {
+    return false;
+  }
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) && parsed <= Date.now();
 }
 
 function normalizeProgress(value: unknown): number {

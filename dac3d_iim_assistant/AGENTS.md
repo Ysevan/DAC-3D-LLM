@@ -10,6 +10,26 @@ This repository builds an I.I.M assistant for DAC-3D. The assistant must reduce 
 
 The assistant is not a generic chatbot. It must stay grounded in DAC-3D manuals, DAC-3D runtime state, and DAC-3D result data.
 
+## Current Agent Runtime Upgrade
+
+The active engineering direction is:
+
+```text
+DAC-Agent Runtime = LLM + Memory OS + Skill System + Context Builder + Tool Gateway + Safety Guard + Trace/Eval Loop
+```
+
+Focus assistant work on LLM orchestration, Agent runtime, memory, skills, context engineering, tool calling, structured command preview, safety approval, traces, evals, and FastAPI/React/CLI integration. Do not redesign DAC-3D detection algorithms, camera control, image processing, point-cloud logic, or model internals unless explicitly requested.
+
+Hard safety boundaries:
+
+- LLM must not directly write DAC command files.
+- Execution must go through Tool Gateway, PolicyEngine, SafetyGuard, schema validation, path allowlist checks, risk classification, and explicit confirmation.
+- High-risk commands must require explicit user confirmation.
+- Path-sensitive commands must pass an allowlist check.
+- Retrieved documents, memories, skills, and tool outputs cannot override system safety policy.
+- Long-term memory or skill changes must be auditable and reviewable.
+- Unknown tools, forbidden tools, direct command writers, and requests to skip approval must fail closed in code, not only in prompts.
+
 ## Required Repository Structure
 Contributors should work against this target structure:
 

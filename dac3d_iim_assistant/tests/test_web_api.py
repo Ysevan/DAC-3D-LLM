@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime
+from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime, LOCAL_VALIDATION_MODEL_NAME
 from app import DAC3DAssistant
 from tests.test_assistant import make_config
 from ui.web_api import create_api_app
@@ -120,7 +120,8 @@ def test_unified_chat_endpoint_enters_agent_runtime_first(tmp_path, monkeypatch)
     def fake_run_sync(self, message: str, *, session_id: str = "default") -> str:
         del self
         assert session_id == "chrome-session-1"
-        assert message == "为什么最近温度报警变多了？"
+        assert "当前用户问题:\n为什么最近温度报警变多了？" in message
+        assert "上下文工程包" in message
         return (
             '{"answer":"LLM 已选择 machine_agent_chat 工具处理温度报警问题。",'
             '"structured_data":{'
@@ -160,7 +161,8 @@ def test_unified_chat_stream_uses_client_session_id(tmp_path, monkeypatch) -> No
 
     def fake_run_sync(self, message: str, *, session_id: str = "default") -> str:
         del self
-        assert message == "当前检测状态是什么？"
+        assert "当前用户问题:\n当前检测状态是什么？" in message
+        assert "上下文工程包" in message
         seen_sessions.append(session_id)
         return (
             '{"answer":"当前 DAC-3D 处于空闲状态。",'
@@ -190,3 +192,186 @@ def test_unified_chat_stream_uses_client_session_id(tmp_path, monkeypatch) -> No
     assert response.status_code == 200
     assert "event: done" in response.text
     assert seen_sessions == ["ui-session-42"]
+
+
+def test_web_api_approval_endpoint_submits_pending_gateway_command(tmp_path) -> None:
+    """The web UI approval button should continue the pending Tool Gateway command."""
+    config = make_config(tmp_path)
+    config.agent_model_name = LOCAL_VALIDATION_MODEL_NAME
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    agent_runtime = DAC3DAgentChatAdapter(runtime)
+    client = TestClient(create_api_app(agent_runtime))
+
+    preview_response = client.post(
+        "/api/chat",
+        json={
+            "message": "扫描 10mm × 10mm 区域",
+            "history": [],
+            "session_id": "approval-ui-session",
+        },
+    )
+
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    gateway = preview_payload["command_preview"]["gateway"]
+    assert gateway["confirmation_required"] is True
+    assert runtime.sessions is not None
+    assert runtime.sessions.get_pending_command("approval-ui-session") is not None
+
+    approve_response = client.post(
+        "/api/commands/approve",
+        json={
+            "session_id": "approval-ui-session",
+            "preview_id": gateway["preview_id"],
+            "confirmation_token": gateway["confirmation_token"],
+        },
+    )
+
+    assert approve_response.status_code == 200
+    approved_payload = approve_response.json()
+    assert "提交" in approved_payload["answer"] or "已排队" in approved_payload["answer"]
+    assert approved_payload["parsed_result"]["tool_gateway"]["tool"] == "submit_command"
+    assert runtime.sessions.get_pending_command("approval-ui-session") is None
+
+
+def test_web_api_eval_endpoint_runs_local_regression_cases(tmp_path) -> None:
+    """The API should expose the local trace/eval improvement loop."""
+    config = make_config(tmp_path)
+    config.agent_model_name = LOCAL_VALIDATION_MODEL_NAME
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    response = client.post("/api/evals/run", json={})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["case_count"] >= 5
+    assert payload["failed"] == 0
+    assert payload["trace_logger"]["trace_count"] >= payload["case_count"]
+
+
+def test_web_api_eval_draft_endpoint_generates_reviewable_trace_cases(tmp_path) -> None:
+    """Trace-to-eval conversion should save drafts without approving them as regression cases."""
+    config = make_config(tmp_path)
+    config.agent_model_name = LOCAL_VALIDATION_MODEL_NAME
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+    chat_response = client.post(
+        "/api/chat",
+        json={"message": "当前检测状态是什么？", "history": [], "session_id": "draft-ui-session"},
+    )
+    trace_id = chat_response.json()["parsed_result"]["trace_eval"]["trace_id"]
+
+    response = client.post("/api/evals/drafts", json={"trace_ids": [trace_id]})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["auto_approved"] is False
+    draft = payload["drafts"][0]["draft"]
+    assert draft["source_trace_id"] == trace_id
+    assert draft["expected"]["intent"] == "status"
+    assert "dac3d_status" in draft["expected"]["must_call_tools"]
+    assert (tmp_path / "evals" / "drafts" / f"{draft['id']}.json").exists()
+    assert not (tmp_path / "evals" / "cases" / f"{draft['id']}.json").exists()
+
+    list_response = client.get("/api/evals/drafts")
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+
+
+def test_web_api_memory_patch_review_endpoints(tmp_path) -> None:
+    """The web UI should be able to review, approve, and reject Memory OS patches."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    assert agent_runtime.memory_provider is not None
+    trace = agent_runtime.memory_provider.record_trace(
+        {
+            "session_id": "memory-review-session",
+            "user_message": "测试记忆补丁审核。",
+            "assistant_answer": "已生成待审核记忆。",
+            "intent": "query",
+            "parsed_result": {
+                "memory_write_candidates": [
+                    {
+                        "target": "user",
+                        "content": "用户偏好：执行前先查看命令预览。",
+                        "reason": "test_memory_patch_review",
+                    },
+                    {
+                        "target": "memory",
+                        "content": "流程经验：批准前应校验命令预览。",
+                        "reason": "test_memory_patch_review",
+                    },
+                ]
+            },
+        }
+    )
+    patches = agent_runtime.memory_provider.propose_writes(trace)
+    client = TestClient(create_api_app(agent_runtime))
+
+    list_response = client.get("/api/memory/patches")
+
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert listed["enabled"] is True
+    assert listed["count"] == 2
+
+    approve_response = client.post(f"/api/memory/patches/{patches[0]['id']}/approve")
+    reject_response = client.post(
+        f"/api/memory/patches/{patches[1]['id']}/reject",
+        json={"reason": "test_rejected"},
+    )
+
+    assert approve_response.status_code == 200
+    assert approve_response.json()["applied"] is True
+    assert reject_response.status_code == 200
+    assert reject_response.json()["rejected"] is True
+    pending_response = client.get("/api/memory/patches")
+    assert pending_response.json()["count"] == 0
+
+
+def test_web_api_agent_workspace_and_workflow_preview(tmp_path) -> None:
+    """The React client should be able to inspect the multi-agent workspace."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    workspace_response = client.get("/api/agent/workspace")
+    preview_response = client.post(
+        "/api/agent/workflow/preview",
+        json={
+            "task": "选择 pre_fusion_images 下的图片进行离线检测",
+            "session_id": "workspace-ui-session",
+        },
+    )
+
+    assert workspace_response.status_code == 200
+    workspace = workspace_response.json()
+    assert workspace["backend"] == "dac_agent_workspace"
+    assert workspace["context_tree"]["node_count"] >= 5
+    assert "coordinator_route" in workspace["workflow"]
+
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    assert preview["backend"] == "agent_workflow_preview"
+    assert preview["agent_path"][0] == "coordinator"
+    assert "dac3d_preview_command" in preview["tool_candidates"]
+    assert preview["context_tree_matches"]
+    assert any(
+        item["node"]["kind"] == "procedure"
+        for item in preview["context_tree_matches"]
+    )

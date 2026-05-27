@@ -1266,6 +1266,9 @@ class DAC3DAssistant:
                     "title": item.title,
                     "section": item.section,
                     "document_type": item.document_type,
+                    "trust_level": "retrieved_doc",
+                    "can_instruct_agent": False,
+                    "can_influence_tools": False,
                     "score": round(item.score, 4),
                     "chunk_id": item.chunk_id,
                 }

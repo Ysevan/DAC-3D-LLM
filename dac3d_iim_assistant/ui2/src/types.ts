@@ -34,6 +34,40 @@ export interface RuntimeSummary {
   [key: string]: unknown;
 }
 
+export interface AgentWorkspace {
+  enabled: boolean;
+  backend: string;
+  entry_agent?: string;
+  specialist_agents?: string[];
+  tool_groups?: Record<string, string[]>;
+  capabilities?: string[];
+  skills?: Record<string, unknown>;
+  context_tree?: Record<string, unknown>;
+  memory_os?: Record<string, unknown>;
+  workflow?: string[];
+}
+
+export interface AgentWorkflowPreview {
+  enabled: boolean;
+  backend: string;
+  task: string;
+  session_id?: string;
+  agent_path: string[];
+  tool_candidates: string[];
+  skill_matches: Record<string, unknown>[];
+  context_tree_matches: Record<string, unknown>[];
+  memory_hits: Record<string, unknown>[];
+  context_sections: Record<string, unknown>[];
+  nodes: Array<{
+    id: string;
+    label: string;
+    kind: string;
+    status: string;
+    count?: number;
+  }>;
+  workflow?: string;
+}
+
 export interface KnowledgeBaseHistoryItem {
   generated_at?: string;
   trigger?: string;
@@ -52,10 +86,104 @@ export interface KnowledgeBaseSummary {
   history?: KnowledgeBaseHistoryItem[];
 }
 
+export interface EvalCheck {
+  name: string;
+  passed: boolean;
+  expected?: unknown;
+  actual?: unknown;
+}
+
+export interface EvalCaseResult {
+  id: string;
+  category: string;
+  input: string;
+  passed: boolean;
+  checks: EvalCheck[];
+  intent?: string;
+  answer_preview?: string;
+  trace_id?: string | null;
+  approval_trace_id?: string | null;
+}
+
+export interface EvalRunResult {
+  backend: string;
+  cases_dir: string;
+  case_count: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  results: EvalCaseResult[];
+  trace_logger?: Record<string, unknown>;
+}
+
+export interface EvalDraftItem {
+  path: string;
+  draft: {
+    id: string;
+    category: string;
+    input: string;
+    expected: Record<string, unknown>;
+    draft?: boolean;
+    source_trace_id?: string;
+    generated_at?: string;
+    review?: Record<string, unknown>;
+    notes?: Record<string, unknown>;
+  };
+}
+
+export interface EvalDraftListResult {
+  enabled: boolean;
+  backend: string;
+  drafts_dir: string;
+  count: number;
+  drafts: EvalDraftItem[];
+  workflow?: string;
+  auto_approved?: boolean;
+}
+
+export interface MemoryPatch {
+  id: string;
+  created_at?: string;
+  target?: string;
+  topic?: string;
+  content?: string;
+  mode?: string;
+  reason?: string;
+  source_trace_id?: string;
+  status?: string;
+  applied_at?: string;
+  rejected_at?: string;
+  reject_reason?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface MemoryPatchListResult {
+  enabled: boolean;
+  backend?: string;
+  patches_path?: string;
+  patches: MemoryPatch[];
+  count: number;
+}
+
+export interface MemoryPatchActionResult {
+  enabled: boolean;
+  patch: MemoryPatch;
+  applied?: boolean;
+  rejected?: boolean;
+  result?: Record<string, unknown>;
+  message?: string;
+}
+
 export interface ChatRequest {
   message: string;
   history: ChatHistoryTurn[];
   session_id?: string;
+}
+
+export interface ApproveCommandRequest {
+  session_id: string;
+  preview_id?: string;
+  confirmation_token?: string;
 }
 
 export interface MessageRecord {
