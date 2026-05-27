@@ -62,6 +62,12 @@ def _safe_topic_name(topic: str | None) -> str:
     return normalized[:80] or "general"
 
 
+def _safe_procedure_name(name: str | None) -> str:
+    normalized = (name or "general-procedure").strip().lower() or "general-procedure"
+    normalized = re.sub(r"[^a-z0-9\u4e00-\u9fff_.:-]+", "_", normalized)
+    return normalized[:90] or "general-procedure"
+
+
 def _clip_text(value: Any, limit: int) -> str:
     text = str(value or "").strip()
     if len(text) <= limit:
@@ -109,6 +115,44 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
         encoding="utf-8",
     )
     temp_path.replace(path)
+
+
+def _split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+    if not text.startswith("---"):
+        return {}, text.strip()
+    lines = text.splitlines()
+    end_index = None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            end_index = index
+            break
+    if end_index is None:
+        return {}, text.strip()
+    metadata: dict[str, Any] = {}
+    for line in lines[1:end_index]:
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        raw_value = value.strip()
+        if not key:
+            continue
+        try:
+            metadata[key] = json.loads(raw_value)
+        except json.JSONDecodeError:
+            metadata[key] = raw_value.strip("\"'")
+    return metadata, "\n".join(lines[end_index + 1 :]).strip()
+
+
+def _frontmatter(metadata: dict[str, Any]) -> str:
+    lines = ["---"]
+    for key in sorted(metadata):
+        value = metadata[key]
+        if value is None or value == "":
+            continue
+        lines.append(f"{key}: {json.dumps(value, ensure_ascii=False)}")
+    lines.append("---")
+    return "\n".join(lines)
 
 
 @dataclass(slots=True)
@@ -172,8 +216,10 @@ class ConversationMemoryStore:
         self.root_dir = root_dir
         self.sessions_dir = root_dir / "sessions"
         self.notes_dir = root_dir / "knowledge_notes"
+        self.procedures_dir = root_dir / "procedures"
         self.index_path = root_dir / "index.json"
         self.knowledge_index_path = root_dir / "knowledge_index.json"
+        self.procedure_index_path = root_dir / "procedure_index.json"
         self.core_memory_path = root_dir / "MEMORY.md"
         self.user_memory_path = root_dir / "USER.md"
         self.max_turns_per_session = max(1, int(max_turns_per_session))
@@ -200,6 +246,7 @@ class ConversationMemoryStore:
     def ensure_directories(self) -> None:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self.notes_dir.mkdir(parents=True, exist_ok=True)
+        self.procedures_dir.mkdir(parents=True, exist_ok=True)
         for path in (self.core_memory_path, self.user_memory_path):
             if not path.exists():
                 path.write_text("", encoding="utf-8")
@@ -325,6 +372,80 @@ class ConversationMemoryStore:
             self._upsert_knowledge_index_entry(safe_topic, path, updated)
         return self.read_knowledge_note(safe_topic)
 
+    def list_procedure_memories(self) -> dict[str, Any]:
+        """List reviewed Markdown procedure memories."""
+        self.ensure_directories()
+        index = self._load_procedure_index()
+        procedures = [entry for entry in index.get("procedures", []) if isinstance(entry, dict)]
+        return {
+            "backend": "json+markdown",
+            "procedures_dir": str(self.procedures_dir),
+            "procedures": procedures,
+            "count": len(procedures),
+        }
+
+    def read_procedure_memory(self, name: str) -> dict[str, Any]:
+        """Read one reviewed Markdown procedure memory."""
+        safe_name = _safe_procedure_name(name)
+        path = self._procedure_memory_path(safe_name)
+        text = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+        metadata, body = _split_frontmatter(text)
+        return {
+            "name": safe_name,
+            "path": str(path),
+            "exists": path.exists(),
+            "frontmatter": metadata,
+            "text": text,
+            "body": body,
+            "chars": len(text),
+        }
+
+    def upsert_procedure_memory(
+        self,
+        *,
+        name: str,
+        content: str,
+        mode: str = "append",
+        provenance: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create or update a reviewed procedure memory Markdown file."""
+        safe_name = _safe_procedure_name(name)
+        clean_content = str(content or "").strip()
+        if not clean_content:
+            raise ValueError("content is required.")
+        _validate_memory_text(clean_content)
+
+        with self._lock:
+            self.ensure_directories()
+            path = self._procedure_memory_path(safe_name)
+            existing = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+            existing_metadata, existing_body = _split_frontmatter(existing)
+            normalized_mode = str(mode or "append").strip().lower()
+            if normalized_mode == "replace" or not existing_body:
+                body = clean_content
+            elif clean_content in existing_body:
+                body = existing_body
+            else:
+                body = f"{existing_body}\n\n§\n\n{clean_content}"
+            body = _clip_text(body, self.note_char_limit)
+            now = _utc_now_iso()
+            frontmatter = {
+                **existing_metadata,
+                **dict(metadata or {}),
+                "procedure": safe_name,
+                "status": "active",
+                "trust_level": "approved_memory",
+                "target": "procedure_memory",
+                "updated_at": now,
+                "provenance": dict(provenance or {}),
+            }
+            title = str(frontmatter.get("title") or safe_name.replace("_", " "))
+            document = f"{_frontmatter(frontmatter)}\n\n# {title}\n\n{body}\n"
+            path.write_text(document, encoding="utf-8")
+            self._upsert_procedure_index_entry(safe_name, path, body, frontmatter)
+        return self.read_procedure_memory(safe_name)
+
     def append_turn(
         self,
         *,
@@ -410,6 +531,7 @@ class ConversationMemoryStore:
         hits.extend(self._search_session_summary(clean_query, normalized))
         hits.extend(self._search_recent_turns(clean_query, normalized))
         hits.extend(self._search_knowledge_notes(clean_query))
+        hits.extend(self._search_procedure_memories(clean_query))
         hits.extend(
             self._search_index(
                 clean_query,
@@ -501,12 +623,14 @@ class ConversationMemoryStore:
             "index_items": len(index.get("items", [])),
             "curated_memory": self.load_curated_memory(),
             "knowledge_notes": self.list_knowledge_notes(),
+            "procedure_memories": self.list_procedure_memories(),
             "layers": [
                 "short_term_history",
                 "core_markdown_memory",
                 "session_recent_json",
                 "session_summary",
                 "topic_knowledge_notes",
+                "procedure_markdown_memory",
                 "long_term_json_search",
             ],
         }
@@ -524,11 +648,21 @@ class ConversationMemoryStore:
     def _knowledge_note_path(self, topic: str) -> Path:
         return self.notes_dir / f"{_safe_topic_name(topic)}.md"
 
+    def _procedure_memory_path(self, name: str) -> Path:
+        return self.procedures_dir / f"{_safe_procedure_name(name)}.md"
+
     def _load_knowledge_index(self) -> dict[str, Any]:
         default = {"version": 1, "updated_at": "", "topics": []}
         index = _read_json(self.knowledge_index_path, default)
         if not isinstance(index.get("topics"), list):
             index["topics"] = []
+        return index
+
+    def _load_procedure_index(self) -> dict[str, Any]:
+        default = {"version": 1, "updated_at": "", "procedures": []}
+        index = _read_json(self.procedure_index_path, default)
+        if not isinstance(index.get("procedures"), list):
+            index["procedures"] = []
         return index
 
     def _upsert_knowledge_index_entry(self, topic: str, path: Path, text: str) -> None:
@@ -553,6 +687,36 @@ class ConversationMemoryStore:
         index["updated_at"] = _utc_now_iso()
         index["topics"] = topics
         _write_json(self.knowledge_index_path, index)
+
+    def _upsert_procedure_index_entry(
+        self,
+        name: str,
+        path: Path,
+        body: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        index = self._load_procedure_index()
+        procedures = [entry for entry in index.get("procedures", []) if isinstance(entry, dict)]
+        procedures = [entry for entry in procedures if str(entry.get("name") or "") != name]
+        procedures.append(
+            {
+                "name": name,
+                "path": str(path),
+                "updated_at": str(metadata.get("updated_at") or _utc_now_iso()),
+                "chars": len(body),
+                "keywords": self._keywords(body),
+                "summary": _clip_text(body, 260),
+                "source": "approved_procedure_memory",
+                "trust_level": str(metadata.get("trust_level") or "approved_memory"),
+                "status": str(metadata.get("status") or "active"),
+                "provenance": dict(metadata.get("provenance") or {}),
+            }
+        )
+        procedures.sort(key=lambda entry: str(entry.get("name") or ""))
+        index["version"] = 1
+        index["updated_at"] = _utc_now_iso()
+        index["procedures"] = procedures
+        _write_json(self.procedure_index_path, index)
 
     def _append_index_item(self, session_id: str, turn: dict[str, Any]) -> None:
         index = self._load_index()
@@ -661,6 +825,42 @@ class ConversationMemoryStore:
                         "status": str(entry.get("status") or "active"),
                         "topic": topic,
                         "path": str(path),
+                    },
+                )
+            )
+        return hits
+
+    def _search_procedure_memories(self, query: str) -> list[ConversationMemoryHit]:
+        hits: list[ConversationMemoryHit] = []
+        index = self._load_procedure_index()
+        for entry in index.get("procedures", []):
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("status") or "active") in {"rejected", "deleted", "superseded"}:
+                continue
+            name = str(entry.get("name") or "")
+            path = Path(str(entry.get("path") or ""))
+            text = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+            metadata, body = _split_frontmatter(text)
+            combined = " ".join([name, body, json.dumps(entry, ensure_ascii=False)])
+            score = self._score(query, combined)
+            if score <= 0:
+                continue
+            hits.append(
+                ConversationMemoryHit(
+                    layer="procedure_markdown_memory",
+                    session_id="procedure",
+                    turn_id=name,
+                    created_at=str(entry.get("updated_at") or ""),
+                    score=score + 0.16,
+                    snippet=f"procedure={name}: {_clip_text(body, 560)}",
+                    metadata={
+                        "source": "procedure_memory",
+                        "trust_level": str(entry.get("trust_level") or metadata.get("trust_level") or "approved_memory"),
+                        "status": str(entry.get("status") or metadata.get("status") or "active"),
+                        "procedure": name,
+                        "path": str(path),
+                        "provenance": dict(entry.get("provenance") or metadata.get("provenance") or {}),
                     },
                 )
             )

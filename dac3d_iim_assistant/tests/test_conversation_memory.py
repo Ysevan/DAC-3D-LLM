@@ -150,6 +150,48 @@ def test_local_memory_provider_traces_and_approves_memory_patch(tmp_path: Path) 
     assert provider.describe()["trace_count"] == 1
 
 
+def test_approved_procedure_memory_is_written_as_markdown_with_provenance(tmp_path: Path) -> None:
+    config = AppConfig(base_dir=tmp_path, vector_store_type="manifest")
+    store = ConversationMemoryStore.from_config(config)
+    store.ensure_directories()
+    provider = LocalMemoryProvider(store)
+    trace = provider.record_trace(
+        {
+            "session_id": "procedure-session",
+            "user_message": "沉淀离线检测流程。",
+            "assistant_answer": "已生成流程记忆候选。",
+            "parsed_result": {
+                "memory_write_candidates": [
+                    {
+                        "target": "procedure_memory",
+                        "topic": "offline-inspection-review",
+                        "content": "离线检测前先选择目录，再预览命令，最后审核结果。",
+                        "reason": "reviewed_offline_inspection_flow",
+                    }
+                ]
+            },
+        }
+    )
+    patches = provider.propose_writes(trace)
+
+    procedure_path = config.conversation_memory_dir / "procedures" / "offline-inspection-review.md"
+    assert patches[0]["status"] == "pending"
+    assert not procedure_path.exists()
+
+    approved = provider.approve_write(patches[0]["id"])
+    procedure = provider.read_procedure("offline-inspection-review")
+    hits = store.search("离线检测 预览命令", session_id="procedure-session", limit=5)
+
+    assert approved["applied"] is True
+    assert procedure_path.exists()
+    assert procedure["frontmatter"]["target"] == "procedure_memory"
+    assert procedure["frontmatter"]["trust_level"] == "approved_memory"
+    assert procedure["frontmatter"]["provenance"]["trace_id"] == trace["trace_id"]
+    assert "离线检测前先选择目录" in procedure["body"]
+    assert provider.list_procedures()["count"] == 1
+    assert any(hit.layer == "procedure_markdown_memory" for hit in hits)
+
+
 def test_local_memory_provider_rejects_patch_without_applying(tmp_path: Path) -> None:
     config = AppConfig(base_dir=tmp_path, vector_store_type="manifest")
     store = ConversationMemoryStore.from_config(config)

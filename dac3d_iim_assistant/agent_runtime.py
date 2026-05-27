@@ -732,6 +732,65 @@ class DAC3DAgentRuntime:
             "count": len(patches),
         }
 
+    def list_conversation_procedure_memories(self) -> dict[str, Any]:
+        """List approved Markdown procedure memories."""
+        if self.memory_provider is None:
+            return {"enabled": False, "procedures": [], "count": 0}
+        return {"enabled": True, **self.memory_provider.list_procedures()}
+
+    def read_conversation_procedure_memory(self, name: str) -> dict[str, Any]:
+        """Read one approved Markdown procedure memory."""
+        if self.memory_provider is None:
+            return {"enabled": False, "name": name, "text": ""}
+        return {"enabled": True, **self.memory_provider.read_procedure(name)}
+
+    def write_conversation_procedure_memory(
+        self,
+        *,
+        name: str,
+        content: str,
+        reason: str = "procedure_memory_candidate",
+        mode: str = "append",
+    ) -> dict[str, Any]:
+        """Create a procedure-memory patch instead of editing Markdown directly."""
+        if self.memory_provider is None:
+            return {"enabled": False, "name": name, "message": "Memory disabled."}
+        trace = self.memory_provider.record_trace(
+            {
+                "session_id": "memory-tool",
+                "user_message": f"procedure memory update requested: {name}",
+                "assistant_answer": "已生成流程记忆补丁，等待审核。",
+                "intent": "procedure_memory_update_request",
+                "parsed_result": {
+                    "memory_write_candidates": [
+                        {
+                            "target": "procedure_memory",
+                            "topic": name,
+                            "content": content,
+                            "mode": mode,
+                            "reason": reason,
+                            "metadata": {
+                                "source": "memory_agent_tool",
+                                "procedure_name": name,
+                                "title": name,
+                            },
+                        }
+                    ]
+                },
+            }
+        )
+        patches = self.memory_provider.propose_writes(trace)
+        return {
+            "enabled": True,
+            "backend": "json+markdown",
+            "name": name,
+            "applied": False,
+            "requires_approval": True,
+            "patches": patches,
+            "count": len(patches),
+            "procedures": self.memory_provider.list_procedures(),
+        }
+
     def list_conversation_memory_patches(self, status: str = "pending") -> dict[str, Any]:
         """List auditable Memory OS patches."""
         if self.memory_provider is None:
@@ -1108,6 +1167,7 @@ class DAC3DAgentRuntime:
                 "hermes_style_curated_memory",
                 "topic_knowledge_notes",
                 "auditable_memory_patches",
+                "reviewed_procedure_memory_markdown",
                 "trace_based_memory_feedback",
                 "append_only_trace_logger",
                 "local_eval_runner",
@@ -1166,6 +1226,9 @@ class DAC3DAgentRuntime:
                     "conversation_knowledge_notes",
                     "conversation_knowledge_read",
                     "conversation_knowledge_write",
+                    "conversation_procedure_memories",
+                    "conversation_procedure_read",
+                    "conversation_procedure_write",
                     "conversation_memory_patches",
                     "conversation_memory_approve_patch",
                     "conversation_memory_reject_patch",
@@ -1209,9 +1272,10 @@ class DAC3DAgentRuntime:
                     "core_markdown_memory",
                     "session_recent_json",
                     "session_summary",
-                    "topic_knowledge_notes",
-                    "long_term_json_search",
-                ],
+                "topic_knowledge_notes",
+                "procedure_markdown_memory",
+                "long_term_json_search",
+            ],
                 "curated_files": ["MEMORY.md", "USER.md"],
                 "topic_notes_dir": "knowledge_notes",
             },
@@ -1548,6 +1612,44 @@ class DAC3DAgentRuntime:
             )
 
         @function_tool(
+            name_override="conversation_procedure_memories",
+            description_override="List reviewed Markdown procedure memories available to Memory Agent.",
+        )
+        def conversation_procedure_memories() -> dict[str, Any]:
+            """List approved procedure memories."""
+            return self.list_conversation_procedure_memories()
+
+        @function_tool(
+            name_override="conversation_procedure_read",
+            description_override="Read one reviewed Markdown procedure memory by name.",
+        )
+        def conversation_procedure_read(name: str) -> dict[str, Any]:
+            """Read one approved procedure memory."""
+            return self.read_conversation_procedure_memory(name)
+
+        @function_tool(
+            name_override="conversation_procedure_write",
+            description_override=(
+                "Propose a reviewed Markdown procedure memory patch. This records a "
+                "pending procedure_memory patch only; it never edits procedure files "
+                "until the patch is approved."
+            ),
+        )
+        def conversation_procedure_write(
+            name: str,
+            content: str,
+            reason: str = "procedure_memory_candidate",
+            mode: str = "append",
+        ) -> dict[str, Any]:
+            """Propose a procedure memory patch."""
+            return self.write_conversation_procedure_memory(
+                name=name,
+                content=content,
+                reason=reason,
+                mode=mode,
+            )
+
+        @function_tool(
             name_override="conversation_memory_patches",
             description_override="List auditable pending/approved/rejected Memory OS patches.",
         )
@@ -1774,6 +1876,9 @@ class DAC3DAgentRuntime:
             conversation_knowledge_notes,
             conversation_knowledge_read,
             conversation_knowledge_write,
+            conversation_procedure_memories,
+            conversation_procedure_read,
+            conversation_procedure_write,
             conversation_memory_patches,
             conversation_memory_approve_patch,
             conversation_memory_reject_patch,
@@ -2512,6 +2617,30 @@ class DAC3DAgentChatAdapter:
     def reject_skill_patch(self, patch_id: str, reason: str = "") -> dict[str, Any]:
         """Reject one skill patch proposal."""
         return self.runtime.reject_dac_skill_patch(patch_id, reason=reason)
+
+    def list_procedure_memories(self) -> dict[str, Any]:
+        """List approved Markdown procedure memories."""
+        return self.runtime.list_conversation_procedure_memories()
+
+    def read_procedure_memory(self, name: str) -> dict[str, Any]:
+        """Read one approved Markdown procedure memory."""
+        return self.runtime.read_conversation_procedure_memory(name)
+
+    def propose_procedure_memory(
+        self,
+        *,
+        name: str,
+        content: str,
+        reason: str = "procedure_memory_candidate",
+        mode: str = "append",
+    ) -> dict[str, Any]:
+        """Create a reviewable procedure-memory patch."""
+        return self.runtime.write_conversation_procedure_memory(
+            name=name,
+            content=content,
+            reason=reason,
+            mode=mode,
+        )
 
     def list_memory_patches(self, status: str = "pending") -> dict[str, Any]:
         """List Memory OS patches for human review."""

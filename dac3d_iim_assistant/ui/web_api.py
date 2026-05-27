@@ -322,6 +322,38 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/memory/procedures")
+    def list_procedure_memories() -> dict[str, Any]:
+        list_procedures = getattr(assistant, "list_procedure_memories", None)
+        if not callable(list_procedures):
+            raise HTTPException(status_code=503, detail="Procedure memory is unavailable.")
+        return list_procedures()
+
+    @app.get("/api/memory/procedures/{name}")
+    def read_procedure_memory(name: str) -> dict[str, Any]:
+        read_procedure = getattr(assistant, "read_procedure_memory", None)
+        if not callable(read_procedure):
+            raise HTTPException(status_code=503, detail="Procedure memory is unavailable.")
+        return read_procedure(name)
+
+    @app.post("/api/memory/procedures")
+    def propose_procedure_memory(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        propose = getattr(assistant, "propose_procedure_memory", None)
+        if not callable(propose):
+            raise HTTPException(status_code=503, detail="Procedure memory is unavailable.")
+        name = str(request.get("name") or "").strip()
+        content = str(request.get("content") or "").strip()
+        reason = str(request.get("reason") or "procedure_memory_candidate").strip()
+        mode = str(request.get("mode") or "append").strip() or "append"
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        if not content:
+            raise HTTPException(status_code=422, detail="The `content` field is required.")
+        try:
+            return propose(name=name, content=content, reason=reason, mode=mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/memory/patches")
     def list_memory_patches(status: str = "pending") -> dict[str, Any]:
         list_patches = getattr(assistant, "list_memory_patches", None)

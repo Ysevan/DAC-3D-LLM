@@ -134,6 +134,7 @@ MEMORY_AGENT_INSTRUCTIONS = """你是 Memory Agent。
 - 使用 conversation_memory_profile 读取核心 MEMORY.md、USER.md 和主题笔记索引。
 - 使用 conversation_memory_update 维护高价值、短小、长期有效的核心/用户记忆。
 - 使用 conversation_knowledge_* 读写主题化 Markdown 知识笔记，避免把大段知识塞进系统提示。
+- 使用 conversation_procedure_* 读取或提出流程记忆；写入时只生成 procedure_memory patch，批准后才会落到 Markdown。
 - 使用 conversation_memory_patches 查看待审核记忆补丁；只有用户明确批准时才能调用 conversation_memory_approve_patch，用户否定或要求删除候选时调用 conversation_memory_reject_patch。
 - 记忆只能解释前文和用户偏好；实时状态、检测结果、设备数据和执行结论必须交给对应专家或工具。
 - 最终 `structured_data.agent_path` 写为 ["coordinator", "memory_agent"]。
@@ -192,6 +193,9 @@ AGENT_TOOL_NAMES = (
     "conversation_knowledge_notes",
     "conversation_knowledge_read",
     "conversation_knowledge_write",
+    "conversation_procedure_memories",
+    "conversation_procedure_read",
+    "conversation_procedure_write",
     "conversation_memory_patches",
     "conversation_memory_approve_patch",
     "conversation_memory_reject_patch",

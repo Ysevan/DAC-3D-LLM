@@ -318,6 +318,7 @@ def test_agent_runtime_builds_dac3d_agent(tmp_path) -> None:
         "machine_abnormal_analysis",
         "conversation_memory_search",
         "conversation_memory_recent",
+        "conversation_procedure_write",
         "dac_skill_select",
         "dac_skill_read",
         "dac_skill_propose_patch",
@@ -1039,6 +1040,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "command_safety_review" in description["network_capabilities"]
     assert "hermes_style_curated_memory" in description["network_capabilities"]
     assert "auditable_memory_patches" in description["network_capabilities"]
+    assert "reviewed_procedure_memory_markdown" in description["network_capabilities"]
     assert "progressive_skill_selection" in description["network_capabilities"]
     assert "reviewable_skill_patch_queue" in description["network_capabilities"]
     assert "context_engineering" in description["network_capabilities"]
@@ -1049,6 +1051,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "dac3d_execute_command" in description["tool_groups"]["dac3d_control_agent"]
     assert "conversation_memory_search" in description["tool_groups"]["memory_agent"]
     assert "conversation_knowledge_write" in description["tool_groups"]["memory_agent"]
+    assert "conversation_procedure_write" in description["tool_groups"]["memory_agent"]
     assert "conversation_memory_approve_patch" in description["tool_groups"]["memory_agent"]
     assert "dac_skill_select" in description["tool_groups"]["skill_system"]
     assert "dac_skill_propose_patch" in description["tool_groups"]["skill_system"]
@@ -1056,6 +1059,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert description["skill_patches"]["backend"] == "json_skill_patch_queue"
     assert "dac3d_safety_review" in description["tool_groups"]["safety_agent"]
     assert "core_markdown_memory" in description["conversation_memory"]["layers"]
+    assert "procedure_markdown_memory" in description["conversation_memory"]["layers"]
     assert description["conversation_memory"]["backend"] == "json+markdown"
     assert description["control"]["execute_tool"] == "dac3d_execute_command"
     assert description["control"]["safety_review_tool"] == "dac3d_safety_review"

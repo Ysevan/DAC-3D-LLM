@@ -365,6 +365,46 @@ def test_web_api_memory_patch_review_endpoints(tmp_path) -> None:
     assert pending_response.json()["count"] == 0
 
 
+def test_web_api_procedure_memory_uses_patch_approval_before_markdown_write(tmp_path) -> None:
+    """Reviewed procedure memory should be proposed first, then written as Markdown after approval."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+    procedure_path = config.conversation_memory_dir / "procedures" / "offline-inspection-flow.md"
+
+    propose_response = client.post(
+        "/api/memory/procedures",
+        json={
+            "name": "offline-inspection-flow",
+            "content": "离线检测目录选择后，先生成命令预览，再等待用户审核。",
+            "reason": "reviewed_flow",
+        },
+    )
+
+    assert propose_response.status_code == 200
+    payload = propose_response.json()
+    patch = payload["patches"][0]
+    assert patch["target"] == "procedure_memory"
+    assert patch["status"] == "pending"
+    assert not procedure_path.exists()
+
+    approve_response = client.post(f"/api/memory/patches/{patch['id']}/approve")
+    list_response = client.get("/api/memory/procedures")
+    read_response = client.get("/api/memory/procedures/offline-inspection-flow")
+
+    assert approve_response.status_code == 200
+    assert approve_response.json()["applied"] is True
+    assert procedure_path.exists()
+    assert list_response.json()["count"] == 1
+    procedure = read_response.json()
+    assert procedure["frontmatter"]["target"] == "procedure_memory"
+    assert procedure["frontmatter"]["provenance"]["trace_id"] == patch["source_trace_id"]
+    assert "命令预览" in procedure["body"]
+
+
 def test_web_api_skill_patch_review_endpoints(tmp_path) -> None:
     """The web UI should review skill patch proposals without editing SKILL.md."""
     config = make_config(tmp_path)
