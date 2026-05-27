@@ -10,6 +10,14 @@ from agent_core.sessions import DAC3DAgentSessionStore
 from machine_agent import MachineAgentService
 
 
+TOKEN_BOUND_CONFIRMATION_REQUIRED = "TOKEN_BOUND_CONFIRMATION_REQUIRED"
+TOKEN_BOUND_CONFIRMATION_MESSAGE = (
+    "Agent/CLI 直接确认执行已被安全策略阻断。真实下发必须通过 "
+    "Web API 的 /api/commands/preview 与 /api/commands/confirm 完成，"
+    "并校验 preview_id、preview_hash、一次性 confirmation_token、operator 和 session。"
+)
+
+
 class DAC3DAgentToolController:
     """Bind DAC-3D assistant operations to Agent tools for one session."""
 
@@ -44,25 +52,29 @@ class DAC3DAgentToolController:
         *,
         confirmed_by_user: bool = False,
     ) -> dict[str, Any]:
-        """Execute a new command or the latest pending command in this session."""
+        """Preview command execution; block direct Agent/CLI confirmed submission."""
         if confirmed_by_user and self.sessions.should_use_pending_confirmation(instruction):
             pending = self.sessions.get_pending_command(self.session_id)
             if pending is not None:
                 response = self.assistant.execute_prepared_command(
                     deepcopy(pending.command_preview),
-                    confirmed_by_user=True,
+                    confirmed_by_user=False,
                 )
                 payload = self._payload(response)
-                self._update_pending_state(instruction, payload, confirmed=True)
-                return payload
+                self._update_pending_state(instruction, payload, confirmed=False)
+                return self._with_token_bound_confirmation_block(payload)
+
+        if confirmed_by_user:
+            payload = self.preview_command(instruction)
+            return self._with_token_bound_confirmation_block(payload)
 
         payload = self._payload(
             self.assistant.execute_operation_command(
                 instruction,
-                confirmed_by_user=confirmed_by_user,
+                confirmed_by_user=False,
             )
         )
-        self._update_pending_state(instruction, payload, confirmed=confirmed_by_user)
+        self._update_pending_state(instruction, payload, confirmed=False)
         return payload
 
     def rebuild_knowledge_base(self) -> dict[str, Any]:
@@ -113,6 +125,50 @@ class DAC3DAgentToolController:
 
     def _agent_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         result = dict(payload)
+        result["agent_session"] = self.sessions.describe_session(self.session_id)
+        return result
+
+    def _with_token_bound_confirmation_block(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Mark an Agent/CLI direct submit attempt as blocked at the tool boundary."""
+        result = dict(payload)
+        policy_decision = {
+            "allowed": False,
+            "reason": TOKEN_BOUND_CONFIRMATION_REQUIRED,
+            "message": TOKEN_BOUND_CONFIRMATION_MESSAGE,
+            "confirmation_flow": "api_preview_confirm_token",
+            "direct_agent_submit_allowed": False,
+            "requires_preview_id": True,
+            "requires_preview_hash": True,
+            "requires_one_time_token": True,
+            "requires_operator_session": True,
+        }
+        confirmation = dict(result.get("confirmation") or {})
+        confirmation.update(
+            {
+                "required": True,
+                "mode": "api_preview_confirm_token",
+                "blocked_direct_submit": True,
+                "reason": TOKEN_BOUND_CONFIRMATION_REQUIRED,
+            }
+        )
+        parsed_result = result.get("parsed_result")
+        if not isinstance(parsed_result, dict):
+            parsed_result = {}
+        parsed_result = dict(parsed_result)
+        parsed_result["policy_decision"] = policy_decision
+        parsed_result["confirmation"] = {
+            key: value
+            for key, value in confirmation.items()
+            if key != "confirmation_token"
+        }
+
+        result["answer"] = (
+            "已生成 DAC-3D 控制命令预览，但 Agent/CLI 的直接确认执行已被安全策略阻断。"
+            "真实下发必须走 Web API 的 preview/confirm 一次性 token 确认链路。"
+        )
+        result["policy_decision"] = policy_decision
+        result["confirmation"] = confirmation
+        result["parsed_result"] = parsed_result
         result["agent_session"] = self.sessions.describe_session(self.session_id)
         return result
 

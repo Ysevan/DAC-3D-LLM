@@ -201,12 +201,16 @@ class LocalValidationAgentModel:
                 "dac3d_execute_command",
                 {"instruction": "停止检测", "confirmed_by_user": True},
                 {
-                    "answer": "已提交停止检测命令，DAC-3D 已收到停止请求。",
+                    "answer": "已生成停止检测命令预览，但 Agent/CLI 直接下发已被安全策略阻断。请通过 Web API preview/confirm 一次性 token 链路确认。",
                     "structured_data": {
-                        "intent": "operation_execute",
+                        "intent": "operation_preview",
                         "tool_calls": [{"name": "dac3d_execute_command", "purpose": "下发停止检测命令"}],
                         "command": {"action": "stop_detection", "payload": {"func": "Stop"}},
-                        "status_summary": {"state": "stopped", "progress": 0, "message": "Mock 检测任务已收到停止请求。"},
+                        "policy_decision": {
+                            "allowed": False,
+                            "reason": "TOKEN_BOUND_CONFIRMATION_REQUIRED",
+                        },
+                        "requires_confirmation": True,
                     },
                 },
             )
@@ -215,12 +219,16 @@ class LocalValidationAgentModel:
                 "dac3d_execute_command",
                 {"instruction": "执行扫描", "confirmed_by_user": True},
                 {
-                    "answer": "在线扫描命令已提交，当前任务已排队，进度 0%。",
+                    "answer": "已生成在线扫描命令预览，但 Agent/CLI 直接下发已被安全策略阻断。请通过 Web API preview/confirm 一次性 token 链路确认。",
                     "structured_data": {
-                        "intent": "operation_execute",
+                        "intent": "operation_preview",
                         "tool_calls": [{"name": "dac3d_execute_command", "purpose": "提交在线扫描命令"}],
                         "command": {"action": "start_online_scan", "payload": {"func": "Scan", "total_positions": 144}},
-                        "status_summary": {"state": "queued", "progress": 0, "message": "在线扫描任务已排队"},
+                        "policy_decision": {
+                            "allowed": False,
+                            "reason": "TOKEN_BOUND_CONFIRMATION_REQUIRED",
+                        },
+                        "requires_confirmation": True,
                     },
                 },
             )
@@ -319,7 +327,7 @@ class DAC3DAgentRuntime:
         confirmed_by_user: bool = False,
         session_id: str = "default",
     ) -> dict[str, Any]:
-        """Generate and submit a DAC-3D command when confirmation and safety checks pass."""
+        """Generate a DAC-3D command preview and block direct Agent/CLI confirmed submit."""
         return self.tool_controller(session_id).execute_command(
             instruction,
             confirmed_by_user=confirmed_by_user,
@@ -451,6 +459,15 @@ class DAC3DAgentRuntime:
                 "preview_tool": "dac3d_preview_command",
                 "execute_tool": "dac3d_execute_command",
                 "confirmation_required_for_risky_commands": True,
+                "direct_agent_submit_allowed": False,
+                "confirmation_flow": "api_preview_confirm_token",
+                "confirmation_requirements": [
+                    "preview_id",
+                    "preview_hash",
+                    "one_time_confirmation_token",
+                    "operator_id",
+                    "session_id",
+                ],
                 "bridge_modes": ["embedded", "command_file_bridge", "mock"],
             },
         }
@@ -560,17 +577,18 @@ class DAC3DAgentRuntime:
         @function_tool(
             name_override="dac3d_execute_command",
             description_override=(
-                "Parse and submit a DAC-3D control request to the active runtime bridge. "
-                "Set confirmed_by_user=true only when the user explicitly confirmed execution "
-                "or directly asked to start/stop/execute the operation, including Chinese "
-                "requests such as 执行扫描、开始扫描、确认执行、立即开始、停止检测."
+                "Parse a DAC-3D control request and return a command preview plus security "
+                "decision. Agent/CLI direct submission is disabled: confirmed_by_user=true "
+                "does not submit to the runtime bridge, and high-risk execution must go "
+                "through the Web API /api/commands/preview and /api/commands/confirm "
+                "token-bound flow."
             ),
         )
         def dac3d_execute_command(
             instruction: str,
             confirmed_by_user: bool = False,
         ) -> dict[str, Any]:
-            """Execute a DAC-3D control command after confirmation and safety checks."""
+            """Return a DAC-3D control preview; direct Agent/CLI submit is blocked."""
             return tools.execute_command(
                 instruction,
                 confirmed_by_user=confirmed_by_user,
@@ -942,12 +960,18 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--execute-command",
-        help="Parse and submit one DAC-3D operation through the Agent control path.",
+        help=(
+            "Parse one DAC-3D operation through the Agent control path. Direct submit is "
+            "blocked; use the Web API preview/confirm token flow for real execution."
+        ),
     )
     parser.add_argument(
         "--confirmed",
         action="store_true",
-        help="Mark --execute-command as explicitly confirmed by the user.",
+        help=(
+            "Legacy compatibility flag. Agent/CLI direct submit remains blocked and "
+            "returns TOKEN_BOUND_CONFIRMATION_REQUIRED."
+        ),
     )
     parser.add_argument(
         "--list-tools",
