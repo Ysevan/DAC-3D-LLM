@@ -41,6 +41,44 @@ def test_web_api_chat_endpoint_returns_structured_payload(tmp_path) -> None:
     assert isinstance(payload["sources"], list)
 
 
+def test_web_api_serves_frontend_dist_when_assets_are_present(tmp_path) -> None:
+    """The static frontend route should only serve complete build artifacts."""
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    frontend_dist = tmp_path / "dist"
+    assets_dir = frontend_dist / "assets"
+    assets_dir.mkdir(parents=True)
+    (assets_dir / "index.js").write_text("window.__dac3dLoaded = true;", encoding="utf-8")
+    (frontend_dist / "index.html").write_text(
+        '<!doctype html><script type="module" src="/assets/index.js"></script>',
+        encoding="utf-8",
+    )
+    client = TestClient(create_api_app(assistant, frontend_dist_dir=frontend_dist))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "/assets/index.js" in response.text
+    assert client.get("/assets/index.js").status_code == 200
+
+
+def test_web_api_ignores_incomplete_frontend_dist(tmp_path) -> None:
+    """A stale index that points to missing assets should fall back to the build hint."""
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    frontend_dist = tmp_path / "dist"
+    frontend_dist.mkdir()
+    (frontend_dist / "index.html").write_text(
+        '<!doctype html><script type="module" src="/assets/missing.js"></script>',
+        encoding="utf-8",
+    )
+    client = TestClient(create_api_app(assistant, frontend_dist_dir=frontend_dist))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "FastAPI 后端已经启动" in response.text
+    assert "/assets/missing.js" not in response.text
+
+
 def test_web_api_runtime_endpoint_returns_runtime_summary(tmp_path) -> None:
     """The API should expose runtime data for the settings drawer."""
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)

@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 from collections.abc import Iterator, Sequence
+from html.parser import HTMLParser
 from inspect import signature
 from pathlib import Path
 from typing import Any
@@ -469,15 +470,15 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
 
     selected_frontend_dist = frontend_dist_dir or assistant.config.frontend_dist_dir
 
-    if selected_frontend_dist.exists():
+    if _frontend_dist_is_usable(selected_frontend_dist):
         assets_dir = selected_frontend_dist / "assets"
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="frontend-assets")
 
         @app.get("/{static_path:path}", include_in_schema=False, response_model=None)
         async def frontend_static(static_path: str) -> HTMLResponse | FileResponse:
-            candidate = selected_frontend_dist / static_path
-            if static_path and candidate.exists() and candidate.is_file():
+            candidate = _static_file_candidate(selected_frontend_dist, static_path)
+            if candidate is not None:
                 return FileResponse(candidate)
             return HTMLResponse(selected_frontend_dist.joinpath("index.html").read_text(encoding="utf-8"))
 
@@ -491,6 +492,63 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             return HTMLResponse(_frontend_hint_html())
 
     return app
+
+
+class _FrontendAssetParser(HTMLParser):
+    """Collect Vite asset references from a built frontend index."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.assets: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        for name, value in attrs:
+            if name not in {"href", "src"} or not value:
+                continue
+            clean_value = value.split("?", 1)[0].split("#", 1)[0]
+            if clean_value.startswith("/assets/"):
+                self.assets.append(clean_value.removeprefix("/"))
+            elif clean_value.startswith("assets/"):
+                self.assets.append(clean_value)
+
+
+def _frontend_dist_is_usable(dist_dir: Path) -> bool:
+    """Return whether the built frontend has an index and referenced assets."""
+    index_path = dist_dir / "index.html"
+    if not index_path.is_file():
+        return False
+    try:
+        html = index_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    parser = _FrontendAssetParser()
+    parser.feed(html)
+    dist_root = dist_dir.resolve()
+    for asset in parser.assets:
+        asset_path = (dist_dir / asset).resolve()
+        try:
+            asset_path.relative_to(dist_root)
+        except ValueError:
+            return False
+        if not asset_path.is_file():
+            return False
+    return True
+
+
+def _static_file_candidate(dist_dir: Path, static_path: str) -> Path | None:
+    """Return a static file only when it stays inside the frontend dist directory."""
+    if not static_path:
+        return None
+    dist_root = dist_dir.resolve()
+    candidate = (dist_dir / static_path).resolve()
+    try:
+        candidate.relative_to(dist_root)
+    except ValueError:
+        return None
+    if candidate.is_file():
+        return candidate
+    return None
 
 
 def _stream_chat_events(

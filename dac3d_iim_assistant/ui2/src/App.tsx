@@ -1732,8 +1732,11 @@ function formatTimestamp(value: unknown): string {
 }
 
 function formatScore(value: number | null | undefined): string {
-  if (typeof value !== "number") {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
     return "暂无";
+  }
+  if (value < 0 || value > 1) {
+    return value.toFixed(1);
   }
   return `${(value * 100).toFixed(1)}%`;
 }
