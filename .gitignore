@@ -3,6 +3,7 @@
 __pycache__/
 .pytest_cache/
 .DS_Store
+dac3d_iim_assistant/.tmp/
 node_modules/
 dist/
 .npm-cache/

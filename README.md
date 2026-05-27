@@ -118,7 +118,7 @@ E102 错误代码是什么意思？
 - 支持识别并处理 `start_online_scan`、`start_offline_detection`、`stop_detection`、`query_status`、`get_latest_result`、`validate_offline_folder` 等命令。
 - 新增 `describeAssistantCommand(...)`，把结构化命令转成人可读描述。
 - 新增 `initAssistantWebButton(...)`，在 DAC-3D 主界面添加智能助手入口按钮。
-- 新增 `openAssistantWeb(...)`，自动启动 `dac3d_iim_assistant/app.py` 并打开 `http://127.0.0.1:7860`。
+- 新增 `openAssistantWeb(...)`，自动启动 `dac3d_iim_assistant/app.py` 并打开 `http://127.0.0.1:7890` 前端工作台。
 - 新增离线检测控件逻辑，包括 `initOfflineControls(...)`、`chooseOfflineSourceDir(...)`、`setOfflineControlsVisible(...)`。
 - 在检测过程中写入 `latest_result` 和 `result_history`，支持助手回答“当前检测结果”“第三个样品结果”“前面几个样品结果”等问题。
 - 在启动在线扫描、启动离线检测、停止检测时写入实时状态，支持助手回答“当前系统在做什么”。
@@ -205,13 +205,13 @@ E102 错误代码是什么意思？
 当前默认跳转地址：
 
 ```text
-http://127.0.0.1:7860
+http://127.0.0.1:7890
 ```
 
-同时支持切换到第二套 Web UI：
+备用 Web UI 仍可访问：
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:7860
 ```
 
 相关文件：
@@ -279,17 +279,28 @@ validate_offline_folder
 - 检测过程中写入状态，便于 LLM 助手实时查询。
 - 检测完成后写入最新结果和历史样品结果，便于 LLM 助手解释。
 
-### 5. 保留 GPU 检测能力
+### 5. 保留 GPU / Apple 加速检测能力
 
-系统会检测当前 PyTorch 是否支持 CUDA。如果环境中安装的是 CUDA 版 PyTorch，并且显卡驱动可用，检测模型可以走 GPU；否则自动回退 CPU。
+系统会检测当前 PyTorch 是否支持 CUDA 或 Apple MPS。如果环境中安装的是 CUDA 版 PyTorch，并且显卡驱动可用，检测模型优先走 CUDA；在 Apple Silicon Mac 上，如果 PyTorch MPS 可用，则走 MPS。如果 macOS/PyTorch 组合导致 MPS 不可用，离线检测会尝试使用现有 ONNX 模型和 ONNX Runtime `CoreMLExecutionProvider`，再不行才回退 CPU。
 
-检查 GPU 是否可用：
+可以通过环境变量指定推理设备：
 
 ```powershell
-python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+# 可选值：auto、cuda、mps、coreml、mlx、cpu
+set DAC3D_INFERENCE_DEVICE=auto
 ```
 
-输出 `True` 表示当前 Python 环境可以使用 GPU。
+`mlx` 会作为 Apple 加速请求处理。当前检测链路没有原生 MLX 模型后端，因此会优先解析到 PyTorch MPS；如果 MPS 不可用且 ONNX Runtime 暴露 CoreML EP，则使用 ONNX/CoreML。
+
+检查加速设备是否可用：
+
+```powershell
+python CUDA.py
+```
+
+输出中的 `离线推理设备` 会显示实际使用 `cuda:0`、`mps`、`coreml` 或 `cpu`。
+
+注意：受限沙盒或 CI 环境可能会让 PyTorch MPS 误报不可用。请以普通终端或 PyQt 主程序环境下的 `python CUDA.py` 输出为准。
 
 ## 仓库结构
 
@@ -405,12 +416,12 @@ python knowledge_base\build_kb.py
 python app.py
 ```
 
-启动 OpenAI Agents SDK 版 DAC-3D Agent：
+默认 Web、CLI 和 `/api/chat` 已使用统一 Agent 入口：用户消息先交给 LLM，LLM 再通过 OpenAI Agents SDK 选择 `dac3d_*` 或 `machine_*` 工具。需要配置 `OPENAI_API_KEY`、`DAC3D_AGENT_API_KEY`，或继承 OpenAI-compatible 的 `DAC3D_LLM_API_KEY`：
 
 ```powershell
 $env:OPENAI_API_KEY="你的 OpenAI API Key"
-python app.py --agent --message "当前检测状态是什么？"
-python app.py --agent-web
+python app.py --message "当前检测状态是什么？"
+python app.py --agent-web  # 兼容旧脚本；Web 默认已是 Agent 入口
 ```
 
 可选通过环境变量或命令行指定 Agent 模型：
@@ -448,18 +459,20 @@ dac3d-agent --preview-command "start online scan"
 dac3d-agent --execute-command "start online scan" --confirmed
 ```
 
-`python app.py --agent-web` 会让 FastAPI/React 与 Gradio 聊天入口使用 OpenAI Agents SDK runtime。`dac3d_preview_command` 只生成结构化命令预览；`dac3d_execute_command` 会在用户明确确认、运行时不忙碌、离线目录校验通过后，把控制命令提交到 embedded bridge、file command bridge 或 mock runtime。真实 DAC-3D 主系统运行时，`DAC3D_ENDPOINT` 指向 `dac3d_runtime_status.json`，`DAC3D_COMMAND_PATH` 指向 `dac3d_assistant_command.json`，主系统会轮询该命令文件并触发在线扫描、离线检测或停止检测。
+FastAPI/React、Gradio 和 CLI 聊天入口默认使用统一 Agent runtime；`--agent-web` 仅保留给旧脚本。Agent 工具覆盖 DAC-3D 文档问答、状态、结果、命令预览/执行，以及设备状态、历史、报警、文档、异常归因。`dac3d_preview_command` 只生成结构化命令预览；`dac3d_execute_command` 会在用户明确确认、运行时不忙碌、离线目录校验通过后，把控制命令提交到 embedded bridge、file command bridge 或 mock runtime。真实 DAC-3D 主系统运行时，`DAC3D_ENDPOINT` 指向 `dac3d_runtime_status.json`，`DAC3D_COMMAND_PATH` 指向 `dac3d_assistant_command.json`，主系统会轮询该命令文件并触发在线扫描、离线检测或停止检测。
+
+会话历史默认使用本地 JSON 记忆，写入 `dac3d_iim_assistant/.tmp/conversation_memory/`。Agent 每轮进入 LLM 前会组合三层记忆：当前页面短期历史、当前 session 的最近 JSON 对话、跨 session JSON 索引检索结果。记忆用于理解“刚才那个”“继续上一个”等指代和偏好，DAC-3D 实时状态、检测结果和执行命令仍以工具返回为准。可通过 `DAC3D_MEMORY_ENABLED=false` 关闭，或用 `DAC3D_MEMORY_RECENT_TURNS`、`DAC3D_MEMORY_SEARCH_LIMIT` 调整上下文规模。
 
 默认访问：
 
 ```text
-http://127.0.0.1:7860
+http://127.0.0.1:7890
 ```
 
-如果启用第二套 Web UI，可访问：
+备用 Web UI 可访问：
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:7860
 ```
 
 单条命令测试：
@@ -522,13 +535,13 @@ python main.py
 python -m pip install PyQt5
 ```
 
-如果需要 GPU 检测，请安装与你显卡和 CUDA 版本匹配的 PyTorch。安装完成后检查：
+如果需要 GPU / Apple 加速检测，请安装与你显卡、CUDA 或 macOS/MPS 环境匹配的 PyTorch。安装完成后检查：
 
 ```powershell
-python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+python CUDA.py
 ```
 
-输出 `True` 才表示当前 Python 环境可使用 GPU。
+输出中的 `离线推理设备` 才是当前 Python 环境实际使用的检测设备。
 
 ## 环境配置指南
 
@@ -602,10 +615,10 @@ python -m pip install PyQt5 opencv-python numpy pillow matplotlib pandas pyyaml
 python -m pip install torch torchvision torchaudio
 ```
 
-如果要使用 GPU，请根据本机 CUDA 版本安装对应 CUDA 版 PyTorch。安装后必须确认：
+如果要使用 NVIDIA GPU，请根据本机 CUDA 版本安装对应 CUDA 版 PyTorch；如果要使用 Apple Silicon 加速，请确认 PyTorch MPS 可用。安装后必须确认：
 
 ```powershell
-python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+python CUDA.py
 ```
 
 ### 4. LLM 助手依赖

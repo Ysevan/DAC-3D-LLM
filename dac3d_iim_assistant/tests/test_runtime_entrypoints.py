@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from app import build_argument_parser
 from config import AppConfig
 
@@ -30,6 +32,7 @@ def test_argument_parser_supports_agent_flags() -> None:
         [
             "--agent",
             "--agent-web",
+            "--assistant-router",
             "--agent-model",
             "gpt-5.4-mini",
             "--agent-api-base-url",
@@ -43,7 +46,19 @@ def test_argument_parser_supports_agent_flags() -> None:
 
     assert args.agent is True
     assert args.agent_web is True
+    assert args.assistant_router is True
     assert args.agent_model == "gpt-5.4-mini"
     assert args.agent_api_base_url == "https://llm.example.test/v1"
     assert args.agent_api_key == "third-party-key"
     assert args.agent_api_type == "chat_completions"
+
+
+def test_dac3d_host_launches_assistant_in_agent_web_mode() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    host_ui = repo_root / "福特科" / "xxp_ui" / "window" / "ui.py"
+
+    source = host_ui.read_text(encoding="utf-8")
+
+    assert "[sys.executable, str(app_py), '--agent-web']" in source
+    assert "DAC3D_ENDPOINT" in source
+    assert "DAC3D_COMMAND_PATH" in source

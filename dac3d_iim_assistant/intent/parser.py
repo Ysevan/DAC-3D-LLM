@@ -221,6 +221,17 @@ class FallbackIntentBackend:
         "鎵",
         "妫",
     )
+    _online_start_keywords = (
+        "start scan",
+        "run scan",
+        "execute scan",
+        "开始扫描",
+        "执行扫描",
+        "启动扫描",
+        "开始检测",
+        "执行检测",
+        "启动检测",
+    )
     _submit_keywords = (
         "execute",
         "submit",
@@ -230,6 +241,13 @@ class FallbackIntentBackend:
         "提交",
         "立即开始",
         "马上扫描",
+        "开始扫描",
+        "执行扫描",
+        "开始在线扫描",
+        "执行在线扫描",
+        "启动在线扫描",
+        "确认执行",
+        "确认开始",
     )
     _question_markers = (
         "?",
@@ -298,11 +316,18 @@ class FallbackIntentBackend:
 
     def _extract_command(self, raw_text: str, normalized: str) -> ParsedCommand:
         action = self._extract_action(normalized)
+        scan_area_mm = self._extract_scan_area(raw_text)
+        if (
+            action == CommandAction.SCAN
+            and scan_area_mm is None
+            and self._contains_any(normalized, self._online_start_keywords)
+        ):
+            action = CommandAction.START_ONLINE_SCAN
         payload = self._extract_payload(action, raw_text, normalized)
         safety = self._default_safety(action)
         return ParsedCommand(
             action=action,
-            scan_area_mm=self._extract_scan_area(raw_text),
+            scan_area_mm=scan_area_mm,
             resolution=self._extract_resolution(raw_text),
             region=self._extract_region(normalized),
             mode=self._extract_mode(normalized),
@@ -443,8 +468,15 @@ class FallbackIntentBackend:
         match = quoted or WINDOWS_PATH_PATTERN.search(text) or POSIX_PATH_PATTERN.search(text)
         if not match:
             return None
-        path = match.group("path").rstrip("。；;，,")
+        path = match.group("path").strip().rstrip("。；;，,")
         for marker in (
+            " 是否",
+            " 能否",
+            " 可否",
+            " 可不可以",
+            " 是否能",
+            " 是否可以",
+            " 是否可",
             "下的图片",
             "下图片",
             "中的图片",

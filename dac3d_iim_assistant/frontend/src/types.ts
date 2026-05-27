@@ -55,6 +55,7 @@ export interface KnowledgeBaseSummary {
 export interface ChatRequest {
   message: string;
   history: ChatHistoryTurn[];
+  session_id?: string;
 }
 
 export interface MessageRecord {

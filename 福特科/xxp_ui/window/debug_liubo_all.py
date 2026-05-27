@@ -5,6 +5,7 @@ import time
 import pandas as pd
 from ctypes import memset, cast, c_ubyte
 import os
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 from datetime import datetime
 from pathlib import Path
 from time import sleep
@@ -19,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ROOT = PROJECT_ROOT / 'runtime' / 'ftkpic'
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+from device_compat import select_torch_device
 try:
     import gclib
 except Exception as e:
@@ -363,7 +365,7 @@ class Debug_UI(QtWidgets.QMainWindow):
         self.getUI_thread.message_received.connect(self.getInfoFromUI)
         self.getUI_thread.start()
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = select_torch_device("auto")
         # self.model = SwinFusionContrastive3().to(self.device)
         # self.model.load_state_dict(torch.load(r'D:\zycgit\ZDevelop_Confocal\xxp_ui\window\autofocus_dp/best_model.pth'))
 

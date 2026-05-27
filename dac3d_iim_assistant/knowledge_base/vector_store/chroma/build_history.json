@@ -1,5 +1,23 @@
 [
   {
+    "generated_at": "2026-05-26T19:13:41.058660+00:00",
+    "chunk_count": 112,
+    "document_count": 7,
+    "documents": [
+      "DAC-3D参数说明.md",
+      "DAC-3D常见问题.md",
+      "DAC-3D操作手册.md",
+      "defect_interpretation.md",
+      "manual_overview.md",
+      "parameter_notes.md",
+      "troubleshooting.md"
+    ],
+    "storage_backend": "chroma",
+    "embedding_backend": "hashing",
+    "trigger": "web_rebuild",
+    "uploaded_files": []
+  },
+  {
     "generated_at": "2026-05-20T14:52:52.210790+00:00",
     "chunk_count": 112,
     "document_count": 7,

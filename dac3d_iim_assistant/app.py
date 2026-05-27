@@ -422,6 +422,9 @@ class DAC3DAssistant:
                     command_preview=preview,
                     status_summary=preview.get("runtime_status"),
                 )
+            validation_response = self._validate_offline_command_before_submit(preview)
+            if validation_response is not None:
+                return validation_response
             result = self.dac3d_client.submit_scan_command(preview)
             warning_text = ""
             if command.warnings:
@@ -495,6 +498,10 @@ class DAC3DAssistant:
                     status_summary=preview.get("runtime_status"),
                 )
                 yield from self._emit_buffered_response(response)
+                return
+            validation_response = self._validate_offline_command_before_submit(preview)
+            if validation_response is not None:
+                yield from self._emit_buffered_response(validation_response)
                 return
             result = self.dac3d_client.submit_scan_command(preview)
             warning_text = ""
@@ -581,6 +588,20 @@ class DAC3DAssistant:
         return self._execute_operation_preview(
             preview,
             command.warnings,
+            confirmed_by_user=confirmed_by_user,
+        )
+
+    def execute_prepared_command(
+        self,
+        preview: dict[str, Any],
+        *,
+        confirmed_by_user: bool = False,
+    ) -> AssistantResponse:
+        """Submit a previously generated command preview through the normal safety path."""
+        command_warnings = list(preview.get("warnings") or [])
+        return self._execute_operation_preview(
+            deepcopy(preview),
+            command_warnings,
             confirmed_by_user=confirmed_by_user,
         )
 
@@ -691,6 +712,28 @@ class DAC3DAssistant:
 
     def _handle_read_only_operation(self, preview: dict[str, Any]) -> AssistantResponse | None:
         action = str(preview.get("action") or "")
+        if action == "validate_offline_folder":
+            if self.dac3d_client.runtime_bridge is not None:
+                validation_result = self.dac3d_client.submit_scan_command(preview)
+                validation = dict(validation_result.get("validation") or {})
+                status = dict(validation_result.get("status") or preview.get("runtime_status") or {})
+            else:
+                validation = self.dac3d_client.validate_offline_folder(preview)
+                status = self.dac3d_client.query_current_status()
+            result = {
+                "accepted": True,
+                "mode": "local_validation",
+                "command": preview,
+                "status": status,
+                "validation": validation,
+            }
+            return AssistantResponse(
+                intent="operation",
+                answer=self._command_result_answer(preview, result),
+                command_preview=preview,
+                status_summary=status,
+                parsed_result=validation,
+            )
         if action == "get_latest_result":
             try:
                 if self.dac3d_client.runtime_bridge is not None:
@@ -938,6 +981,27 @@ class DAC3DAssistant:
 
     def _should_submit(self, message: str) -> bool:
         lowered = message.lower()
+        preview_only_markers = (
+            "不要执行",
+            "不执行",
+            "不要下发",
+            "不下发",
+            "无需执行",
+            "先别执行",
+            "只预览",
+            "仅预览",
+            "只生成",
+            "仅生成",
+            "只做预览",
+            "仅做预览",
+            "preview only",
+            "do not execute",
+            "don't execute",
+            "do not submit",
+            "don't submit",
+        )
+        if any(marker in lowered for marker in preview_only_markers):
+            return False
         submit_keywords = (
             "execute",
             "submit",
@@ -1301,7 +1365,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--agent",
         action="store_true",
-        help="Run through the OpenAI Agents SDK DAC-3D agent.",
+        help="Run through the unified OpenAI Agents SDK DAC-3D agent. This is the default for --message.",
     )
     parser.add_argument(
         "--agent-model",
@@ -1323,14 +1387,19 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--agent-web",
         action="store_true",
-        help="Use the OpenAI Agents SDK runtime as the web/Gradio chat backend.",
+        help="Compatibility flag; the web/Gradio chat backend uses the unified Agent by default.",
+    )
+    parser.add_argument(
+        "--assistant-router",
+        action="store_true",
+        help="Use the legacy deterministic DAC3DAssistant router instead of the unified Agent entrypoint.",
     )
     parser.add_argument("--host", help="Override the web server host.")
     parser.add_argument("--port", type=int, help="Override the web server port.")
     return parser
 
 
-def _build_gradio_widget(assistant: DAC3DAssistant, *, host: str, port: int) -> ChatWidget:
+def _build_gradio_widget(assistant: Any, *, host: str, port: int) -> ChatWidget:
     return ChatWidget(
         assistant.handle_message,
         runtime_summary_getter=assistant.runtime_summary,
@@ -1343,6 +1412,15 @@ def _build_gradio_widget(assistant: DAC3DAssistant, *, host: str, port: int) -> 
     )
 
 
+def _build_unified_agent_runtime(assistant: DAC3DAssistant) -> Any:
+    """Wrap the assistant in the single LLM/Agent-facing chat runtime."""
+    from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime
+
+    return DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+
 def _launch_gradio_widget(widget: ChatWidget) -> None:
     try:
         widget.launch_background()
@@ -1350,7 +1428,7 @@ def _launch_gradio_widget(widget: ChatWidget) -> None:
         print(f"Legacy web UI unavailable: {exc}")
 
 
-def _launch_legacy_web_ui(assistant: DAC3DAssistant) -> None:
+def _launch_legacy_web_ui(assistant: Any) -> None:
     try:
         import uvicorn
     except Exception as exc:
@@ -1379,7 +1457,7 @@ def _launch_agent_cli(agent_runtime: Any) -> None:
         if message.lower() in {"exit", "quit"}:
             return
         try:
-            print(agent_runtime.run_sync(message))
+            print(agent_runtime.run_text(message))
         except Exception as exc:  # pragma: no cover - interactive safety net
             print(f"Agent run failed: {exc}")
 
@@ -1411,7 +1489,7 @@ def main() -> None:
         agent_runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
         if args.message:
             try:
-                print(agent_runtime.run_sync(args.message))
+                print(agent_runtime.run_text(args.message))
             except Exception as exc:
                 print(f"Agent run failed: {exc}")
             return
@@ -1419,19 +1497,25 @@ def main() -> None:
         return
 
     if args.message:
-        print(assistant.handle_message(args.message).render_text())
-        return
-
-    chat_runtime: Any = assistant
-    if args.agent_web:
+        if args.assistant_router:
+            print(assistant.handle_message(args.message).render_text())
+            return
         try:
-            from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime
+            chat_runtime = _build_unified_agent_runtime(assistant)
         except Exception as exc:  # pragma: no cover - dependency guard
             print(f"Agent runtime unavailable: {exc}")
             return
-        chat_runtime = DAC3DAgentChatAdapter(
-            DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
-        )
+        print(chat_runtime.handle_message(args.message).render_text())
+        return
+
+    if args.assistant_router:
+        chat_runtime: Any = assistant
+    else:
+        try:
+            chat_runtime = _build_unified_agent_runtime(assistant)
+        except Exception as exc:  # pragma: no cover - dependency guard
+            print(f"Agent runtime unavailable: {exc}")
+            return
 
     if args.cli:
         widget = _build_gradio_widget(

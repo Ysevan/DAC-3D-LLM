@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 from collections.abc import Iterator, Sequence
+from inspect import signature
 from pathlib import Path
 from typing import Any
 
@@ -82,23 +83,20 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
     @app.post("/api/chat")
     def chat(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
-            message, history = _parse_chat_request(request)
+            message, history, session_id = _parse_chat_request(request)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        response = assistant.handle_message(
-            message,
-            history,
-        )
+        response = _call_assistant_message(assistant, message, history, session_id=session_id)
         return response.to_ui_payload()
 
     @app.post("/api/chat/stream")
     def chat_stream(request: dict[str, Any] = Body(...)) -> StreamingResponse:
         try:
-            message, history = _parse_chat_request(request)
+            message, history, session_id = _parse_chat_request(request)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return StreamingResponse(
-            _stream_chat_events(assistant, message, history),
+            _stream_chat_events(assistant, message, history, session_id=session_id),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -161,20 +159,28 @@ def _stream_chat_events(
     assistant: Any,
     message: str,
     history: Sequence[tuple[str, str]],
+    *,
+    session_id: str,
 ) -> Iterator[str]:
     """Yield SSE events for a single chat request."""
     try:
-        for event_name, payload in assistant.stream_message(message, history):
+        for event_name, payload in _call_assistant_stream(
+            assistant,
+            message,
+            history,
+            session_id=session_id,
+        ):
             yield _sse_event(event_name, payload)
     except Exception as exc:  # pragma: no cover - defensive streaming guard
         yield _sse_event("error", {"message": str(exc)})
 
 
-def _parse_chat_request(payload: dict[str, Any]) -> tuple[str, list[tuple[str, str]]]:
+def _parse_chat_request(payload: dict[str, Any]) -> tuple[str, list[tuple[str, str]], str]:
     """Normalize the chat request body into the assistant's internal schema."""
     message = str(payload.get("message", "")).strip()
     if not message:
         raise ValueError("The `message` field is required.")
+    session_id = str(payload.get("session_id") or "web").strip() or "web"
 
     normalized_history: list[tuple[str, str]] = []
     raw_history = payload.get("history", [])
@@ -190,7 +196,41 @@ def _parse_chat_request(payload: dict[str, Any]) -> tuple[str, list[tuple[str, s
         assistant_message = str(turn.get("assistant", ""))
         normalized_history.append((user_message, assistant_message))
 
-    return message, normalized_history
+    return message, normalized_history, session_id
+
+
+def _call_assistant_message(
+    assistant: Any,
+    message: str,
+    history: Sequence[tuple[str, str]],
+    *,
+    session_id: str,
+) -> Any:
+    """Call chat backends with session ids when supported."""
+    if _supports_session_id(assistant.handle_message):
+        return assistant.handle_message(message, history, session_id=session_id)
+    return assistant.handle_message(message, history)
+
+
+def _call_assistant_stream(
+    assistant: Any,
+    message: str,
+    history: Sequence[tuple[str, str]],
+    *,
+    session_id: str,
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Call streaming backends with session ids when supported."""
+    if _supports_session_id(assistant.stream_message):
+        yield from assistant.stream_message(message, history, session_id=session_id)
+        return
+    yield from assistant.stream_message(message, history)
+
+
+def _supports_session_id(callable_obj: Any) -> bool:
+    try:
+        return "session_id" in signature(callable_obj).parameters
+    except (TypeError, ValueError):
+        return False
 
 
 def _sse_event(event: str, data: Any) -> str:

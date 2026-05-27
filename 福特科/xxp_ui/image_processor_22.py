@@ -1,19 +1,27 @@
 # -*- coding: utf-8 -*-
 import queue
-import torch
 import random
 import threading
 import os
 import time
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+RUNTIME_ROOT = PROJECT_ROOT / "runtime" / "ftkpic"
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+os.environ.setdefault("YOLO_CONFIG_DIR", str(PROJECT_ROOT / "runtime" / "ultralytics_config"))
+os.environ.setdefault("MPLCONFIGDIR", str(PROJECT_ROOT / "runtime" / "matplotlib"))
+
+import torch
 import cv2
 import numpy as np
-from pathlib import Path
 from PIL import Image
 from ultralytics import YOLO
 from ultralytics.utils.plotting import Annotator
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 from sahi.utils.cv import visualize_object_predictions
+from sahi_coreml_onnx import CoreMLOnnxDetectionModel
 from collections import Counter
 import csv
 import tempfile
@@ -23,8 +31,7 @@ import sys
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-RUNTIME_ROOT = PROJECT_ROOT / "runtime" / "ftkpic"
+from device_compat import get_device_usage, select_inference_device
 
 # 确保下面的路径是正确的
 sys.path.append(str(PROJECT_ROOT / "Algorithm" / "Regis_Fusion"))
@@ -46,34 +53,15 @@ SCRATCH_BLEND_ALPHA = 0
 SCRATCH_MULTI_SCALE = True
 SCRATCH_CLOSING_LENGTH = 25
 
-# GPU配置检测
+# GPU/accelerator配置检测
 def check_gpu_available():
-    """检测GPU是否可用"""
-    try:
-        if torch.cuda.is_available():
-            gpu_name = torch.cuda.get_device_name(0)
-            return True, gpu_name
-    except:
-        pass
-    return False, None
+    """检测可用推理加速设备。"""
+    device = select_inference_device("auto")
+    return device.available, device.label
 
 def get_gpu_usage():
-    """获取GPU使用情况"""
-    try:
-        if torch.cuda.is_available():
-            memory_allocated = torch.cuda.memory_allocated(0) / 1024**3  # GB
-            memory_reserved = torch.cuda.memory_reserved(0) / 1024**3  # GB
-            memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
-            utilization = (memory_allocated / memory_total) * 100
-            return {
-                'allocated': memory_allocated,
-                'reserved': memory_reserved,
-                'total': memory_total,
-                'utilization': utilization
-            }
-    except:
-        pass
-    return None
+    """获取CUDA显存使用情况；MPS/CPU 暂不提供统一显存指标。"""
+    return get_device_usage(select_inference_device("auto").name)
 
 GPU_AVAILABLE, GPU_NAME = check_gpu_available()
 
@@ -1186,11 +1174,13 @@ class ImageProcessor:
             "old": {
                 "type": "sahi_path",
                 "model_path": str(PROJECT_ROOT / "deploy" / "weights" / "best.pt"),
+                "coreml_model_path": str(PROJECT_ROOT / "deploy" / "model" / "best.onnx"),
                 "conf": 0.25,
             },
             "new": {
                 "type": "sahi_yolo_preload",
                 "model_path": str(PROJECT_ROOT / "deploy" / "weights" / "best.torchscript"),
+                "coreml_model_path": str(PROJECT_ROOT / "deploy" / "model" / "best.onnx"),
                 "conf": 0.25,
             }
         }
@@ -1389,8 +1379,31 @@ class ImageProcessor:
         print("exists:", os.path.exists(model_path))
         print("torch:", torch.__version__)
         print("cuda_available:", torch.cuda.is_available())
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        runtime_device = select_inference_device("auto")
+        device = runtime_device.name
+        print("mps_available:", runtime_device.name == "mps")
         print("inference_device:", device)
+        print("accelerator:", runtime_device.label)
+        if runtime_device.name == "coreml":
+            coreml_model_path = cfg.get("coreml_model_path")
+            print("coreml_model_path:", coreml_model_path)
+            if coreml_model_path and os.path.exists(coreml_model_path):
+                try:
+                    self.sahi_model = CoreMLOnnxDetectionModel(
+                        model_path=coreml_model_path,
+                        confidence_threshold=conf,
+                    )
+                    self.model_loaded = True
+                    self.active_model_key = model_key
+                    print("ONNX Runtime providers:", getattr(self.sahi_model, "session_providers", None))
+                    print(f"[OK] CoreML/ONNX 模型加载成功，当前模式: {self.active_model_key}")
+                    return
+                except Exception as coreml_error:
+                    print(f"[WARN] CoreML/ONNX 模型加载失败，回退 PyTorch CPU: {coreml_error}")
+                    device = "cpu"
+            else:
+                print("[WARN] 未找到 CoreML/ONNX 模型，回退 PyTorch CPU")
+                device = "cpu"
         if not os.path.exists(model_path):
             print(f"[ERR] 模型文件不存在: {model_path}")
             return

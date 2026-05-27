@@ -16,7 +16,7 @@ python check_model.py
 诊断脚本会检查：
 - ✅ Python 版本和路径
 - ✅ 必要的依赖包
-- ✅ CUDA/GPU 支持
+- ✅ CUDA、Apple MPS、MLX 环境状态
 - ✅ 模型文件存在性
 - ✅ 模型加载和推理测试
 
@@ -50,9 +50,29 @@ pip install --upgrade ultralytics
 # CPU 版本
 pip install torch torchvision
 
-# GPU 版本（推荐）
+# NVIDIA GPU 版本
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 ```
+
+Apple Silicon Mac 上使用 PyTorch MPS 时，安装普通 PyTorch 后运行：
+
+```bash
+python CUDA.py
+```
+
+如果输出 `离线推理设备： mps`，说明检测链路会使用 PyTorch MPS；如果输出 `coreml`，说明会使用现有 ONNX 模型和 ONNX Runtime `CoreMLExecutionProvider`；如果输出 `cpu`，说明当前环境没有暴露可用 Apple 加速后端。可用 `DAC3D_INFERENCE_DEVICE=mps` 显式请求 MPS，`DAC3D_INFERENCE_DEVICE=coreml` 显式请求 ONNX/CoreML，或用 `DAC3D_INFERENCE_DEVICE=cpu` 强制 CPU。`mlx` 目前只作为 Apple 加速请求识别，检测链路没有原生 MLX 模型后端。
+
+macOS 26.x 上如果出现类似下面的输出：
+
+```text
+MPS 已编译： True
+MPS 可用： False
+MPS 不可用原因： torch.backends.mps.is_available() 返回 False: The MPS backend is supported on macOS 14.0+...
+```
+
+这表示 PyTorch 的 native MPS 初始化失败，不是业务代码里设备名写错。此时不要强制把检测模型移动到 `mps`。程序会优先尝试 ONNX Runtime 的 `CoreMLExecutionProvider` 路线；如果 CoreML EP 也不可用，才回退 CPU。CoreML 不等同于 PyTorch MPS，也不是 MLX，但在 Apple Silicon 上可以使用 Apple 的 GPU/ANE/CPU 计算单元。
+
+在受限沙盒或某些 CI 环境里，MPS 可能误报不可用；请以普通终端或 PyQt 主程序环境中的 `python CUDA.py` 输出为准。本机在原生权限下 `torch 2.12.0` 可以正常创建 `mps` 张量并完成 SAHI/YOLO 小图推理。
 
 ### 问题 3: 模型文件路径错误
 
@@ -176,7 +196,7 @@ pip install torch torchvision ultralytics
 # 基础依赖
 pip install numpy opencv-python pillow
 
-# PyTorch (GPU 版本)
+# PyTorch (NVIDIA GPU 版本)
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 
 # Ultralytics YOLO

@@ -339,8 +339,8 @@ def test_operation_busy_runtime_warning_is_localized(tmp_path: Path) -> None:
     assert not any("Current DAC-3D state" in warning for warning in warnings)
 
 
-def test_operation_flow_requests_missing_fields(tmp_path: Path) -> None:
-    """The assistant should refuse to guess required fields."""
+def test_operation_flow_starts_online_scan_from_direct_scan_request(tmp_path: Path) -> None:
+    """Direct start-scan language should operate the DAC-3D online scan entrypoint."""
     config = make_config(tmp_path)
     assistant = DAC3DAssistant.create(config, rebuild_kb=True)
 
@@ -348,8 +348,25 @@ def test_operation_flow_requests_missing_fields(tmp_path: Path) -> None:
 
     assert response.intent == "operation"
     assert response.command_preview is not None
+    assert response.command_preview["action"] == "start_online_scan"
+    assert response.command_preview["payload"]["func"] == "Scan"
+    assert response.command_preview["payload"]["total_positions"] == 144
+    assert response.status_summary is not None
+    assert response.status_summary["state"] == "queued"
+    assert "提交到运行时" in response.answer
+
+
+def test_operation_flow_keeps_custom_area_scan_as_preview(tmp_path: Path) -> None:
+    """Unsupported custom area scans stay as previews and do not become online scan control."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+
+    response = assistant.handle_message("扫描当前区域")
+
+    assert response.intent == "operation"
+    assert response.command_preview is not None
+    assert response.command_preview["action"] == "scan"
     assert "scan_area_mm" in response.command_preview["missing_fields"]
-    assert "缺少" in response.answer or "还缺少" in response.answer
 
 
 def test_interpretation_flow_uses_mock_result(tmp_path: Path) -> None:

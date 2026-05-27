@@ -441,7 +441,7 @@ class MyWindow(QMainWindow):
 
     def initAssistantWebButton(self):
         """Add a stable web entry for the LLM assistant."""
-        self.assistant_web_url = 'http://127.0.0.1:7860'
+        self.assistant_web_url = 'http://127.0.0.1:7890'
         admin_page = self.ui.stackedWidget_4.widget(0)
 
         self.assistantToolbarFrame = QFrame(self.ui.frame_4)
@@ -493,7 +493,7 @@ class MyWindow(QMainWindow):
 
     def openAssistantWeb(self):
         """Start both assistant web UIs and open the selected target."""
-        url = getattr(self, 'assistant_web_url', 'http://127.0.0.1:7860')
+        url = getattr(self, 'assistant_web_url', 'http://127.0.0.1:7890')
         try:
             assistant_root = Path(__file__).resolve().parents[3] / 'dac3d_iim_assistant'
             app_py = assistant_root / 'app.py'
@@ -505,7 +505,7 @@ class MyWindow(QMainWindow):
                 env['DAC3D_ENDPOINT'] = self.assistant_status_file.resolve().as_uri()
                 env['DAC3D_COMMAND_PATH'] = str(self.assistant_command_file.resolve())
                 self.assistant_web_process = subprocess.Popen(
-                    [sys.executable, str(app_py)],
+                    [sys.executable, str(app_py), '--agent-web'],
                     cwd=str(assistant_root),
                     env=env,
                     creationflags=creationflags,
@@ -1314,8 +1314,6 @@ class MyWindow(QMainWindow):
         self.ui.setBtn.setVisible(False)
         self.ui.label_10.setVisible(False)
         self.setOfflineControlsVisible(False)
-
-
 
 
 

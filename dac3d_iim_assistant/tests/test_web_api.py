@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime
 from app import DAC3DAssistant
 from tests.test_assistant import make_config
 from ui.web_api import create_api_app
@@ -112,3 +113,80 @@ def test_machine_agent_chat_endpoint_exposes_tool_calls(tmp_path) -> None:
     assert "get_alarm_records" in tool_names
     assert "detect_abnormal_patterns" in tool_names
     assert payload["abnormal_result"]["alarm_count"] > 0
+
+
+def test_unified_chat_endpoint_enters_agent_runtime_first(tmp_path, monkeypatch) -> None:
+    """The single chat endpoint should delegate the message to the Agent runtime."""
+    def fake_run_sync(self, message: str, *, session_id: str = "default") -> str:
+        del self
+        assert session_id == "chrome-session-1"
+        assert message == "为什么最近温度报警变多了？"
+        return (
+            '{"answer":"LLM 已选择 machine_agent_chat 工具处理温度报警问题。",'
+            '"structured_data":{'
+            '"intent":"machine_alarm_analysis",'
+            '"tool_calls":[{"name":"machine_agent_chat","purpose":"分析温度报警"}],'
+            '"findings":[{"metric":"temperature_high","value":"最近30天 6 次"}],'
+            '"recommendations":["检查冷却水路"]'
+            "}}"
+        )
+
+    monkeypatch.setattr(DAC3DAgentRuntime, "run_sync", fake_run_sync)
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "为什么最近温度报警变多了？",
+            "history": [],
+            "session_id": "chrome-session-1",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["intent"] == "machine_alarm_analysis"
+    assert "machine_agent_chat" in payload["answer"]
+    assert payload["parsed_result"]["tool_calls"][0]["name"] == "machine_agent_chat"
+
+
+def test_unified_chat_stream_uses_client_session_id(tmp_path, monkeypatch) -> None:
+    """The streaming chat endpoint should not force every client into the same Agent session."""
+    seen_sessions: list[str] = []
+
+    def fake_run_sync(self, message: str, *, session_id: str = "default") -> str:
+        del self
+        assert message == "当前检测状态是什么？"
+        seen_sessions.append(session_id)
+        return (
+            '{"answer":"当前 DAC-3D 处于空闲状态。",'
+            '"structured_data":{'
+            '"intent":"status",'
+            '"tool_calls":[{"name":"dac3d_status","purpose":"读取状态"}],'
+            '"status_summary":{"state":"idle","progress":0}'
+            "}}"
+        )
+
+    monkeypatch.setattr(DAC3DAgentRuntime, "run_sync", fake_run_sync)
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    response = client.post(
+        "/api/chat/stream",
+        json={
+            "message": "当前检测状态是什么？",
+            "history": [],
+            "session_id": "ui-session-42",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "event: done" in response.text
+    assert seen_sessions == ["ui-session-42"]

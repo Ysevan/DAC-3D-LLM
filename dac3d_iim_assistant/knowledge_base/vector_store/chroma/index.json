@@ -5,7 +5,7 @@
   "embedding_model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
   "embedding_dimensions": 384,
   "chunk_count": 112,
-  "generated_at": "2026-05-20T14:52:52.210790+00:00",
+  "generated_at": "2026-05-26T19:13:41.058660+00:00",
   "chunks": [
     {
       "chunk_id": 0,
@@ -14,7 +14,7 @@
       "title": "DAC-3D 参数说明",
       "section": "1. 文档定位",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "本文说明": 1,
         "本": 1,
@@ -133,7 +133,7 @@
         "title": "DAC-3D 参数说明",
         "section": "1. 文档定位",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -529,7 +529,7 @@
       "title": "DAC-3D 参数说明",
       "section": "2.1 三相机编号",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "系统当前主流程使用三台相机": 1,
         "系统": 1,
@@ -625,7 +625,7 @@
         "title": "DAC-3D 参数说明",
         "section": "2.1 三相机编号",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -1021,7 +1021,7 @@
       "title": "DAC-3D 参数说明",
       "section": "2.2 曝光时间",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "在线硬件初始化过程中会设置三台相机曝光时间": 1,
         "在线": 1,
@@ -1134,7 +1134,7 @@
         "title": "DAC-3D 参数说明",
         "section": "2.2 曝光时间",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -1530,7 +1530,7 @@
       "title": "DAC-3D 参数说明",
       "section": "2.3 触发模式",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "相机控制代码中使用海康": 1,
         "相机": 2,
@@ -1611,7 +1611,7 @@
         "title": "DAC-3D 参数说明",
         "section": "2.3 触发模式",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -2007,7 +2007,7 @@
       "title": "DAC-3D 参数说明",
       "section": "3.1 XY 载物台连接",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "当前代码中": 1,
         "当前": 1,
@@ -2033,7 +2033,7 @@
         "title": "DAC-3D 参数说明",
         "section": "3.1 XY 载物台连接",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -2429,7 +2429,7 @@
       "title": "DAC-3D 参数说明",
       "section": "--direct -s ALL",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "如果该地址不可达": 1,
         "如果": 1,
@@ -2473,7 +2473,7 @@
         "title": "DAC-3D 参数说明",
         "section": "--direct -s ALL",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -2869,7 +2869,7 @@
       "title": "DAC-3D 参数说明",
       "section": "3.2 Z 轴控制卡连接",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "z": 1,
         "轴控制卡通过": 1,
@@ -2891,7 +2891,7 @@
         "title": "DAC-3D 参数说明",
         "section": "3.2 Z 轴控制卡连接",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -3287,7 +3287,7 @@
       "title": "DAC-3D 参数说明",
       "section": "1",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "当前初始化设置包括": 1,
         "当前": 1,
@@ -3363,7 +3363,7 @@
         "title": "DAC-3D 参数说明",
         "section": "1",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0936585811581694,
@@ -3759,7 +3759,7 @@
       "title": "DAC-3D 参数说明",
       "section": "3.3 扫描点位",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "正式扫描按": 1,
         "正式": 1,
@@ -3883,7 +3883,7 @@
         "title": "DAC-3D 参数说明",
         "section": "3.3 扫描点位",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -4279,7 +4279,7 @@
       "title": "DAC-3D 参数说明",
       "section": "3.4 在线扫描控制消息",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "主界面点击运行时会向调试进程发送": 1,
         "主界": 2,
@@ -4331,7 +4331,7 @@
         "title": "DAC-3D 参数说明",
         "section": "3.4 在线扫描控制消息",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -4727,7 +4727,7 @@
       "title": "DAC-3D 参数说明",
       "section": "4.1 离线检测消息",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "主界面启用离线检测时": 1,
         "主界": 1,
@@ -4789,7 +4789,7 @@
         "title": "DAC-3D 参数说明",
         "section": "4.1 离线检测消息",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -5185,7 +5185,7 @@
       "title": "DAC-3D 参数说明",
       "section": "4.2 离线图像匹配规则",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "离线图像必须能识别出三种相机角色": 1,
         "离线": 1,
@@ -5276,7 +5276,7 @@
         "title": "DAC-3D 参数说明",
         "section": "4.2 离线图像匹配规则",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -5672,7 +5672,7 @@
       "title": "DAC-3D 参数说明",
       "section": "5.1 配准矩阵",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "图像融合使用": 1,
         "图像": 3,
@@ -5781,7 +5781,7 @@
         "title": "DAC-3D 参数说明",
         "section": "5.1 配准矩阵",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -6177,7 +6177,7 @@
       "title": "DAC-3D 参数说明",
       "section": "5.2 融合输入顺序",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "融合输入顺序为": 1,
         "融合": 1,
@@ -6237,7 +6237,7 @@
         "title": "DAC-3D 参数说明",
         "section": "5.2 融合输入顺序",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -6633,7 +6633,7 @@
       "title": "DAC-3D 参数说明",
       "section": "6.1 模型配置",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "image": 1,
         "processor": 1,
@@ -6695,7 +6695,7 @@
         "title": "DAC-3D 参数说明",
         "section": "6.1 模型配置",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -7091,7 +7091,7 @@
       "title": "DAC-3D 参数说明",
       "section": "6.1 模型配置",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "关键词": 1,
         "关": 1,
@@ -7222,7 +7222,7 @@
         "title": "DAC-3D 参数说明",
         "section": "6.1 模型配置",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.04218245406095978,
@@ -7618,7 +7618,7 @@
       "title": "DAC-3D 参数说明",
       "section": "6.2 推理参数",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "已确认推理参数": 1,
         "已确": 1,
@@ -7700,7 +7700,7 @@
         "title": "DAC-3D 参数说明",
         "section": "6.2 推理参数",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -8096,7 +8096,7 @@
       "title": "DAC-3D 参数说明",
       "section": "7. 缺陷类别",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "当前结果和代码中确认的主要缺陷类别为": 1,
         "当前": 1,
@@ -8205,7 +8205,7 @@
         "title": "DAC-3D 参数说明",
         "section": "7. 缺陷类别",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -8601,7 +8601,7 @@
       "title": "DAC-3D 参数说明",
       "section": "8. 区域参数",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "系统根据缺陷相对样品圆心和半径的位置": 1,
         "系统": 1,
@@ -8685,7 +8685,7 @@
         "title": "DAC-3D 参数说明",
         "section": "8. 区域参数",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -9081,7 +9081,7 @@
       "title": "DAC-3D 参数说明",
       "section": "9. 判定阈值参数",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "源码中使用如下换算系数": 1,
         "源码": 1,
@@ -9124,7 +9124,7 @@
         "title": "DAC-3D 参数说明",
         "section": "9. 判定阈值参数",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -9520,7 +9520,7 @@
       "title": "DAC-3D 参数说明",
       "section": "9.1 A 区",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "splash": 1,
         "小于": 5,
@@ -9570,7 +9570,7 @@
         "title": "DAC-3D 参数说明",
         "section": "9.1 A 区",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -9966,7 +9966,7 @@
       "title": "DAC-3D 参数说明",
       "section": "9.2 B 区",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "splash": 3,
         "10": 2,
@@ -10015,7 +10015,7 @@
         "title": "DAC-3D 参数说明",
         "section": "9.2 B 区",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -10411,7 +10411,7 @@
       "title": "DAC-3D 参数说明",
       "section": "9.3 C 区",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "splash": 1,
         "最大尺寸阈值约": 1,
@@ -10437,7 +10437,7 @@
         "title": "DAC-3D 参数说明",
         "section": "9.3 C 区",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -10833,7 +10833,7 @@
       "title": "DAC-3D 参数说明",
       "section": "9.4 D 区",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "主要对": 1,
         "主": 1,
@@ -10881,7 +10881,7 @@
         "title": "DAC-3D 参数说明",
         "section": "9.4 D 区",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -11277,7 +11277,7 @@
       "title": "DAC-3D 参数说明",
       "section": "9.5 OUT 区",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "out": 1,
         "区缺陷不参与合格性判定": 1,
@@ -11310,7 +11310,7 @@
         "title": "DAC-3D 参数说明",
         "section": "9.5 OUT 区",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -11706,7 +11706,7 @@
       "title": "DAC-3D 参数说明",
       "section": "10.1 `defect_detail.csv`",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "关键字段包括": 1,
         "关键": 1,
@@ -11756,7 +11756,7 @@
         "title": "DAC-3D 参数说明",
         "section": "10.1 `defect_detail.csv`",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -12152,7 +12152,7 @@
       "title": "DAC-3D 参数说明",
       "section": "10.2 `defect_summary.csv`",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "关键字段包括": 1,
         "关键": 1,
@@ -12185,7 +12185,7 @@
         "title": "DAC-3D 参数说明",
         "section": "10.2 `defect_summary.csv`",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -12581,7 +12581,7 @@
       "title": "DAC-3D 参数说明",
       "section": "11. 数据库参数",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "默认数据库连接参数": 1,
         "默认": 1,
@@ -12645,7 +12645,7 @@
         "title": "DAC-3D 参数说明",
         "section": "11. 数据库参数",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -13041,7 +13041,7 @@
       "title": "DAC-3D 参数说明",
       "section": "12. 参数修改原则",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md",
       "token_counts": {
         "相机曝光": 1,
         "相": 1,
@@ -13176,7 +13176,7 @@
         "title": "DAC-3D 参数说明",
         "section": "12. 参数修改原则",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D参数说明.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D参数说明.md"
       },
       "embedding": [
         0.0,
@@ -13572,7 +13572,7 @@
       "title": "DAC-3D 常见问题",
       "section": "1. 文档定位",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "本文记录": 1,
         "本": 1,
@@ -13665,7 +13665,7 @@
         "title": "DAC-3D 常见问题",
         "section": "1. 文档定位",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -14061,7 +14061,7 @@
       "title": "DAC-3D 常见问题",
       "section": "2.1 启动后没有出现登录窗口怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "先确认是否从": 1,
         "先确": 1,
@@ -14174,7 +14174,7 @@
         "title": "DAC-3D 常见问题",
         "section": "2.1 启动后没有出现登录窗口怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.07018624063435965,
@@ -14570,7 +14570,7 @@
       "title": "DAC-3D 常见问题",
       "section": "2.2 普通用户和管理员有什么区别？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "普通用户直接进入检测界面": 1,
         "普通": 2,
@@ -14636,7 +14636,7 @@
         "title": "DAC-3D 常见问题",
         "section": "2.2 普通用户和管理员有什么区别？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -15032,7 +15032,7 @@
       "title": "DAC-3D 常见问题",
       "section": "2.3 管理员密码错误怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "当前版本管理员账号在": 1,
         "当前": 1,
@@ -15098,7 +15098,7 @@
         "title": "DAC-3D 常见问题",
         "section": "2.3 管理员密码错误怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -15494,7 +15494,7 @@
       "title": "DAC-3D 常见问题",
       "section": "3.1 离线检测为什么找不到图片？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "离线检测要求每个表面包含三张图": 1,
         "离线": 4,
@@ -15636,7 +15636,7 @@
         "title": "DAC-3D 常见问题",
         "section": "3.1 离线检测为什么找不到图片？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -16032,7 +16032,7 @@
       "title": "DAC-3D 常见问题",
       "section": "3.2 离线检测可以不连接硬件吗？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "可以": 2,
         "可": 1,
@@ -16100,7 +16100,7 @@
         "title": "DAC-3D 常见问题",
         "section": "3.2 离线检测可以不连接硬件吗？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.10846522890932808,
@@ -16496,7 +16496,7 @@
       "title": "DAC-3D 常见问题",
       "section": "3.3 离线检测运行后没有结果怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "按顺序检查": 1,
         "按顺": 1,
@@ -16587,7 +16587,7 @@
         "title": "DAC-3D 常见问题",
         "section": "3.3 离线检测运行后没有结果怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -16983,7 +16983,7 @@
       "title": "DAC-3D 常见问题",
       "section": "3.4 为什么只处理了部分样品？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "系统只处理完整样品": 1,
         "系统": 1,
@@ -17048,7 +17048,7 @@
         "title": "DAC-3D 常见问题",
         "section": "3.4 为什么只处理了部分样品？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -17444,7 +17444,7 @@
       "title": "DAC-3D 常见问题",
       "section": "4.1 点击运行后设备没有动作怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "主界面点击运行后": 1,
         "主界": 1,
@@ -17548,7 +17548,7 @@
         "title": "DAC-3D 常见问题",
         "section": "4.1 点击运行后设备没有动作怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -17944,7 +17944,7 @@
       "title": "DAC-3D 常见问题",
       "section": "4.2 在线检测必须连接数据库吗？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "不是": 2,
         "不": 1,
@@ -18001,7 +18001,7 @@
         "title": "DAC-3D 常见问题",
         "section": "4.2 在线检测必须连接数据库吗？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -18397,7 +18397,7 @@
       "title": "DAC-3D 常见问题",
       "section": "4.3 为什么检测固定是 144 个点？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "当前系统按": 1,
         "当前": 1,
@@ -18463,7 +18463,7 @@
         "title": "DAC-3D 常见问题",
         "section": "4.3 为什么检测固定是 144 个点？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         -0.1203858530857692,
@@ -18859,7 +18859,7 @@
       "title": "DAC-3D 常见问题",
       "section": "5.1 提示“模型未加载，使用随机结果进行模拟”怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "这表示当前检测结果不可信": 1,
         "这表": 1,
@@ -18964,7 +18964,7 @@
         "title": "DAC-3D 常见问题",
         "section": "5.1 提示“模型未加载，使用随机结果进行模拟”怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -19360,7 +19360,7 @@
       "title": "DAC-3D 常见问题",
       "section": "5.2 GPU 不可用是否可以运行？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "可以": 2,
         "可": 1,
@@ -19417,7 +19417,7 @@
         "title": "DAC-3D 常见问题",
         "section": "5.2 GPU 不可用是否可以运行？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -19813,7 +19813,7 @@
       "title": "DAC-3D 常见问题",
       "section": "5.3 为什么检测框很多，但结果仍然合格？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "系统不会把所有检测框都当作不合格": 1,
         "系统": 1,
@@ -19904,7 +19904,7 @@
         "title": "DAC-3D 常见问题",
         "section": "5.3 为什么检测框很多，但结果仍然合格？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -20300,7 +20300,7 @@
       "title": "DAC-3D 常见问题",
       "section": "5.4 为什么 D 区有很多缺陷但没有判不合格？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "当前规则中": 1,
         "当前": 1,
@@ -20355,7 +20355,7 @@
         "title": "DAC-3D 常见问题",
         "section": "5.4 为什么 D 区有很多缺陷但没有判不合格？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -20751,7 +20751,7 @@
       "title": "DAC-3D 常见问题",
       "section": "6.1 融合失败怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "优先检查": 1,
         "优": 1,
@@ -20853,7 +20853,7 @@
         "title": "DAC-3D 常见问题",
         "section": "6.1 融合失败怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.08058229640253803,
@@ -21249,7 +21249,7 @@
       "title": "DAC-3D 常见问题",
       "section": "6.2 为什么焦前、焦面、焦后必须齐全？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "当前融合流程使用三路图像共同生成融合图": 1,
         "当前": 1,
@@ -21308,7 +21308,7 @@
         "title": "DAC-3D 常见问题",
         "section": "6.2 为什么焦前、焦面、焦后必须齐全？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -21704,7 +21704,7 @@
       "title": "DAC-3D 常见问题",
       "section": "7.1 检测结果在哪里？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "结果默认保存在": 1,
         "结果": 5,
@@ -21760,7 +21760,7 @@
         "title": "DAC-3D 常见问题",
         "section": "7.1 检测结果在哪里？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -22156,7 +22156,7 @@
       "title": "DAC-3D 常见问题",
       "section": "7.2 没有 CSV 文件怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "csv": 2,
         "由图像处理进程在模型推理后生成": 1,
@@ -22229,7 +22229,7 @@
         "title": "DAC-3D 常见问题",
         "section": "7.2 没有 CSV 文件怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -22625,7 +22625,7 @@
       "title": "DAC-3D 常见问题",
       "section": "7.3 主界面历史记录为空怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "历史记录依赖数据库": 1,
         "历史": 2,
@@ -22695,7 +22695,7 @@
         "title": "DAC-3D 常见问题",
         "section": "7.3 主界面历史记录为空怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -23091,7 +23091,7 @@
       "title": "DAC-3D 常见问题",
       "section": "8.1 相机不可用怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "检查": 2,
         "检": 1,
@@ -23155,7 +23155,7 @@
         "title": "DAC-3D 常见问题",
         "section": "8.1 相机不可用怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -23551,7 +23551,7 @@
       "title": "DAC-3D 常见问题",
       "section": "8.2 光源无法控制怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "当前光源串口配置集中在": 1,
         "当前": 1,
@@ -23628,7 +23628,7 @@
         "title": "DAC-3D 常见问题",
         "section": "8.2 光源无法控制怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -24024,7 +24024,7 @@
       "title": "DAC-3D 常见问题",
       "section": "8.3 运动控制卡连接失败怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "z": 1,
         "轴控制卡默认地址为": 1,
@@ -24087,7 +24087,7 @@
         "title": "DAC-3D 常见问题",
         "section": "8.3 运动控制卡连接失败怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -24483,7 +24483,7 @@
       "title": "DAC-3D 常见问题",
       "section": "8.4 载物台连接失败怎么办？",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "xy": 1,
         "载物台使用": 1,
@@ -24545,7 +24545,7 @@
         "title": "DAC-3D 常见问题",
         "section": "8.4 载物台连接失败怎么办？",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -24941,7 +24941,7 @@
       "title": "DAC-3D 常见问题",
       "section": "9. 推荐排查顺序",
       "document_type": "reference",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md",
       "token_counts": {
         "出现问题时建议按以下顺序定位": 1,
         "出现": 1,
@@ -25054,7 +25054,7 @@
         "title": "DAC-3D 常见问题",
         "section": "9. 推荐排查顺序",
         "document_type": "reference",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D常见问题.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D常见问题.md"
       },
       "embedding": [
         0.0,
@@ -25450,7 +25450,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "1. 文档定位",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "本文是": 1,
         "本": 1,
@@ -25580,7 +25580,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "1. 文档定位",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -25976,7 +25976,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "1. 文档定位",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "本文是": 1,
         "本": 1,
@@ -26142,7 +26142,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "1. 文档定位",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -26538,7 +26538,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "1. 文档定位",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "本文只记录在当前系统中已经确认的功能和行为": 1,
         "本文": 1,
@@ -26631,7 +26631,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "1. 文档定位",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -27027,7 +27027,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "2. 系统用途",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "dac": 1,
         "3d": 1,
@@ -27170,7 +27170,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "2. 系统用途",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         -0.07312724241271307,
@@ -27566,7 +27566,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "2. 系统用途",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "系统支持两种运行方式": 1,
         "系统": 1,
@@ -27719,7 +27719,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "2. 系统用途",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.06741998624632421,
@@ -28115,7 +28115,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "3. 系统组成",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "系统由三个常驻进程协同工作": 1,
         "系统": 1,
@@ -28137,7 +28137,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "3. 系统组成",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -28533,7 +28533,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "3. 系统组成",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "进程": 16,
         "进": 11,
@@ -28725,7 +28725,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "3. 系统组成",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -29121,7 +29121,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "3. 系统组成",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "queue": 7,
         "传递消息": 1,
@@ -29211,7 +29211,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "3. 系统组成",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -29607,7 +29607,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "4.1 启动入口",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "在": 2,
         "xxp": 1,
@@ -29666,7 +29666,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "4.1 启动入口",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -30062,7 +30062,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "4.2 启动前检查",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "启动前建议确认以下项目": 1,
         "启动": 1,
@@ -30179,7 +30179,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "4.2 启动前检查",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.08703882797784893,
@@ -30575,7 +30575,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "5. 登录说明",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "登录窗口由": 1,
         "登录": 3,
@@ -30708,7 +30708,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "5. 登录说明",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -31104,7 +31104,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "6. 主界面说明",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "主界面由": 1,
         "主": 1,
@@ -31256,7 +31256,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "6. 主界面说明",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         -0.0575435337648436,
@@ -31652,7 +31652,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "7.1 适用场景",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "离线检测适用于以下情况": 1,
         "离线": 4,
@@ -31788,7 +31788,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "7.1 适用场景",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.06108472217815261,
@@ -32184,7 +32184,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "7.2 原图目录要求",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "离线目录可以是单层目录": 1,
         "离线": 3,
@@ -32370,7 +32370,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "7.2 原图目录要求",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         -0.027086448924394324,
@@ -32766,7 +32766,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "7.2 原图目录要求",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "面": 4,
         "焦面": 2,
@@ -32862,7 +32862,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "7.2 原图目录要求",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -33258,7 +33258,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "7.2 原图目录要求",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "常见问法": 1,
         "常": 1,
@@ -33343,7 +33343,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "7.2 原图目录要求",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -33739,7 +33739,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "7.3 操作步骤",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "1": 1,
         "使用管理员登录进入主界面": 1,
@@ -33884,7 +33884,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "7.3 操作步骤",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.05661385170722978,
@@ -34280,7 +34280,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "8.1 适用场景",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "在线检测用于现场设备完整连接时的正式检测": 1,
         "在线": 1,
@@ -34334,7 +34334,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "8.1 适用场景",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -34730,7 +34730,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "8.2 在线检测前置条件",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "开始在线检测前": 1,
         "开始": 1,
@@ -34809,7 +34809,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "8.2 在线检测前置条件",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -35205,7 +35205,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "8.3 操作步骤",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "1": 1,
         "使用管理员或用户模式进入主界面": 1,
@@ -35341,7 +35341,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "8.3 操作步骤",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         -0.06950480468569159,
@@ -35737,7 +35737,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "8.4 停止检测",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "点击停止按钮时": 1,
         "点击": 1,
@@ -35821,7 +35821,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "8.4 停止检测",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -36217,7 +36217,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "9. 图像处理流程",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "每个表面处理流程如下": 1,
         "每个": 1,
@@ -36374,7 +36374,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "9. 图像处理流程",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.19569842191603265,
@@ -36770,7 +36770,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "9. 图像处理流程",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "11": 1,
         "将上下两个表面合并为最终样品结果": 1,
@@ -36818,7 +36818,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "9. 图像处理流程",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -37214,7 +37214,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "10. 输出文件",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "当前版本输出到": 1,
         "当前": 1,
@@ -37307,7 +37307,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "10. 输出文件",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -37703,7 +37703,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "11. 数据库记录",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "数据库控制器位于": 1,
         "数据": 6,
@@ -37838,7 +37838,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "11. 数据库记录",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -38234,7 +38234,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "12. 调试界面",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "调试界面由": 1,
         "调试": 1,
@@ -38374,7 +38374,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "12. 调试界面",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.15713484026367722,
@@ -38770,7 +38770,7 @@
       "title": "DAC-3D 本地检测系统操作手册",
       "section": "13. 操作注意事项",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md",
       "token_counts": {
         "正式检测前": 1,
         "正式": 2,
@@ -38936,7 +38936,7 @@
         "title": "DAC-3D 本地检测系统操作手册",
         "section": "13. 操作注意事项",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\DAC-3D操作手册.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/DAC-3D操作手册.md"
       },
       "embedding": [
         0.0,
@@ -39332,7 +39332,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "1. 判定原则",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "dac": 1,
         "3d": 1,
@@ -39432,7 +39432,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "1. 判定原则",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.0,
@@ -39828,7 +39828,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "2. 区域含义",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "系统把样品圆面划分为": 1,
         "系统": 1,
@@ -39901,7 +39901,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "2. 区域含义",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.0,
@@ -40297,7 +40297,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "A 区",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "a": 1,
         "区靠近样品中心": 1,
@@ -40359,7 +40359,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "A 区",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.0,
@@ -40755,7 +40755,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "B 区",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "b": 2,
         "区允许少量中小尺寸": 1,
@@ -40806,7 +40806,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "B 区",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.0,
@@ -41202,7 +41202,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "C 区",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "c": 1,
         "区规则允许一定尺寸范围内的": 1,
@@ -41246,7 +41246,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "C 区",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.0,
@@ -41642,7 +41642,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "D 区",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "d": 3,
         "区接近边缘": 1,
@@ -41703,7 +41703,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "D 区",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.0,
@@ -42099,7 +42099,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "OUT 区",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "out": 2,
         "区不参与最终合格性判定": 1,
@@ -42145,7 +42145,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "OUT 区",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.0,
@@ -42541,7 +42541,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "4. CSV 字段解读",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "缺陷明细文件": 1,
         "缺陷": 6,
@@ -42679,7 +42679,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "4. CSV 字段解读",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.0,
@@ -43075,7 +43075,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "5. 回答缺陷问题时的要求",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "当操作员询问": 1,
         "当操": 1,
@@ -43228,7 +43228,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "5. 回答缺陷问题时的要求",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.07088812050083358,
@@ -43624,7 +43624,7 @@
       "title": "DAC-3D 缺陷判定指南",
       "section": "6. 复核建议",
       "document_type": "defect",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md",
       "token_counts": {
         "以下情况建议人工复核": 1,
         "以下": 1,
@@ -43728,7 +43728,7 @@
         "title": "DAC-3D 缺陷判定指南",
         "section": "6. 复核建议",
         "document_type": "defect",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\defect_interpretation.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/defect_interpretation.md"
       },
       "embedding": [
         0.0,
@@ -44124,7 +44124,7 @@
       "title": "DAC-3D 系统总览",
       "section": "系统定位",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md",
       "token_counts": {
         "dac": 2,
         "3d": 2,
@@ -44253,7 +44253,7 @@
         "title": "DAC-3D 系统总览",
         "section": "系统定位",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md"
       },
       "embedding": [
         0.0,
@@ -44649,7 +44649,7 @@
       "title": "DAC-3D 系统总览",
       "section": "核心能力",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md",
       "token_counts": {
         "系统具备以下核心能力": 1,
         "系统": 1,
@@ -44778,7 +44778,7 @@
         "title": "DAC-3D 系统总览",
         "section": "核心能力",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md"
       },
       "embedding": [
         0.0,
@@ -45174,7 +45174,7 @@
       "title": "DAC-3D 系统总览",
       "section": "进程结构",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md",
       "token_counts": {
         "系统入口": 1,
         "系": 1,
@@ -45288,7 +45288,7 @@
         "title": "DAC-3D 系统总览",
         "section": "进程结构",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md"
       },
       "embedding": [
         0.0,
@@ -45684,7 +45684,7 @@
       "title": "DAC-3D 系统总览",
       "section": "主要数据流",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md",
       "token_counts": {
         "标准检测数据流如下": 1,
         "标准": 1,
@@ -45842,7 +45842,7 @@
         "title": "DAC-3D 系统总览",
         "section": "主要数据流",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md"
       },
       "embedding": [
         0.06350006350009525,
@@ -46238,7 +46238,7 @@
       "title": "DAC-3D 系统总览",
       "section": "本地部署特点",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md",
       "token_counts": {
         "当前系统不依赖云端推理": 1,
         "当前": 2,
@@ -46348,7 +46348,7 @@
         "title": "DAC-3D 系统总览",
         "section": "本地部署特点",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\manual_overview.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/manual_overview.md"
       },
       "embedding": [
         0.0,
@@ -46744,7 +46744,7 @@
       "title": "DAC-3D 参数速查",
       "section": "相机编号",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md",
       "token_counts": {
         "da3827093": 1,
         "焦后相机": 1,
@@ -46788,7 +46788,7 @@
         "title": "DAC-3D 参数速查",
         "section": "相机编号",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md"
       },
       "embedding": [
         0.0,
@@ -47184,7 +47184,7 @@
       "title": "DAC-3D 参数速查",
       "section": "模型路径",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md",
       "token_counts": {
         "当前默认瑕疵检测模型为": 1,
         "当前": 2,
@@ -47275,7 +47275,7 @@
         "title": "DAC-3D 参数速查",
         "section": "模型路径",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md"
       },
       "embedding": [
         0.051298917604257706,
@@ -47671,7 +47671,7 @@
       "title": "DAC-3D 参数速查",
       "section": "推理参数",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md",
       "token_counts": {
         "置信度阈值": 1,
         "置信": 1,
@@ -47710,7 +47710,7 @@
         "title": "DAC-3D 参数速查",
         "section": "推理参数",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md"
       },
       "embedding": [
         -0.1543033499620919,
@@ -48106,7 +48106,7 @@
       "title": "DAC-3D 参数速查",
       "section": "区域划分",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md",
       "token_counts": {
         "a": 1,
         "区": 8,
@@ -48135,7 +48135,7 @@
         "title": "DAC-3D 参数速查",
         "section": "区域划分",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md"
       },
       "embedding": [
         0.0,
@@ -48531,7 +48531,7 @@
       "title": "DAC-3D 参数速查",
       "section": "缺陷类型",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md",
       "token_counts": {
         "splash": 1,
         "麻点或飞溅类瑕疵": 1,
@@ -48557,7 +48557,7 @@
         "title": "DAC-3D 参数速查",
         "section": "缺陷类型",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md"
       },
       "embedding": [
         0.0,
@@ -48953,7 +48953,7 @@
       "title": "DAC-3D 参数速查",
       "section": "数据库连接",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md",
       "token_counts": {
         "默认": 2,
         "默": 1,
@@ -48995,7 +48995,7 @@
         "title": "DAC-3D 参数速查",
         "section": "数据库连接",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md"
       },
       "embedding": [
         0.0,
@@ -49391,7 +49391,7 @@
       "title": "DAC-3D 参数速查",
       "section": "结果目录",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md",
       "token_counts": {
         "检测结果默认保存到": 1,
         "检测": 4,
@@ -49442,7 +49442,7 @@
         "title": "DAC-3D 参数速查",
         "section": "结果目录",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md"
       },
       "embedding": [
         0.0,
@@ -49838,7 +49838,7 @@
       "title": "DAC-3D 参数速查",
       "section": "配准矩阵",
       "document_type": "manual",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md",
       "token_counts": {
         "配准矩阵文件": 1,
         "配准": 1,
@@ -49892,7 +49892,7 @@
         "title": "DAC-3D 参数速查",
         "section": "配准矩阵",
         "document_type": "manual",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\parameter_notes.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/parameter_notes.md"
       },
       "embedding": [
         0.0,
@@ -50288,7 +50288,7 @@
       "title": "DAC-3D 故障处理指南",
       "section": "启动失败",
       "document_type": "guidance",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md",
       "token_counts": {
         "如果": 2,
         "如": 1,
@@ -50374,7 +50374,7 @@
         "title": "DAC-3D 故障处理指南",
         "section": "启动失败",
         "document_type": "guidance",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md"
       },
       "embedding": [
         0.0,
@@ -50770,7 +50770,7 @@
       "title": "DAC-3D 故障处理指南",
       "section": "模型未加载",
       "document_type": "guidance",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md",
       "token_counts": {
         "如果控制台出现": 1,
         "如果": 1,
@@ -50852,7 +50852,7 @@
         "title": "DAC-3D 故障处理指南",
         "section": "模型未加载",
         "document_type": "guidance",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md"
       },
       "embedding": [
         0.0,
@@ -51248,7 +51248,7 @@
       "title": "DAC-3D 故障处理指南",
       "section": "离线检测无结果",
       "document_type": "guidance",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md",
       "token_counts": {
         "离线检测无结果时": 1,
         "离线": 1,
@@ -51321,7 +51321,7 @@
         "title": "DAC-3D 故障处理指南",
         "section": "离线检测无结果",
         "document_type": "guidance",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md"
       },
       "embedding": [
         0.0,
@@ -51717,7 +51717,7 @@
       "title": "DAC-3D 故障处理指南",
       "section": "融合结果异常",
       "document_type": "guidance",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md",
       "token_counts": {
         "融合结果异常时": 1,
         "融合": 2,
@@ -51815,7 +51815,7 @@
         "title": "DAC-3D 故障处理指南",
         "section": "融合结果异常",
         "document_type": "guidance",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md"
       },
       "embedding": [
         0.0,
@@ -52211,7 +52211,7 @@
       "title": "DAC-3D 故障处理指南",
       "section": "检测框很多但仍合格",
       "document_type": "guidance",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md",
       "token_counts": {
         "这是正常现象": 1,
         "这是": 1,
@@ -52281,7 +52281,7 @@
         "title": "DAC-3D 故障处理指南",
         "section": "检测框很多但仍合格",
         "document_type": "guidance",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md"
       },
       "embedding": [
         0.0,
@@ -52677,7 +52677,7 @@
       "title": "DAC-3D 故障处理指南",
       "section": "数据库连接失败",
       "document_type": "guidance",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md",
       "token_counts": {
         "数据库失败时系统会进入离线数据库模式": 1,
         "数据": 6,
@@ -52772,7 +52772,7 @@
         "title": "DAC-3D 故障处理指南",
         "section": "数据库连接失败",
         "document_type": "guidance",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md"
       },
       "embedding": [
         0.0,
@@ -53168,7 +53168,7 @@
       "title": "DAC-3D 故障处理指南",
       "section": "在线硬件无响应",
       "document_type": "guidance",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md",
       "token_counts": {
         "在线硬件无响应时": 1,
         "在线": 1,
@@ -53264,7 +53264,7 @@
         "title": "DAC-3D 故障处理指南",
         "section": "在线硬件无响应",
         "document_type": "guidance",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md"
       },
       "embedding": [
         0.0,
@@ -53660,7 +53660,7 @@
       "title": "DAC-3D 故障处理指南",
       "section": "结果目录没有更新",
       "document_type": "guidance",
-      "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md",
+      "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md",
       "token_counts": {
         "检测运行后": 1,
         "检测": 1,
@@ -53763,7 +53763,7 @@
         "title": "DAC-3D 故障处理指南",
         "section": "结果目录没有更新",
         "document_type": "guidance",
-        "path": "C:\\Users\\xecat\\DAC-3D-LLM\\dac3d_iim_assistant\\knowledge_base\\documents\\troubleshooting.md"
+        "path": "/Users/xecat/Documents/yyw/DAC-3D-LLM/dac3d_iim_assistant/knowledge_base/documents/troubleshooting.md"
       },
       "embedding": [
         -0.0827605888602368,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -142,3 +144,81 @@ def test_assistant_validates_offline_folder_through_embedded_bridge(tmp_path: Pa
     assert response.status_summary["state"] == "idle"
     assert response.command_preview["payload"]["image_folder"] == str(offline_folder)
     assert bridge.calls[0][0] == "validate_offline_folder"
+
+
+def test_assistant_respects_preview_only_negative_submit(tmp_path: Path) -> None:
+    bridge = FakeRuntimeBridge()
+    assistant = DAC3DAssistant.create(
+        _make_config(tmp_path),
+        rebuild_kb=True,
+        runtime_bridge=bridge,
+    )
+
+    response = assistant.handle_message(
+        "扫描 25mm×25mm 区域，分辨率 5um，只生成结构化命令预览，不要执行。"
+    )
+
+    assert response.intent == "operation"
+    assert response.command_preview["action"] == "scan"
+    assert response.status_summary is None
+    assert bridge.calls == []
+
+
+def test_assistant_validates_file_bridge_folder_without_writing_command(tmp_path: Path) -> None:
+    status_file = tmp_path / "dac3d_runtime_status.json"
+    command_file = tmp_path / "dac3d_assistant_command.json"
+    status_file.write_text(
+        json.dumps({"status": {"state": "idle", "progress": 0}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    offline_folder = tmp_path / "offline_images"
+    offline_folder.mkdir()
+    for surface in ("surface1", "surface2"):
+        for camera in ("焦前", "焦面", "焦后"):
+            (offline_folder / f"pos1_{surface}_{camera}.jpg").write_bytes(b"fake")
+
+    config = _make_config(tmp_path)
+    config.dac3d_endpoint = status_file.as_uri()
+    old_command_path = os.environ.get("DAC3D_COMMAND_PATH")
+    os.environ["DAC3D_COMMAND_PATH"] = str(command_file)
+    try:
+        assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+        response = assistant.handle_message(f"校验离线目录 {offline_folder} 是否可用于检测。")
+    finally:
+        if old_command_path is None:
+            os.environ.pop("DAC3D_COMMAND_PATH", None)
+        else:
+            os.environ["DAC3D_COMMAND_PATH"] = old_command_path
+
+    assert response.intent == "operation"
+    assert response.parsed_result["ready"] is True
+    assert response.command_preview["payload"]["image_folder"] == str(offline_folder)
+    assert not command_file.exists()
+
+
+def test_assistant_blocks_invalid_offline_execute_before_file_bridge_submit(tmp_path: Path) -> None:
+    status_file = tmp_path / "dac3d_runtime_status.json"
+    command_file = tmp_path / "dac3d_assistant_command.json"
+    status_file.write_text(
+        json.dumps({"status": {"state": "idle", "progress": 0}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    missing_folder = tmp_path / "missing_images"
+
+    config = _make_config(tmp_path)
+    config.dac3d_endpoint = status_file.as_uri()
+    old_command_path = os.environ.get("DAC3D_COMMAND_PATH")
+    os.environ["DAC3D_COMMAND_PATH"] = str(command_file)
+    try:
+        assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+        response = assistant.handle_message(f'确认执行离线检测目录 "{missing_folder}" execute')
+    finally:
+        if old_command_path is None:
+            os.environ.pop("DAC3D_COMMAND_PATH", None)
+        else:
+            os.environ["DAC3D_COMMAND_PATH"] = old_command_path
+
+    assert response.intent == "operation"
+    assert response.parsed_result["ready"] is False
+    assert "existing_directory" in response.parsed_result["missing_requirements"]
+    assert not command_file.exists()

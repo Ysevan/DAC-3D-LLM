@@ -68,6 +68,12 @@ class AppConfig:
     retrieval_candidate_k: int = 8
     min_retrieval_score: float = 0.16
     history_window: int = 4
+    memory_enabled: bool = True
+    memory_recent_turns: int = 4
+    memory_search_limit: int = 5
+    memory_max_turns: int = 200
+    memory_index_limit: int = 2000
+    memory_max_field_chars: int = 1800
     language: str = "zh-CN"
     document_globs: tuple[str, ...] = ("**/*",)
     mock_mode: bool = True
@@ -76,7 +82,7 @@ class AppConfig:
     gradio_port: int = 7860
     gradio_share: bool = False
     web_host: str = "127.0.0.1"
-    web_port: int = 8000
+    web_port: int = 7890
     frontend_dev_url: str = ""
     agent_model_name: str = ""
     agent_api_key: str = ""
@@ -97,6 +103,7 @@ class AppConfig:
     legacy_frontend_dist_dir: Path = field(init=False)
     temp_root_dir: Path = field(init=False)
     upload_temp_dir: Path = field(init=False)
+    conversation_memory_dir: Path = field(init=False)
 
     def __post_init__(self) -> None:
         self.knowledge_base_dir = self.base_dir / "knowledge_base"
@@ -105,12 +112,13 @@ class AppConfig:
         self.vector_store_path = self.vector_store_dir / "chroma"
         self.vector_store_manifest_path = self.vector_store_path / "index.json"
         self.vector_store_history_path = self.vector_store_path / "build_history.json"
-        self.frontend_dir = self.base_dir / "frontend"
+        self.frontend_dir = self.base_dir / "ui2"
         self.frontend_dist_dir = self.frontend_dir / "dist"
-        self.legacy_frontend_dir = self.base_dir / "ui2"
+        self.legacy_frontend_dir = self.base_dir / "frontend"
         self.legacy_frontend_dist_dir = self.legacy_frontend_dir / "dist"
         self.temp_root_dir = self.base_dir / ".tmp"
         self.upload_temp_dir = self.temp_root_dir / "uploads"
+        self.conversation_memory_dir = self.temp_root_dir / "conversation_memory"
         local_status_file = self.temp_root_dir / "dac3d_runtime_status.json"
         if self.dac3d_endpoint == "mock://dac3d" and local_status_file.exists():
             self.dac3d_endpoint = local_status_file.resolve().as_uri()
@@ -162,6 +170,12 @@ class AppConfig:
             retrieval_candidate_k=int(os.getenv("DAC3D_RETRIEVAL_CANDIDATE_K", "8")),
             min_retrieval_score=float(os.getenv("DAC3D_MIN_RETRIEVAL_SCORE", "0.16")),
             history_window=int(os.getenv("DAC3D_HISTORY_WINDOW", "4")),
+            memory_enabled=_read_bool("DAC3D_MEMORY_ENABLED", True),
+            memory_recent_turns=int(os.getenv("DAC3D_MEMORY_RECENT_TURNS", "4")),
+            memory_search_limit=int(os.getenv("DAC3D_MEMORY_SEARCH_LIMIT", "5")),
+            memory_max_turns=int(os.getenv("DAC3D_MEMORY_MAX_TURNS", "200")),
+            memory_index_limit=int(os.getenv("DAC3D_MEMORY_INDEX_LIMIT", "2000")),
+            memory_max_field_chars=int(os.getenv("DAC3D_MEMORY_MAX_FIELD_CHARS", "1800")),
             language=os.getenv("DAC3D_LANGUAGE", "zh-CN"),
             document_globs=_read_csv(
                 "DAC3D_DOCUMENT_GLOBS",
@@ -173,7 +187,7 @@ class AppConfig:
             gradio_port=int(os.getenv("DAC3D_GRADIO_PORT", "7860")),
             gradio_share=_read_bool("DAC3D_GRADIO_SHARE", False),
             web_host=os.getenv("DAC3D_WEB_HOST", "127.0.0.1"),
-            web_port=int(os.getenv("DAC3D_WEB_PORT", "8000")),
+            web_port=int(os.getenv("DAC3D_WEB_PORT", "7890")),
             frontend_dev_url=os.getenv("DAC3D_FRONTEND_DEV_URL", "").strip(),
             agent_model_name=(
                 os.getenv("DAC3D_AGENT_MODEL_NAME")
@@ -205,6 +219,8 @@ class AppConfig:
         self.documents_dir.mkdir(parents=True, exist_ok=True)
         self.vector_store_dir.mkdir(parents=True, exist_ok=True)
         self.upload_temp_dir.mkdir(parents=True, exist_ok=True)
+        if self.memory_enabled:
+            self.conversation_memory_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def vector_store_ready(self) -> bool:

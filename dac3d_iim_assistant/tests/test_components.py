@@ -124,16 +124,30 @@ def test_intent_parser_returns_unified_operation_structure() -> None:
     assert parsed.needs_clarification is False
 
 
-def test_intent_parser_requires_clarification_when_scan_area_is_missing() -> None:
-    """Operation requests without scan area must remain non-actionable."""
+def test_intent_parser_maps_direct_scan_start_to_online_control() -> None:
+    """Direct operator scan requests should target the DAC-3D online scan entrypoint."""
     parser = IntentParser()
 
     parsed = parser.parse("开始扫描")
 
     assert parsed.intent == "operation"
+    assert parsed.command is not None
+    assert parsed.command.action == "start_online_scan"
+    assert parsed.command.payload["func"] == "Scan"
+    assert parsed.command.payload["total_positions"] == 144
+    assert parsed.missing_fields == []
+    assert parsed.needs_clarification is False
+
+
+def test_intent_parser_keeps_custom_area_scan_as_preview() -> None:
+    """Custom area scans are previews unless a supported DAC-3D runtime action is named."""
+    parser = IntentParser()
+
+    parsed = parser.parse("扫描当前区域")
+
+    assert parsed.intent == "operation"
     assert "scan_area_mm" in parsed.missing_fields
     assert parsed.needs_clarification is True
-    assert parsed.clarification_question is not None
     assert parsed.command is not None
     assert parsed.command.region == "current_selection"
     assert parsed.command.mode == "standard"
@@ -195,6 +209,18 @@ def test_command_generator_extracts_offline_folder_for_validation() -> None:
     assert command.payload["image_folder"] == r"C:\dac3d\pre_fusion_images"
     assert command.missing_fields == []
     assert command.safety["safe_to_auto_execute"] is True
+
+
+def test_command_generator_trims_unquoted_posix_validation_folder() -> None:
+    """Unquoted POSIX paths should not absorb the trailing Chinese question text."""
+    generator = CommandGenerator()
+    command = generator.generate(
+        "校验离线目录 /tmp/dac3d_acceptance 是否可用于检测。"
+    )
+
+    assert command.action == "validate_offline_folder"
+    assert command.payload["image_folder"] == "/tmp/dac3d_acceptance"
+    assert command.missing_fields == []
 
 
 def test_command_generator_extracts_step_length_for_scan_estimate() -> None:

@@ -38,11 +38,16 @@ const EMPTY_DETAILS: AssistantPayload = {
   parsed_result: null,
 };
 
+function createChatSessionId(): string {
+  return `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
   const [systemTheme, setSystemTheme] = useState<"light" | "dark">("light");
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [history, setHistory] = useState<ChatHistoryTurn[]>([]);
+  const [sessionId, setSessionId] = useState(createChatSessionId);
   const [input, setInput] = useState("");
   const [panelMode, setPanelMode] = useState<PanelMode>("hidden");
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
@@ -67,6 +72,7 @@ function App() {
   });
   const hasConversation = messages.length > 0;
   const theme = themeMode === "auto" ? systemTheme : themeMode;
+  const dac3dRuntime = useMemo(() => buildDac3dRuntimeView(runtimeSummary), [runtimeSummary]);
 
   useEffect(() => {
     void refreshSidebarData();
@@ -148,7 +154,7 @@ function App() {
 
     try {
       await streamChat(
-        { message: prompt, history },
+        { message: prompt, history, session_id: sessionId },
         {
           onMeta: (payload) => {
             setDetailsPayload((current) => ({
@@ -370,6 +376,7 @@ function App() {
     setDetailsPayload({ ...payload, answer: finalAnswer });
     setRequestStage(null);
     setIsSending(false);
+    void refreshSidebarData();
     streamRenderRef.current = {
       assistantId: null,
       queue: [],
@@ -426,6 +433,7 @@ function App() {
   const resetConversation = useCallback((): void => {
     setMessages([]);
     setHistory([]);
+    setSessionId(createChatSessionId());
     setInput("");
     setDetailsPayload(EMPTY_DETAILS);
     setPanelMode("hidden");
@@ -459,8 +467,8 @@ function App() {
 
   return (
     <div className={`app-container theme-${theme} ${hasConversation ? "state-active" : "state-idle"}`}>
-      <a className="ui-switch-link" href="http://127.0.0.1:8000" title="切换到 8000 UI">
-        切换到 8000
+      <a className="ui-switch-link" href="http://127.0.0.1:7860" title="切换到备用前端">
+        备用前端
       </a>
 
       <aside className="left-sidebar">
@@ -480,6 +488,7 @@ function App() {
             新建会话
           </button>
         </div>
+        <Dac3dRuntimeCard runtime={dac3dRuntime} onRefresh={() => void refreshSidebarData()} />
         <nav className="sidebar-nav">
           <button className={`nav-item ${panelMode === "details" ? "active" : ""}`} onClick={() => openPanel("details")}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
@@ -650,6 +659,10 @@ function App() {
             </section>
 
             <section className="data-section">
+              <Dac3dRuntimeDetails runtime={dac3dRuntime} onRefresh={() => void refreshSidebarData()} />
+            </section>
+
+            <section className="data-section">
               <h3>知识库构建</h3>
               <div className="upload-area">
                 <label className="upload-label">
@@ -707,6 +720,85 @@ function App() {
         ) : null}
       </aside>
     </div>
+  );
+}
+
+type Dac3dRuntimeView = {
+  state: string;
+  stateLabel: string;
+  stateClassName: string;
+  progress: number;
+  message: string;
+  step: string;
+  mode: string;
+  endpoint: string;
+  source: string;
+  updatedAt: string;
+  trayId: string;
+  offline: string;
+  lastCommandAction: string;
+  latestResult: string;
+  resultHistoryCount: number;
+  rawStatus: Record<string, unknown> | null;
+  rawRuntime: Record<string, unknown> | null;
+};
+
+function Dac3dRuntimeCard(props: { runtime: Dac3dRuntimeView; onRefresh: () => void }) {
+  const { runtime, onRefresh } = props;
+  return (
+    <section className={`dac3d-runtime-card state-${runtime.stateClassName}`} aria-label="DAC-3D 运行状态">
+      <div className="dac3d-runtime-topline">
+        <span>DAC-3D 运行状态</span>
+        <button className="btn-runtime-refresh" onClick={onRefresh} title="刷新 DAC-3D 状态" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path></svg>
+        </button>
+      </div>
+      <div className="dac3d-runtime-state">
+        <span className="runtime-state-dot" />
+        <strong>{runtime.stateLabel}</strong>
+        <span>{runtime.progress}%</span>
+      </div>
+      <div className="runtime-progress-track">
+        <span style={{ width: `${runtime.progress}%` }} />
+      </div>
+      <p className="runtime-message">{runtime.message}</p>
+      <div className="runtime-meta-line">
+        <span>{runtime.mode}</span>
+        <span>{runtime.updatedAt}</span>
+      </div>
+    </section>
+  );
+}
+
+function Dac3dRuntimeDetails(props: { runtime: Dac3dRuntimeView; onRefresh: () => void }) {
+  const { runtime, onRefresh } = props;
+  return (
+    <>
+      <div className="section-title-row">
+        <h3>DAC-3D 运行状态</h3>
+        <button className="btn-panel-refresh" onClick={onRefresh} type="button">
+          刷新
+        </button>
+      </div>
+      <div className="data-grid">
+        <DetailRow label="状态" value={`${runtime.stateLabel} / ${runtime.progress}%`} />
+        <DetailRow label="阶段" value={runtime.step} />
+        <DetailRow label="消息" value={runtime.message} />
+        <DetailRow label="更新时间" value={runtime.updatedAt} />
+        <DetailRow label="来源" value={runtime.source} />
+        <DetailRow label="桥接模式" value={runtime.mode} />
+        <DetailRow label="端点" value={runtime.endpoint} />
+        <DetailRow label="托盘/批次" value={runtime.trayId} />
+        <DetailRow label="离线模式" value={runtime.offline} />
+        <DetailRow label="最近命令" value={runtime.lastCommandAction} />
+        <DetailRow label="最新结果" value={runtime.latestResult} />
+        <DetailRow label="历史结果" value={`${runtime.resultHistoryCount} 条`} />
+      </div>
+      <details className="json-block runtime-json-block">
+        <summary>原始 DAC-3D 状态 JSON</summary>
+        <pre>{formatJson(runtime.rawStatus ?? runtime.rawRuntime)}</pre>
+      </details>
+    </>
   );
 }
 
@@ -915,6 +1007,94 @@ function formatScore(value: number | null | undefined): string {
 
 function formatPresence(value: unknown): string {
   return value ? "有" : "无";
+}
+
+function buildDac3dRuntimeView(runtimeSummary: RuntimeSummary | null): Dac3dRuntimeView {
+  const runtime = asRecord(runtimeSummary?.dac3d);
+  const status = asRecord(runtime?.status);
+  const resultHistory = Array.isArray(status?.result_history) ? status.result_history : [];
+  const latestResult = asRecord(status?.latest_result);
+  const progress = normalizeProgress(status?.progress);
+  const state = stringValue(status?.state);
+  const endpoint = stringValue(runtime?.endpoint);
+  return {
+    state,
+    stateLabel: formatDac3dState(state),
+    stateClassName: normalizeStateClass(state),
+    progress,
+    message: status?.message == null || status.message === "" ? "暂未读取到 DAC-3D 运行状态。" : String(status.message),
+    step: stringValue(status?.step),
+    mode: stringValue(runtime?.mode ?? status?.mode),
+    endpoint,
+    source: stringValue(status?.source),
+    updatedAt: formatRuntimeTimestamp(status?.updated_at ?? status?.timestamp ?? status?.time),
+    trayId: stringValue(status?.tray_id),
+    offline: typeof status?.offline === "boolean" ? (status.offline ? "是" : "否") : stringValue(status?.offline),
+    lastCommandAction: stringValue(runtime?.last_command_action),
+    latestResult: formatLatestResult(latestResult),
+    resultHistoryCount: resultHistory.length,
+    rawStatus: status,
+    rawRuntime: runtime,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeProgress(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value ?? 0);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, Math.round(numeric)));
+}
+
+function formatDac3dState(value: string): string {
+  const stateMap: Record<string, string> = {
+    idle: "空闲",
+    queued: "排队中",
+    running: "运行中",
+    completed: "已完成",
+    stopped: "已停止",
+    error: "异常",
+    unknown: "未知",
+  };
+  return stateMap[value.toLowerCase()] ?? value;
+}
+
+function normalizeStateClass(value: string): string {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || "unknown";
+}
+
+function formatRuntimeTimestamp(value: unknown): string {
+  if (!value) {
+    return "暂无更新时间";
+  }
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function formatLatestResult(value: Record<string, unknown> | null): string {
+  if (!value) {
+    return "暂无";
+  }
+  const position = value.pos ?? value.position ?? value.sample_id;
+  const quality = value.quality_label ?? value.sample_quality_label ?? value.quality;
+  const defects = value.defects_num ?? value.defection_num;
+  const parts = [
+    position == null ? "" : `位置 ${position}`,
+    quality == null ? "" : `判定 ${quality}`,
+    defects == null ? "" : `缺陷 ${defects}`,
+  ].filter(Boolean);
+  return parts.length ? parts.join("，") : "已有最新结果";
 }
 
 function stringValue(value: unknown): string {
