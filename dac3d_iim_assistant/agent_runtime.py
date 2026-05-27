@@ -32,6 +32,7 @@ from context_engineering import ContextBuilder, FileBackedContextTree, GitWorksp
 from goals import (
     ArtifactStore,
     AutomationPlannerStore,
+    CheckpointStore,
     EventQueueStore,
     GoalStore,
     ReviewHandoffStore,
@@ -1209,6 +1210,7 @@ class DAC3DAgentRuntime:
                 "verification_feedback_runner",
                 "review_handoff_queue",
                 "code_symbol_navigator",
+                "workflow_checkpoint_store",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2173,6 +2175,7 @@ class DAC3DAgentChatAdapter:
     event_queue_store: EventQueueStore | None = None
     verification_store: VerificationRunnerStore | None = None
     review_handoff_store: ReviewHandoffStore | None = None
+    checkpoint_store: CheckpointStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -2229,6 +2232,8 @@ class DAC3DAgentChatAdapter:
             )
         if self.review_handoff_store is None:
             self.review_handoff_store = ReviewHandoffStore.from_root(self.config.conversation_memory_dir)
+        if self.checkpoint_store is None:
+            self.checkpoint_store = CheckpointStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2385,6 +2390,11 @@ class DAC3DAgentChatAdapter:
             self.review_handoff_store.describe()
             if self.review_handoff_store is not None
             else {"enabled": False, "backend": "local_review_handoff_queue"}
+        )
+        summary["checkpoints"] = (
+            self.checkpoint_store.describe()
+            if self.checkpoint_store is not None
+            else {"enabled": False, "backend": "local_agent_checkpoint_store"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2575,6 +2585,11 @@ class DAC3DAgentChatAdapter:
             if self.review_handoff_store is not None
             else {"enabled": False, "backend": "local_review_handoff_queue"}
         )
+        checkpoints = (
+            self.checkpoint_store.describe()
+            if self.checkpoint_store is not None
+            else {"enabled": False, "backend": "local_agent_checkpoint_store"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2597,6 +2612,7 @@ class DAC3DAgentChatAdapter:
             "event_queue": event_queue,
             "verification_feedback": verification_feedback,
             "review_handoffs": review_handoffs,
+            "checkpoints": checkpoints,
             "workflow": [
                 "user_task",
                 "goal_tracking",
@@ -2607,6 +2623,7 @@ class DAC3DAgentChatAdapter:
                 "event_queue",
                 "verification_feedback",
                 "review_handoff",
+                "workflow_checkpoint",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2618,6 +2635,23 @@ class DAC3DAgentChatAdapter:
                 "tool_loop",
                 "trace_feedback",
             ],
+        }
+
+    def _checkpoint_workspace_state(self) -> dict[str, Any]:
+        """Capture a compact workspace snapshot for a checkpoint state."""
+        workspace = self.agent_workspace()
+        return {
+            "backend": "dac_agent_workspace_snapshot",
+            "entry_agent": workspace.get("entry_agent"),
+            "workflow": workspace.get("workflow", []),
+            "counts": {
+                "goals": (workspace.get("goals") or {}).get("goal_count", 0),
+                "tasks": (workspace.get("task_board") or {}).get("task_count", 0),
+                "events": (workspace.get("event_queue") or {}).get("event_count", 0),
+                "artifacts": (workspace.get("artifacts") or {}).get("artifact_count", 0),
+                "reviews": (workspace.get("review_handoffs") or {}).get("review_count", 0),
+                "checkpoints": (workspace.get("checkpoints") or {}).get("checkpoint_count", 0),
+            },
         }
 
     def list_agent_verification_presets(self) -> dict[str, Any]:
@@ -2759,6 +2793,90 @@ class DAC3DAgentChatAdapter:
                 note=note,
                 reviewer=reviewer,
             ),
+        }
+
+    def list_agent_checkpoints(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        tag: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent workflow checkpoints."""
+        if self.checkpoint_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_agent_checkpoint_store",
+                "checkpoints": [],
+                "count": 0,
+            }
+        return self.checkpoint_store.list_checkpoints(
+            session_id=session_id,
+            status=status,
+            tag=tag,
+            limit=limit,
+        )
+
+    def read_agent_checkpoint(self, checkpoint_id: str) -> dict[str, Any]:
+        """Read one local Agent workflow checkpoint."""
+        if self.checkpoint_store is None:
+            raise ValueError("Checkpoint store is not enabled.")
+        return self.checkpoint_store.read_checkpoint(checkpoint_id)
+
+    def create_agent_checkpoint(
+        self,
+        title: str,
+        *,
+        state: dict[str, Any] | None = None,
+        session_id: str = "web",
+        summary: str = "",
+        status: str = "active",
+        task_id: str = "",
+        workflow_id: str = "",
+        event_id: str = "",
+        review_id: str = "",
+        trace_id: str = "",
+        parent_checkpoint_id: str = "",
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a durable workflow checkpoint for later resume context."""
+        if self.checkpoint_store is None:
+            raise ValueError("Checkpoint store is not enabled.")
+        checkpoint_state = state if state is not None else self._checkpoint_workspace_state()
+        return {
+            "enabled": True,
+            **self.checkpoint_store.create_checkpoint(
+                title,
+                state=checkpoint_state,
+                session_id=session_id,
+                summary=summary,
+                status=status,
+                task_id=task_id,
+                workflow_id=workflow_id,
+                event_id=event_id,
+                review_id=review_id,
+                trace_id=trace_id,
+                parent_checkpoint_id=parent_checkpoint_id,
+                tags=tags,
+                metadata=metadata,
+            ),
+        }
+
+    def restore_agent_checkpoint(
+        self,
+        checkpoint_id: str,
+        *,
+        note: str = "",
+        actor: str = "agent",
+    ) -> dict[str, Any]:
+        """Mark one checkpoint as the selected resume point."""
+        if self.checkpoint_store is None:
+            raise ValueError("Checkpoint store is not enabled.")
+        return {
+            "enabled": True,
+            **self.checkpoint_store.restore_checkpoint(checkpoint_id, note=note, actor=actor),
         }
 
     def list_goals(

@@ -7,6 +7,7 @@ from pathlib import Path
 from goals import (
     ArtifactStore,
     AutomationPlannerStore,
+    CheckpointStore,
     EventQueueStore,
     GoalStore,
     ReviewHandoffStore,
@@ -304,3 +305,34 @@ def test_review_handoff_store_tracks_comments_and_decisions(tmp_path: Path) -> N
     assert listed["count"] == 1
     assert read["review"]["comments"][0]["body"] == "结构清晰，可以继续。"
     assert summary["by_status"]["approved"] == 1
+
+
+def test_checkpoint_store_captures_and_restores_resume_state(tmp_path: Path) -> None:
+    store = CheckpointStore.from_root(tmp_path)
+
+    created = store.create_checkpoint(
+        "离线检测流程检查点",
+        state={"step": "preview_ready", "tool": "dac3d_preview_command"},
+        session_id="checkpoint-session",
+        task_id="task-1",
+        tags=["offline", "preview"],
+        metadata={"source": "test"},
+    )
+    checkpoint_id = created["checkpoint"]["id"]
+    restored = store.restore_checkpoint(
+        checkpoint_id,
+        note="继续从命令预览后恢复。",
+        actor="agent-worker",
+    )
+    listed = store.list_checkpoints(session_id="checkpoint-session", status="restored", tag="offline")
+    read = store.read_checkpoint(checkpoint_id)
+    summary = store.describe()
+
+    assert created["checkpoint"]["state"]["step"] == "preview_ready"
+    assert restored["restored"] is True
+    assert restored["checkpoint"]["status"] == "restored"
+    assert restored["checkpoint"]["restored_at"]
+    assert listed["count"] == 1
+    assert read["checkpoint"]["history"][-1]["actor"] == "agent-worker"
+    assert summary["last_restored_checkpoint_id"] == checkpoint_id
+    assert summary["by_status"]["restored"] == 1

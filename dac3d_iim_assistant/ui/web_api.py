@@ -195,6 +195,75 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/checkpoints")
+    def list_agent_checkpoints(
+        session_id: str | None = None,
+        status: str | None = None,
+        tag: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_checkpoints = getattr(assistant, "list_agent_checkpoints", None)
+        if not callable(list_checkpoints):
+            raise HTTPException(status_code=503, detail="Checkpoint store is unavailable.")
+        try:
+            return list_checkpoints(session_id=session_id, status=status, tag=tag, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/checkpoints/{checkpoint_id}")
+    def read_agent_checkpoint(checkpoint_id: str) -> dict[str, Any]:
+        read_checkpoint = getattr(assistant, "read_agent_checkpoint", None)
+        if not callable(read_checkpoint):
+            raise HTTPException(status_code=503, detail="Checkpoint store is unavailable.")
+        try:
+            return read_checkpoint(checkpoint_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/checkpoints")
+    def create_agent_checkpoint(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_checkpoint = getattr(assistant, "create_agent_checkpoint", None)
+        if not callable(create_checkpoint):
+            raise HTTPException(status_code=503, detail="Checkpoint store is unavailable.")
+        title = str(request.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        state = request.get("state") if isinstance(request.get("state"), dict) else None
+        metadata = request.get("metadata") if isinstance(request.get("metadata"), dict) else None
+        try:
+            return create_checkpoint(
+                title,
+                state=state,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                summary=str(request.get("summary") or ""),
+                status=str(request.get("status") or "active"),
+                task_id=str(request.get("task_id") or ""),
+                workflow_id=str(request.get("workflow_id") or ""),
+                event_id=str(request.get("event_id") or ""),
+                review_id=str(request.get("review_id") or ""),
+                trace_id=str(request.get("trace_id") or ""),
+                parent_checkpoint_id=str(request.get("parent_checkpoint_id") or ""),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=metadata,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/checkpoints/{checkpoint_id}/restore")
+    def restore_agent_checkpoint(checkpoint_id: str, request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+        restore_checkpoint = getattr(assistant, "restore_agent_checkpoint", None)
+        if not callable(restore_checkpoint):
+            raise HTTPException(status_code=503, detail="Checkpoint store is unavailable.")
+        payload = dict(request or {})
+        try:
+            return restore_checkpoint(
+                checkpoint_id,
+                note=str(payload.get("note") or ""),
+                actor=str(payload.get("actor") or "agent"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/api/agent/repo-map")
     def read_repo_context_map() -> dict[str, Any]:
         read_map = getattr(assistant, "read_repo_context_map", None)

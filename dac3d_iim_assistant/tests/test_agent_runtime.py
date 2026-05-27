@@ -790,6 +790,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["event_queue"]["backend"] == "local_agent_event_queue"
     assert summary["verification_feedback"]["backend"] == "local_verification_runner"
     assert summary["review_handoffs"]["backend"] == "local_review_handoff_queue"
+    assert summary["checkpoints"]["backend"] == "local_agent_checkpoint_store"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1070,6 +1071,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "verification_feedback_runner" in description["network_capabilities"]
     assert "review_handoff_queue" in description["network_capabilities"]
     assert "code_symbol_navigator" in description["network_capabilities"]
+    assert "workflow_checkpoint_store" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1298,6 +1300,37 @@ def test_agent_chat_adapter_review_handoff_roundtrip(tmp_path) -> None:
     assert read["review"]["verification_run_ids"] == ["verification-agent"]
     assert workspace["review_handoffs"]["review_count"] == 1
     assert "review_handoff" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_checkpoint_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    created = adapter.create_agent_checkpoint(
+        "Agent workspace checkpoint",
+        state={"phase": "after_verification", "runs": 1},
+        session_id="checkpoint-agent",
+        tags=["verification"],
+    )
+    checkpoint_id = created["checkpoint"]["id"]
+    restored = adapter.restore_agent_checkpoint(
+        checkpoint_id,
+        note="Resume from verification result.",
+        actor="agent-worker",
+    )
+    listed = adapter.list_agent_checkpoints(session_id="checkpoint-agent", status="restored")
+    read = adapter.read_agent_checkpoint(checkpoint_id)
+    workspace = adapter.agent_workspace()
+
+    assert created["checkpoint"]["state"]["phase"] == "after_verification"
+    assert restored["checkpoint"]["status"] == "restored"
+    assert listed["count"] == 1
+    assert read["checkpoint"]["tags"] == ["verification"]
+    assert workspace["checkpoints"]["checkpoint_count"] == 1
+    assert workspace["checkpoints"]["last_restored_checkpoint_id"] == checkpoint_id
+    assert "workflow_checkpoint" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

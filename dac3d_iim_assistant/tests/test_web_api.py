@@ -772,6 +772,46 @@ def test_web_api_agent_review_handoff_endpoints(tmp_path) -> None:
     assert workspace_response.json()["review_handoffs"]["review_count"] == 1
 
 
+def test_web_api_agent_checkpoint_endpoints(tmp_path) -> None:
+    """The web UI should create, restore, read, and list Agent checkpoints."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/checkpoints",
+        json={
+            "title": "离线检测恢复点",
+            "state": {"step": "review_handoff_done"},
+            "session_id": "checkpoint-ui-session",
+            "tags": ["offline", "review"],
+        },
+    )
+    checkpoint_id = create_response.json()["checkpoint"]["id"]
+    restore_response = client.post(
+        f"/api/agent/checkpoints/{checkpoint_id}/restore",
+        json={"note": "继续下一步。", "actor": "web-worker"},
+    )
+    read_response = client.get(f"/api/agent/checkpoints/{checkpoint_id}")
+    list_response = client.get(
+        "/api/agent/checkpoints?session_id=checkpoint-ui-session&status=restored&tag=offline"
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["checkpoint"]["state"]["step"] == "review_handoff_done"
+    assert restore_response.status_code == 200
+    assert restore_response.json()["checkpoint"]["status"] == "restored"
+    assert read_response.status_code == 200
+    assert read_response.json()["checkpoint"]["history"][-1]["actor"] == "web-worker"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert workspace_response.json()["checkpoints"]["checkpoint_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)
