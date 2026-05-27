@@ -19,6 +19,9 @@ export interface AssistantPayload {
   command_preview: Record<string, unknown> | null;
   status_summary: Record<string, unknown> | null;
   parsed_result: Record<string, unknown> | null;
+  confirmation?: CommandConfirmation | null;
+  request_id?: string | null;
+  trace_id?: string | null;
 }
 
 export interface RuntimeSummary {
@@ -56,6 +59,15 @@ export interface ChatRequest {
   message: string;
   history: ChatHistoryTurn[];
   session_id?: string;
+}
+
+export interface CommandConfirmation {
+  required?: boolean;
+  preview_id?: string;
+  preview_hash?: string;
+  confirmation_token?: string;
+  expires_at?: number;
+  used?: boolean;
 }
 
 export interface MessageRecord {

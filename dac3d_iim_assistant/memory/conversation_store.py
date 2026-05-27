@@ -12,6 +12,7 @@ from threading import RLock
 from typing import Any
 
 from config import AppConfig
+from security.secrets import assert_no_secrets
 
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
@@ -151,6 +152,14 @@ class ConversationMemoryStore:
         normalized = _safe_session_id(session_id)
         if not str(user or "").strip() and not str(assistant or "").strip():
             return self.load_session(normalized)
+        assert_no_secrets(
+            {
+                "user": user,
+                "assistant": assistant,
+                "structured_data": structured_data or {},
+            },
+            location="conversation_memory",
+        )
 
         with self._lock:
             now = _utc_now_iso()

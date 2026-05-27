@@ -179,6 +179,10 @@ def test_stack_trace_not_leaked(tmp_path) -> None:
 
 def test_production_cors_not_wildcard(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("DAC3D_ENV", "prod")
+    monkeypatch.setenv("DAC3D_ALLOW_COMMAND_SUBMIT", "false")
+    monkeypatch.setenv("DAC3D_CORS_ALLOWED_ORIGINS", "https://dac3d.example")
+    monkeypatch.setenv("DAC3D_ALLOWED_INPUT_DIRS", str(tmp_path))
+    monkeypatch.setenv("DAC3D_ALLOWED_COMMAND_OUTPUT_DIR", str(tmp_path / "commands"))
     config = make_config(tmp_path)
     config.frontend_dev_url = "*"
     assistant = DAC3DAssistant.create(config, rebuild_kb=True)

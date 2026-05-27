@@ -1,6 +1,7 @@
 import type {
   AssistantPayload,
   ChatRequest,
+  CommandConfirmation,
   KnowledgeBaseSummary,
   RuntimeSummary,
 } from "./types";
@@ -17,10 +18,14 @@ type StreamHandlers = {
   onError?: (message: string) => void;
 };
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, withSecurityHeaders(init));
+async function requestJson<T>(
+  path: string,
+  init?: RequestInit,
+  options: { includeOperator?: boolean; sessionId?: string } = {},
+): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, withSecurityHeaders(init, options));
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw new Error(await extractApiErrorMessage(response));
   }
   return (await response.json()) as T;
 }
@@ -39,18 +44,18 @@ export function sendChat(request: ChatRequest): Promise<AssistantPayload> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...request, session_id: sessionId }),
-  });
+  }, { sessionId });
 }
 
 export async function streamChat(request: ChatRequest, handlers: StreamHandlers): Promise<void> {
   const sessionId = request.session_id ?? getSessionId();
   const response = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
-    headers: withSecurityHeaders({ headers: { "Content-Type": "application/json" } }).headers,
+    headers: withSecurityHeaders({ headers: { "Content-Type": "application/json" } }, { sessionId }).headers,
     body: JSON.stringify({ ...request, session_id: sessionId }),
   });
   if (!response.ok || !response.body) {
-    throw new Error(await response.text());
+    throw new Error(await extractApiErrorMessage(response));
   }
 
   const reader = response.body.getReader();
@@ -80,18 +85,50 @@ export async function buildKnowledgeBase(files: File[]): Promise<{
 }> {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
-  return requestJson("/api/knowledge-base/build", withSecurityHeaders({
+  return requestJson("/api/knowledge-base/build", {
     method: "POST",
     body: formData,
-  }, { includeOperator: true }));
+  }, { includeOperator: true });
+}
+
+export function previewCommand(request: ChatRequest): Promise<AssistantPayload> {
+  const sessionId = request.session_id ?? getSessionId();
+  return requestJson<AssistantPayload>("/api/commands/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...request,
+      session_id: sessionId,
+      operator_id: getOperatorId(),
+      roles: ["operator"],
+    }),
+  }, { includeOperator: true, sessionId });
+}
+
+export function confirmCommand(
+  confirmation: CommandConfirmation,
+  sessionId: string,
+): Promise<AssistantPayload> {
+  return requestJson<AssistantPayload>("/api/commands/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      preview_id: confirmation.preview_id,
+      preview_hash: confirmation.preview_hash,
+      confirmation_token: confirmation.confirmation_token,
+      session_id: sessionId,
+      operator_id: getOperatorId(),
+      roles: ["operator"],
+    }),
+  }, { includeOperator: true, sessionId });
 }
 
 function withSecurityHeaders(
   init?: RequestInit,
-  options: { includeOperator?: boolean } = {},
+  options: { includeOperator?: boolean; sessionId?: string } = {},
 ): RequestInit {
   const headers = new Headers(init?.headers);
-  headers.set("X-DAC3D-Session-ID", getSessionId());
+  headers.set("X-DAC3D-Session-ID", options.sessionId ?? getSessionId());
   if (options.includeOperator) {
     headers.set("X-DAC3D-Operator-ID", getOperatorId());
     headers.set("X-DAC3D-Roles", "operator");
@@ -174,4 +211,19 @@ function processSseEvent(rawEvent: string, handlers: StreamHandlers): void {
   if (eventName === "error") {
     handlers.onError?.((payload as { message: string }).message);
   }
+}
+
+async function extractApiErrorMessage(response: Response): Promise<string> {
+  const rawText = await response.text();
+  try {
+    const payload = JSON.parse(rawText) as { error?: { code?: string; message?: string; trace_id?: string } };
+    if (payload.error) {
+      const code = payload.error.code ? `${payload.error.code}: ` : "";
+      const trace = payload.error.trace_id ? ` trace_id=${payload.error.trace_id}` : "";
+      return `${code}${payload.error.message ?? "请求失败。"}${trace}`;
+    }
+  } catch {
+    // Keep the sanitized server text below.
+  }
+  return rawText || `HTTP ${response.status}`;
 }

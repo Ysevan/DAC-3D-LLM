@@ -19,8 +19,12 @@ type StreamHandlers = {
   onError?: (message: string) => void;
 };
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, withSecurityHeaders(init));
+async function requestJson<T>(
+  path: string,
+  init?: RequestInit,
+  options: { includeOperator?: boolean; sessionId?: string } = {},
+): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, withSecurityHeaders(init, options));
   if (!response.ok) {
     throw new Error(await response.text());
   }
@@ -41,7 +45,7 @@ export function sendChat(request: ChatRequest): Promise<AssistantPayload> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...request, session_id: sessionId }),
-  });
+  }, { sessionId });
 }
 
 export function fetchMachineSnapshot(): Promise<MachineSnapshot> {
@@ -60,7 +64,7 @@ export async function streamChat(request: ChatRequest, handlers: StreamHandlers)
   const sessionId = request.session_id ?? getSessionId();
   const response = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
-    headers: withSecurityHeaders({ headers: { "Content-Type": "application/json" } }).headers,
+    headers: withSecurityHeaders({ headers: { "Content-Type": "application/json" } }, { sessionId }).headers,
     body: JSON.stringify({ ...request, session_id: sessionId }),
   });
   if (!response.ok || !response.body) {
@@ -94,18 +98,18 @@ export async function buildKnowledgeBase(files: File[]): Promise<{
 }> {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
-  return requestJson("/api/knowledge-base/build", withSecurityHeaders({
+  return requestJson("/api/knowledge-base/build", {
     method: "POST",
     body: formData,
-  }, { includeOperator: true }));
+  }, { includeOperator: true });
 }
 
 function withSecurityHeaders(
   init?: RequestInit,
-  options: { includeOperator?: boolean } = {},
+  options: { includeOperator?: boolean; sessionId?: string } = {},
 ): RequestInit {
   const headers = new Headers(init?.headers);
-  headers.set("X-DAC3D-Session-ID", getSessionId());
+  headers.set("X-DAC3D-Session-ID", options.sessionId ?? getSessionId());
   if (options.includeOperator) {
     headers.set("X-DAC3D-Operator-ID", getOperatorId());
     headers.set("X-DAC3D-Roles", "operator");

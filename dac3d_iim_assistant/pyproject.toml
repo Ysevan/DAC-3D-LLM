@@ -33,7 +33,7 @@ py-modules = ["app", "agent_runtime", "config"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agent_core*", "intent*", "integration*", "knowledge_base*", "machine_agent*", "rag*", "ui*", "pytest*"]
+include = ["agent_core*", "evals*", "intent*", "integration*", "knowledge_base*", "machine_agent*", "memory*", "rag*", "security*", "tracing*", "ui*", "pytest*"]
 namespaces = true
 
 [tool.setuptools.package-data]
