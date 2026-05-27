@@ -45,6 +45,7 @@ export interface AgentWorkspace {
   tool_groups?: Record<string, string[]>;
   capabilities?: string[];
   skills?: Record<string, unknown>;
+  skill_patches?: Record<string, unknown>;
   context_tree?: Record<string, unknown>;
   memory_os?: Record<string, unknown>;
   goals?: Record<string, unknown>;
@@ -236,6 +237,44 @@ export interface MemoryPatchActionResult {
   applied?: boolean;
   rejected?: boolean;
   result?: Record<string, unknown>;
+  message?: string;
+}
+
+export interface SkillPatch {
+  id: string;
+  created_at?: string;
+  target_skill: string;
+  reason: string;
+  diff?: string;
+  replacement_section?: string;
+  evidence_trace_ids?: string[];
+  risk_level?: string;
+  status?: string;
+  proposed_by?: string;
+  approved_at?: string;
+  rejected_at?: string;
+  reject_reason?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SkillPatchListResult {
+  enabled: boolean;
+  backend?: string;
+  patches_path?: string;
+  patches: SkillPatch[];
+  count: number;
+  workflow?: string;
+  auto_applied?: boolean;
+}
+
+export interface SkillPatchActionResult {
+  enabled: boolean;
+  patch: SkillPatch;
+  created?: boolean;
+  duplicate?: boolean;
+  approved?: boolean;
+  applied?: boolean;
+  rejected?: boolean;
   message?: string;
 }
 

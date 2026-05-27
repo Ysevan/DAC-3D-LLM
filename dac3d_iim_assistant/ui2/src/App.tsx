@@ -5,6 +5,7 @@ import {
   appendAgentGoalProgress,
   approveMemoryPatch,
   approvePendingCommand,
+  approveSkillPatch,
   buildKnowledgeBase,
   completeAgentGoal,
   confirmCommand,
@@ -15,11 +16,13 @@ import {
   fetchKnowledgeBaseSummary,
   fetchMemoryPatches,
   fetchRuntimeSummary,
+  fetchSkillPatches,
   generateCodexHandoff,
   generateEvalDrafts,
   previewCommand,
   previewAgentWorkflow,
   rejectMemoryPatch,
+  rejectSkillPatch,
   runAgentEvals,
   streamChat,
 } from "./api";
@@ -38,6 +41,8 @@ import type {
   MemoryPatchListResult,
   MessageRecord,
   RuntimeSummary,
+  SkillPatch,
+  SkillPatchListResult,
 } from "./types";
 
 type PanelMode = "hidden" | "details" | "settings";
@@ -131,6 +136,9 @@ function App() {
   const [memoryPatches, setMemoryPatches] = useState<MemoryPatchListResult | null>(null);
   const [memoryPatchStatus, setMemoryPatchStatus] = useState("");
   const [memoryPatchBusyId, setMemoryPatchBusyId] = useState<string | null>(null);
+  const [skillPatches, setSkillPatches] = useState<SkillPatchListResult | null>(null);
+  const [skillPatchStatus, setSkillPatchStatus] = useState("");
+  const [skillPatchBusyId, setSkillPatchBusyId] = useState<string | null>(null);
   const [agentWorkspace, setAgentWorkspace] = useState<AgentWorkspace | null>(null);
   const [workflowTask, setWorkflowTask] = useState("选择 pre_fusion_images 下的图片进行离线检测");
   const [workflowPreview, setWorkflowPreview] = useState<AgentWorkflowPreview | null>(null);
@@ -204,10 +212,11 @@ function App() {
 
   async function refreshSidebarData(): Promise<void> {
     try {
-      const [runtime, knowledgeBase, patches, drafts, workspace, goals] = await Promise.all([
+      const [runtime, knowledgeBase, patches, skillPatchList, drafts, workspace, goals] = await Promise.all([
         fetchRuntimeSummary(),
         fetchKnowledgeBaseSummary(),
         fetchMemoryPatches().catch(() => null),
+        fetchSkillPatches().catch(() => null),
         fetchEvalDrafts().catch(() => null),
         fetchAgentWorkspace().catch(() => null),
         fetchAgentGoals().catch(() => null),
@@ -216,6 +225,9 @@ function App() {
       setKnowledgeBaseSummary(knowledgeBase);
       if (patches) {
         setMemoryPatches(patches);
+      }
+      if (skillPatchList) {
+        setSkillPatches(skillPatchList);
       }
       if (drafts) {
         setEvalDrafts(drafts);
@@ -824,6 +836,55 @@ function App() {
     }
   }
 
+  async function handleRefreshSkillPatches(): Promise<void> {
+    setSkillPatchStatus("正在读取待审核技能补丁...");
+    try {
+      const result = await fetchSkillPatches();
+      setSkillPatches(result);
+      setSkillPatchStatus(`待审核技能补丁：${result.count} 条`);
+    } catch (error) {
+      setSkillPatchStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleApproveSkillPatch(patch: SkillPatch): Promise<void> {
+    if (!patch.id || skillPatchBusyId) {
+      return;
+    }
+    setSkillPatchBusyId(patch.id);
+    setSkillPatchStatus("正在批准技能补丁...");
+    try {
+      await approveSkillPatch(patch.id);
+      const result = await fetchSkillPatches();
+      setSkillPatches(result);
+      setSkillPatchStatus(`已批准技能补丁：${patch.id}`);
+      void refreshSidebarData();
+    } catch (error) {
+      setSkillPatchStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSkillPatchBusyId(null);
+    }
+  }
+
+  async function handleRejectSkillPatch(patch: SkillPatch): Promise<void> {
+    if (!patch.id || skillPatchBusyId) {
+      return;
+    }
+    setSkillPatchBusyId(patch.id);
+    setSkillPatchStatus("正在拒绝技能补丁...");
+    try {
+      await rejectSkillPatch(patch.id);
+      const result = await fetchSkillPatches();
+      setSkillPatches(result);
+      setSkillPatchStatus(`已拒绝技能补丁：${patch.id}`);
+      void refreshSidebarData();
+    } catch (error) {
+      setSkillPatchStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSkillPatchBusyId(null);
+    }
+  }
+
   function handleKnowledgeBaseFilesChange(files: FileList | null): void {
     const pickedFiles = Array.from(files ?? []);
     setSelectedFiles(pickedFiles);
@@ -1338,6 +1399,58 @@ function App() {
                   </div>
                 </div>
               ) : null}
+            </section>
+
+            <section className="data-section">
+              <h3>技能补丁审核</h3>
+              <div className="memory-review-header">
+                <div>
+                  <span>待审核候选</span>
+                  <strong>{skillPatches ? `${skillPatches.count} 条` : "未读取"}</strong>
+                </div>
+                <button
+                  className="btn-run-evals"
+                  disabled={Boolean(skillPatchBusyId)}
+                  onClick={() => void handleRefreshSkillPatches()}
+                  type="button"
+                >
+                  刷新
+                </button>
+              </div>
+              {skillPatchStatus ? <div className="status-msg">{skillPatchStatus}</div> : null}
+              {skillPatches?.patches.length ? (
+                <div className="memory-patch-list">
+                  {skillPatches.patches.map((patch) => (
+                    <div className="memory-patch-item" key={patch.id}>
+                      <div className="memory-patch-meta">
+                        <span>{patch.target_skill}</span>
+                        <span>{patch.risk_level || "medium"}</span>
+                        <span>{patch.status || "pending"}</span>
+                      </div>
+                      <p>{patch.reason}</p>
+                      <small>{patch.evidence_trace_ids?.length ? patch.evidence_trace_ids.join(", ") : patch.id}</small>
+                      <div className="memory-patch-actions">
+                        <button
+                          disabled={Boolean(skillPatchBusyId)}
+                          onClick={() => void handleApproveSkillPatch(patch)}
+                          type="button"
+                        >
+                          {skillPatchBusyId === patch.id ? "处理中..." : "批准"}
+                        </button>
+                        <button
+                          disabled={Boolean(skillPatchBusyId)}
+                          onClick={() => void handleRejectSkillPatch(patch)}
+                          type="button"
+                        >
+                          拒绝
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-note">暂无待审核技能补丁。</div>
+              )}
             </section>
 
             <section className="data-section">

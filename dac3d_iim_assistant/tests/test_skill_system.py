@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from config import AppConfig
-from skill_system import SkillRegistry
+from skill_system import SkillPatchStore, SkillRegistry
 
 
 def test_skill_registry_discovers_and_selects_skills(tmp_path: Path) -> None:
@@ -90,3 +90,44 @@ allowed_tools:
     skill = registry.discover()[0]
 
     assert skill.tools == ["conversation_memory_search"]
+
+
+def test_skill_patch_store_proposes_reviews_without_modifying_skill(tmp_path: Path) -> None:
+    config = AppConfig(base_dir=tmp_path, vector_store_type="manifest")
+    skill_dir = config.agent_skills_dir / "demo-skill"
+    skill_dir.mkdir(parents=True)
+    skill_path = skill_dir / "SKILL.md"
+    original = """---
+name: demo-skill
+description: Demo skill.
+---
+
+# Demo Skill
+
+Original flow.
+"""
+    skill_path.write_text(original, encoding="utf-8")
+    registry = SkillRegistry(config.agent_skills_dir)
+    store = SkillPatchStore.from_root(config.conversation_memory_dir, registry)
+
+    proposed = store.propose_patch(
+        target_skill="demo-skill",
+        reason="Repeated trace shows the flow should mention preview validation.",
+        diff="+ Add validate_command before submit_command.",
+        evidence_trace_ids=["trace-1", "trace-2"],
+        risk_level="medium",
+    )
+    patch = proposed["patch"]
+    listed = store.list_patches()
+    approved = store.approve_patch(patch["id"])
+
+    assert proposed["created"] is True
+    assert patch["target_skill"] == "demo-skill"
+    assert patch["status"] == "pending"
+    assert patch["evidence_trace_ids"] == ["trace-1", "trace-2"]
+    assert listed["count"] == 1
+    assert listed["auto_applied"] is False
+    assert approved["approved"] is True
+    assert approved["applied"] is False
+    assert store.list_patches(status="approved")["count"] == 1
+    assert skill_path.read_text(encoding="utf-8") == original

@@ -9,7 +9,7 @@ from agent_core import DAC3DAgentSessionStore, DAC3DAgentToolController
 from app import DAC3DAssistant
 from config import AppConfig
 from safety import SafetyGuard
-from tool_gateway import DAC3DToolGateway, to_mcp_tool_descriptors
+from tool_gateway import DAC3DToolGateway, to_mcp_capability_manifest, to_mcp_tool_descriptors
 
 
 def make_gateway_config(tmp_path: Path) -> AppConfig:
@@ -105,6 +105,39 @@ def test_tool_gateway_exports_mcp_style_descriptors_with_annotations(tmp_path: P
     assert by_name["submit_command"]["annotations"]["destructiveHint"] is True
     assert by_name["submit_command"]["x-dac3d"]["requires_confirmation"] is True
     assert by_name["submit_command"]["x-dac3d"]["enforcement"] == "PolicyEngine+SafetyGuard"
+
+
+def test_tool_gateway_exports_mcp_capability_manifest(tmp_path: Path) -> None:
+    config = make_gateway_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    sessions = DAC3DAgentSessionStore(base_dir=config.base_dir)
+    gateway = DAC3DToolGateway(
+        assistant=assistant,
+        sessions=sessions,
+        session_id="gateway-mcp-manifest",
+    )
+
+    manifest = to_mcp_capability_manifest(
+        gateway.descriptors(),
+        gateway_manifest=gateway.describe(),
+    )
+
+    assert manifest["protocol"]["style"] == "mcp-compatible"
+    assert manifest["protocol"]["server"] == "adapter_manifest_only"
+    assert manifest["capabilities"]["tools"]["count"] >= 8
+    assert manifest["capabilities"]["resources"]["count"] >= 4
+    assert manifest["capabilities"]["prompts"]["count"] >= 4
+    assert {tool["name"] for tool in manifest["tools"]} >= {"read_dac_status", "submit_command"}
+    assert {resource["uri"] for resource in manifest["resources"]} >= {
+        "dac3d://runtime/status",
+        "dac3d://skills/catalog",
+    }
+    assert {prompt["name"] for prompt in manifest["prompts"]} >= {
+        "dac3d_status_question",
+        "dac3d_command_preview",
+    }
+    assert "future_mcp_server" in manifest["deployment_modes"]
+    assert manifest["x-dac3d"]["internal_gateway_remains_authoritative"] is True
 
 
 def test_tool_controller_submits_only_pending_preview_with_gateway_confirmation(tmp_path: Path) -> None:

@@ -318,8 +318,10 @@ def test_agent_runtime_builds_dac3d_agent(tmp_path) -> None:
         "machine_abnormal_analysis",
         "conversation_memory_search",
         "conversation_memory_recent",
+        "conversation_procedure_write",
         "dac_skill_select",
         "dac_skill_read",
+        "dac_skill_propose_patch",
         "dac3d_safety_review",
     }.issubset(specialist_tool_names)
     assert set(AGENT_TOOL_NAMES).issubset(specialist_tool_names)
@@ -777,6 +779,10 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["memory"]["memory_os"]["workflow"] == "trace -> memory_patch -> approval -> long_term_memory"
     assert summary["context_builder"]["backend"] == "context_builder"
     assert summary["context_builder"]["actions"] == ["write", "select", "compress", "isolate"]
+    assert summary["task_board"]["backend"] == "local_agent_task_board"
+    assert summary["automations"]["backend"] == "local_automation_planner"
+    assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
+    assert summary["artifacts"]["backend"] == "local_agent_artifact_store"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1010,6 +1016,10 @@ def test_agent_runtime_local_validation_covers_memory_and_safety_agents(tmp_path
         "这个任务应该加载什么技能？",
         session_id="validation-skill",
     )
+    mcp_payload = runtime.run_chat_payload(
+        "MCP 工具目录和资源目录是什么？",
+        session_id="validation-mcp",
+    )
 
     assert memory_payload["intent"] == "memory_search"
     assert memory_payload["parsed_result"]["tool_calls"][0]["name"] == "conversation_memory_search"
@@ -1017,6 +1027,8 @@ def test_agent_runtime_local_validation_covers_memory_and_safety_agents(tmp_path
     assert safety_payload["parsed_result"]["tool_calls"][0]["name"] == "dac3d_safety_review"
     assert skill_payload["intent"] == "skill_select"
     assert skill_payload["parsed_result"]["tool_calls"][0]["name"] == "dac_skill_select"
+    assert mcp_payload["intent"] == "mcp_manifest"
+    assert mcp_payload["parsed_result"]["tool_calls"][0]["name"] == "dac_mcp_manifest"
 
 
 def test_agent_runtime_describes_agent_project(tmp_path) -> None:
@@ -1038,24 +1050,154 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "command_safety_review" in description["network_capabilities"]
     assert "hermes_style_curated_memory" in description["network_capabilities"]
     assert "auditable_memory_patches" in description["network_capabilities"]
+    assert "reviewed_procedure_memory_markdown" in description["network_capabilities"]
     assert "progressive_skill_selection" in description["network_capabilities"]
+    assert "reviewable_skill_patch_queue" in description["network_capabilities"]
+    assert "mcp_capability_manifest" in description["network_capabilities"]
     assert "context_engineering" in description["network_capabilities"]
     assert "runtime_status_context" in description["network_capabilities"]
+    assert "shared_workspace_artifacts" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
     assert "dac3d_execute_command" in description["tool_groups"]["dac3d_control_agent"]
+    assert "dac_mcp_manifest" in description["tool_groups"]["dac3d_control_agent"]
     assert "conversation_memory_search" in description["tool_groups"]["memory_agent"]
     assert "conversation_knowledge_write" in description["tool_groups"]["memory_agent"]
+    assert "conversation_procedure_write" in description["tool_groups"]["memory_agent"]
     assert "conversation_memory_approve_patch" in description["tool_groups"]["memory_agent"]
     assert "dac_skill_select" in description["tool_groups"]["skill_system"]
+    assert "dac_skill_propose_patch" in description["tool_groups"]["skill_system"]
     assert description["skill_system"]["backend"] == "local_agent_skills"
+    assert description["skill_patches"]["backend"] == "json_skill_patch_queue"
     assert "dac3d_safety_review" in description["tool_groups"]["safety_agent"]
+    assert "dac_mcp_manifest" in description["tool_groups"]["safety_agent"]
+    assert description["mcp"]["protocol"]["style"] == "mcp-compatible"
+    assert description["mcp"]["capabilities"]["resources"]["count"] >= 4
+    assert "dac3d_command_preview" in {
+        prompt["name"] for prompt in description["mcp"]["prompts"]
+    }
     assert "core_markdown_memory" in description["conversation_memory"]["layers"]
+    assert "procedure_markdown_memory" in description["conversation_memory"]["layers"]
     assert description["conversation_memory"]["backend"] == "json+markdown"
     assert description["control"]["execute_tool"] == "dac3d_execute_command"
     assert description["control"]["safety_review_tool"] == "dac3d_safety_review"
     assert description["model_provider"]["resolved_api_type"] == "responses"
+
+
+def test_agent_chat_adapter_task_board_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    created = adapter.create_agent_task_from_workflow(
+        "选择 pre_fusion_images 下的图片进行离线检测",
+        session_id="task-board-agent",
+        priority="high",
+    )
+    task_id = created["task"]["id"]
+    moved = adapter.update_agent_task_status(task_id, "in_progress", note="开始执行预览。")
+    listed = adapter.list_agent_tasks(session_id="task-board-agent", status="in_progress")
+    workspace = adapter.agent_workspace()
+
+    assert created["task"]["metadata"]["source"] == "workflow_preview"
+    assert "dac3d_preview_command" in created["task"]["tool_candidates"]
+    assert moved["task"]["status"] == "in_progress"
+    assert listed["count"] == 1
+    assert workspace["task_board"]["task_count"] == 1
+    assert "task_board_card" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_automation_planner_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    created = adapter.create_agent_automation(
+        "每班结束运行评测摘要",
+        "每班结束后运行本地 eval 并总结失败项。",
+        session_id="automation-agent",
+        schedule={"type": "interval", "interval_minutes": 120},
+    )
+    automation_id = created["automation"]["id"]
+    recorded = adapter.record_agent_automation_run(
+        automation_id,
+        result="本轮 eval 全部通过。",
+        trace_id="trace-auto-1",
+    )
+    paused = adapter.update_agent_automation_status(automation_id, "paused")
+    listed = adapter.list_agent_automations(session_id="automation-agent")
+    due = adapter.list_due_agent_automations()
+    workspace = adapter.agent_workspace()
+
+    assert created["automation"]["schedule_summary"] == "every 120 minutes"
+    assert recorded["automation"]["run_count"] == 1
+    assert recorded["run"]["trace_id"] == "trace-auto-1"
+    assert paused["automation"]["status"] == "paused"
+    assert listed["count"] == 1
+    assert due["count"] == 0
+    assert workspace["automations"]["automation_count"] == 1
+    assert "automation_planning" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_workflow_template_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    created = adapter.create_agent_workflow_from_preview(
+        "选择 pre_fusion_images 下的图片进行离线检测",
+        name="离线检测 Agent DAG",
+        session_id="workflow-template-agent",
+        status="active",
+        tags=["offline"],
+    )
+    workflow_id = created["workflow"]["id"]
+    read = adapter.read_agent_workflow(workflow_id)
+    listed = adapter.list_agent_workflows(session_id="workflow-template-agent", status="active")
+    archived = adapter.update_agent_workflow_status(workflow_id, "archived")
+    workspace = adapter.agent_workspace()
+
+    assert created["workflow"]["metadata"]["source"] == "workflow_preview"
+    assert created["workflow"]["edges"]
+    assert read["workflow"]["name"] == "离线检测 Agent DAG"
+    assert listed["count"] == 1
+    assert archived["workflow"]["status"] == "archived"
+    assert workspace["workflow_templates"]["workflow_count"] == 1
+    assert "workflow_template" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_artifact_store_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    created = adapter.create_agent_artifact(
+        "执行日志片段",
+        "preview generated\nsubmit queued\n",
+        artifact_type="log",
+        session_id="artifact-agent",
+        trace_id="trace-artifact-1",
+        tags=["log", "offline"],
+    )
+    artifact_id = created["artifact"]["id"]
+    listed = adapter.list_agent_artifacts(session_id="artifact-agent", query="submit queued")
+    read = adapter.read_agent_artifact(artifact_id)
+    workspace = adapter.agent_workspace()
+
+    assert created["artifact"]["trace_id"] == "trace-artifact-1"
+    assert listed["count"] == 1
+    assert read["content"].splitlines()[-1] == "submit queued"
+    assert workspace["artifacts"]["artifact_count"] == 1
+    assert "artifact_store" in workspace["workflow"]
 
 
 def test_agent_runtime_parser_supports_agent_project_commands() -> None:

@@ -99,6 +99,13 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         _require_actor(request)
         return _attach_trace(request, assistant.runtime_summary())
 
+    @app.get("/api/mcp/manifest")
+    def mcp_manifest(session_id: str | None = None) -> dict[str, Any]:
+        manifest = getattr(assistant, "mcp_capability_manifest", None)
+        if not callable(manifest):
+            raise HTTPException(status_code=503, detail="MCP capability manifest is unavailable.")
+        return manifest(session_id=(session_id or "web"))
+
     @app.get("/api/agent/workspace")
     def agent_workspace(request: Request) -> dict[str, Any]:
         _require_actor(request)
@@ -106,6 +113,60 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         if not callable(workspace):
             raise HTTPException(status_code=503, detail="Agent workspace is unavailable.")
         return _attach_trace(request, workspace())
+
+    @app.get("/api/agent/artifacts")
+    def list_agent_artifacts(
+        session_id: str | None = None,
+        artifact_type: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_artifacts = getattr(assistant, "list_agent_artifacts", None)
+        if not callable(list_artifacts):
+            raise HTTPException(status_code=503, detail="Agent artifact store is unavailable.")
+        return list_artifacts(
+            session_id=session_id,
+            artifact_type=artifact_type,
+            tag=tag,
+            query=q,
+            limit=limit,
+        )
+
+    @app.get("/api/agent/artifacts/{artifact_id}")
+    def read_agent_artifact(artifact_id: str) -> dict[str, Any]:
+        read_artifact = getattr(assistant, "read_agent_artifact", None)
+        if not callable(read_artifact):
+            raise HTTPException(status_code=503, detail="Agent artifact store is unavailable.")
+        try:
+            return read_artifact(artifact_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/artifacts")
+    def create_agent_artifact(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_artifact = getattr(assistant, "create_agent_artifact", None)
+        if not callable(create_artifact):
+            raise HTTPException(status_code=503, detail="Agent artifact store is unavailable.")
+        title = str(request.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        if "content" not in request:
+            raise HTTPException(status_code=422, detail="The `content` field is required.")
+        try:
+            return create_artifact(
+                title,
+                request.get("content"),
+                artifact_type=str(request.get("artifact_type") or "markdown"),
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                task_id=str(request.get("task_id") or ""),
+                workflow_id=str(request.get("workflow_id") or ""),
+                trace_id=str(request.get("trace_id") or ""),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/agent/workflow/preview")
     def preview_agent_workflow(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
@@ -119,6 +180,81 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             raise HTTPException(status_code=422, detail="The `task` field is required.")
         try:
             return _attach_trace(http_request, preview(task, session_id=session_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/workflows")
+    def list_agent_workflows(
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_workflows = getattr(assistant, "list_agent_workflows", None)
+        if not callable(list_workflows):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        return list_workflows(session_id=session_id, status=status, limit=limit)
+
+    @app.get("/api/agent/workflows/{workflow_id}")
+    def read_agent_workflow(workflow_id: str) -> dict[str, Any]:
+        read_workflow = getattr(assistant, "read_agent_workflow", None)
+        if not callable(read_workflow):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        try:
+            return read_workflow(workflow_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/workflows")
+    def create_agent_workflow(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_workflow = getattr(assistant, "create_agent_workflow", None)
+        if not callable(create_workflow):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        name = str(request.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        try:
+            return create_workflow(
+                name,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                description=str(request.get("description") or ""),
+                nodes=request.get("nodes") if isinstance(request.get("nodes"), list) else None,
+                edges=request.get("edges") if isinstance(request.get("edges"), list) else None,
+                status=str(request.get("status") or "draft"),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/workflows/from-preview")
+    def create_agent_workflow_from_preview(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_from_preview = getattr(assistant, "create_agent_workflow_from_preview", None)
+        if not callable(create_from_preview):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        task = str(request.get("task") or "").strip()
+        if not task:
+            raise HTTPException(status_code=422, detail="The `task` field is required.")
+        try:
+            return create_from_preview(
+                task,
+                name=str(request.get("name") or ""),
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                status=str(request.get("status") or "draft"),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/workflows/{workflow_id}/status")
+    def update_agent_workflow_status(workflow_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_workflow_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(workflow_id, status)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -358,6 +494,154 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/agent/tasks")
+    def list_agent_tasks(
+        session_id: str | None = None,
+        status: str | None = None,
+        goal_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_tasks = getattr(assistant, "list_agent_tasks", None)
+        if not callable(list_tasks):
+            raise HTTPException(status_code=503, detail="Agent task board is unavailable.")
+        return list_tasks(session_id=session_id, status=status, goal_id=goal_id, limit=limit)
+
+    @app.post("/api/agent/tasks")
+    def create_agent_task(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_task = getattr(assistant, "create_agent_task", None)
+        if not callable(create_task):
+            raise HTTPException(status_code=503, detail="Agent task board is unavailable.")
+        title = str(request.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        try:
+            return create_task(
+                title,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                description=str(request.get("description") or ""),
+                status=str(request.get("status") or "backlog"),
+                priority=str(request.get("priority") or "normal"),
+                goal_id=str(request.get("goal_id") or ""),
+                agent_path=request.get("agent_path") if isinstance(request.get("agent_path"), list) else None,
+                tool_candidates=request.get("tool_candidates")
+                if isinstance(request.get("tool_candidates"), list)
+                else None,
+                dependencies=request.get("dependencies") if isinstance(request.get("dependencies"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/tasks/from-workflow")
+    def create_agent_task_from_workflow(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_from_workflow = getattr(assistant, "create_agent_task_from_workflow", None)
+        if not callable(create_from_workflow):
+            raise HTTPException(status_code=503, detail="Agent task board is unavailable.")
+        task = str(request.get("task") or "").strip()
+        if not task:
+            raise HTTPException(status_code=422, detail="The `task` field is required.")
+        try:
+            return create_from_workflow(
+                task,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                goal_id=str(request.get("goal_id") or ""),
+                status=str(request.get("status") or "ready"),
+                priority=str(request.get("priority") or "normal"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/tasks/{task_id}/status")
+    def update_agent_task_status(task_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_task_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent task board is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(task_id, status, note=str(request.get("note") or ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/automations")
+    def list_agent_automations(
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_automations = getattr(assistant, "list_agent_automations", None)
+        if not callable(list_automations):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        return list_automations(session_id=session_id, status=status, limit=limit)
+
+    @app.get("/api/agent/automations/due")
+    def list_due_agent_automations(limit: int = 20) -> dict[str, Any]:
+        list_due = getattr(assistant, "list_due_agent_automations", None)
+        if not callable(list_due):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        return list_due(limit=limit)
+
+    @app.post("/api/agent/automations")
+    def create_agent_automation(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_automation = getattr(assistant, "create_agent_automation", None)
+        if not callable(create_automation):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        name = str(request.get("name") or "").strip()
+        prompt = str(request.get("prompt") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        if not prompt:
+            raise HTTPException(status_code=422, detail="The `prompt` field is required.")
+        try:
+            return create_automation(
+                name,
+                prompt,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                schedule=request.get("schedule") if isinstance(request.get("schedule"), dict) else None,
+                status=str(request.get("status") or "active"),
+                task_id=str(request.get("task_id") or ""),
+                goal_id=str(request.get("goal_id") or ""),
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/automations/{automation_id}/status")
+    def update_agent_automation_status(
+        automation_id: str,
+        request: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_automation_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(automation_id, status, note=str(request.get("note") or ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/automations/{automation_id}/runs")
+    def record_agent_automation_run(
+        automation_id: str,
+        request: dict[str, Any] | None = Body(default=None),
+    ) -> dict[str, Any]:
+        record_run = getattr(assistant, "record_agent_automation_run", None)
+        if not callable(record_run):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        payload = dict(request or {})
+        try:
+            return record_run(
+                automation_id,
+                result=str(payload.get("result") or ""),
+                status=str(payload.get("status") or "completed"),
+                trace_id=str(payload.get("trace_id") or ""),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.post("/api/evals/run")
     def run_evals(http_request: Request, request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
         _require_actor(http_request)
@@ -442,6 +726,100 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             return _attach_trace(request, read(trace_id))
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/skills/patches")
+    def list_skill_patches(status: str = "pending") -> dict[str, Any]:
+        list_patches = getattr(assistant, "list_skill_patches", None)
+        if not callable(list_patches):
+            raise HTTPException(status_code=503, detail="Skill patch review is unavailable.")
+        return list_patches(status=status)
+
+    @app.post("/api/skills/patches")
+    def propose_skill_patch(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        propose = getattr(assistant, "propose_skill_patch", None)
+        if not callable(propose):
+            raise HTTPException(status_code=503, detail="Skill patch review is unavailable.")
+        target_skill = str(request.get("target_skill") or "").strip()
+        reason = str(request.get("reason") or "").strip()
+        diff = str(request.get("diff") or "")
+        replacement_section = str(request.get("replacement_section") or "")
+        risk_level = str(request.get("risk_level") or "medium").strip() or "medium"
+        trace_ids = request.get("evidence_trace_ids") or []
+        if not isinstance(trace_ids, list):
+            raise HTTPException(status_code=422, detail="The `evidence_trace_ids` field must be a list.")
+        if not target_skill:
+            raise HTTPException(status_code=422, detail="The `target_skill` field is required.")
+        if not reason:
+            raise HTTPException(status_code=422, detail="The `reason` field is required.")
+        if not diff and not replacement_section:
+            raise HTTPException(status_code=422, detail="Provide `diff` or `replacement_section`.")
+        try:
+            return propose(
+                target_skill=target_skill,
+                reason=reason,
+                diff=diff,
+                replacement_section=replacement_section,
+                evidence_trace_ids=[str(item) for item in trace_ids],
+                risk_level=risk_level,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/skills/patches/{patch_id}/approve")
+    def approve_skill_patch(patch_id: str) -> dict[str, Any]:
+        approve = getattr(assistant, "approve_skill_patch", None)
+        if not callable(approve):
+            raise HTTPException(status_code=503, detail="Skill patch review is unavailable.")
+        try:
+            return approve(patch_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/skills/patches/{patch_id}/reject")
+    def reject_skill_patch(
+        patch_id: str,
+        request: dict[str, Any] | None = Body(default=None),
+    ) -> dict[str, Any]:
+        reject = getattr(assistant, "reject_skill_patch", None)
+        if not callable(reject):
+            raise HTTPException(status_code=503, detail="Skill patch review is unavailable.")
+        reason = str(dict(request or {}).get("reason") or "ui_rejected")
+        try:
+            return reject(patch_id, reason=reason)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/memory/procedures")
+    def list_procedure_memories() -> dict[str, Any]:
+        list_procedures = getattr(assistant, "list_procedure_memories", None)
+        if not callable(list_procedures):
+            raise HTTPException(status_code=503, detail="Procedure memory is unavailable.")
+        return list_procedures()
+
+    @app.get("/api/memory/procedures/{name}")
+    def read_procedure_memory(name: str) -> dict[str, Any]:
+        read_procedure = getattr(assistant, "read_procedure_memory", None)
+        if not callable(read_procedure):
+            raise HTTPException(status_code=503, detail="Procedure memory is unavailable.")
+        return read_procedure(name)
+
+    @app.post("/api/memory/procedures")
+    def propose_procedure_memory(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        propose = getattr(assistant, "propose_procedure_memory", None)
+        if not callable(propose):
+            raise HTTPException(status_code=503, detail="Procedure memory is unavailable.")
+        name = str(request.get("name") or "").strip()
+        content = str(request.get("content") or "").strip()
+        reason = str(request.get("reason") or "procedure_memory_candidate").strip()
+        mode = str(request.get("mode") or "append").strip() or "append"
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        if not content:
+            raise HTTPException(status_code=422, detail="The `content` field is required.")
+        try:
+            return propose(name=name, content=content, reason=reason, mode=mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/memory/patches")
     def list_memory_patches(request: Request, status: str = "pending") -> dict[str, Any]:

@@ -316,6 +316,27 @@ class LocalMemoryProvider:
                 content=str(patch.get("content") or ""),
                 mode=str(patch.get("mode") or "append"),
             )
+        elif target == "procedure_memory":
+            active_metadata = self.memory_policy.active_metadata(
+                patch_id=str(patch.get("id") or ""),
+                target=target,
+                source_trace_id=str(patch.get("source_trace_id") or ""),
+                session_id=str(metadata.get("provenance", {}).get("session_id") or ""),
+            )
+            result = self.store.upsert_procedure_memory(
+                name=str(patch.get("topic") or metadata.get("procedure_name") or "general-procedure"),
+                content=str(patch.get("content") or ""),
+                mode=str(patch.get("mode") or "append"),
+                provenance={
+                    **dict(active_metadata.get("provenance") or {}),
+                    "patch_id": str(patch.get("id") or ""),
+                },
+                metadata={
+                    "memory_id": active_metadata.get("memory_id"),
+                    "patch_id": str(patch.get("id") or ""),
+                    "title": str(metadata.get("title") or patch.get("topic") or "Procedure Memory"),
+                },
+            )
         elif target in {"memory", "user"}:
             result = self.store.update_curated_memory(
                 target=target,
@@ -323,7 +344,7 @@ class LocalMemoryProvider:
                 mode=str(patch.get("mode") or "append"),
             )
         else:
-            raise ValueError("Memory patch target must be memory, user, or knowledge.")
+            raise ValueError("Memory patch target must be memory, user, knowledge, or procedure_memory.")
 
         patch["status"] = "approved"
         patch["applied_at"] = _utc_now_iso()
@@ -341,6 +362,14 @@ class LocalMemoryProvider:
         payload["patches"] = patches
         _write_json(self.patches_path, payload)
         return {"patch": patch, "applied": True, "result": result}
+
+    def list_procedures(self) -> dict[str, Any]:
+        """List approved procedure memories."""
+        return self.store.list_procedure_memories()
+
+    def read_procedure(self, name: str) -> dict[str, Any]:
+        """Read one approved procedure memory."""
+        return self.store.read_procedure_memory(name)
 
     def reject_write(self, patch_id: str, reason: str = "") -> dict[str, Any]:
         """Reject a pending memory patch without mutating long-term memory."""

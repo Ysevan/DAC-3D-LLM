@@ -14,6 +14,8 @@ import type {
   MemoryPatchActionResult,
   MemoryPatchListResult,
   RuntimeSummary,
+  SkillPatchActionResult,
+  SkillPatchListResult,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -149,6 +151,32 @@ export function rejectMemoryPatch(patchId: string, reason = "ui_rejected"): Prom
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason }),
   }, { includeOperator: true, role: "admin" }));
+}
+
+export function fetchSkillPatches(status = "pending"): Promise<SkillPatchListResult> {
+  return requestJson<SkillPatchListResult>(`/api/skills/patches?status=${encodeURIComponent(status)}`);
+}
+
+export function proposeSkillPatch(targetSkill: string, reason: string, diff: string): Promise<SkillPatchActionResult> {
+  return requestJson<SkillPatchActionResult>("/api/skills/patches", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target_skill: targetSkill, reason, diff }),
+  });
+}
+
+export function approveSkillPatch(patchId: string): Promise<SkillPatchActionResult> {
+  return requestJson<SkillPatchActionResult>(`/api/skills/patches/${encodeURIComponent(patchId)}/approve`, {
+    method: "POST",
+  });
+}
+
+export function rejectSkillPatch(patchId: string, reason = "ui_rejected"): Promise<SkillPatchActionResult> {
+  return requestJson<SkillPatchActionResult>(`/api/skills/patches/${encodeURIComponent(patchId)}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export async function streamChat(request: ChatRequest, handlers: StreamHandlers): Promise<void> {

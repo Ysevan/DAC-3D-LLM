@@ -29,9 +29,9 @@ from agent_core import (
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree
-from goals import GoalStore
+from goals import ArtifactStore, AutomationPlannerStore, GoalStore, TaskBoardStore, WorkflowTemplateStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
-from skill_system import SkillRegistry
+from skill_system import SkillPatchStore, SkillRegistry
 from trace_eval import CodexHandoffGenerator, EvalDraftGenerator, EvalRunner, TraceLogger
 
 
@@ -298,6 +298,24 @@ class LocalValidationAgentModel:
                     },
                 },
             )
+        if any(marker in lowered for marker in ("mcp", "agents sdk", "capability manifest")) or any(
+            marker in current_message for marker in ("资源目录", "prompt 模板", "工具目录")
+        ):
+            return (
+                "dac_mcp_manifest",
+                {},
+                {
+                    "answer": "我已读取 MCP-compatible capability manifest，包含 DAC 工具、资源、prompt 模板和部署模式。",
+                    "structured_data": {
+                        "intent": "mcp_manifest",
+                        "agent_path": ["coordinator", "dac3d_control_agent"],
+                        "tool_calls": [
+                            {"name": "dac_mcp_manifest", "purpose": "读取 MCP-compatible capability manifest"}
+                        ],
+                        "mcp": {"backend": "adapter_manifest_only"},
+                    },
+                },
+            )
         if any(marker in current_message for marker in ("工具网关", "tool gateway", "gateway", "白名单")):
             return (
                 "dac_tool_manifest",
@@ -509,6 +527,7 @@ class DAC3DAgentRuntime:
     memory_store: ConversationMemoryStore | None = None
     memory_provider: LocalMemoryProvider | None = None
     skill_registry: SkillRegistry | None = None
+    skill_patch_store: SkillPatchStore | None = None
     context_builder: ContextBuilder | None = None
 
     def __post_init__(self) -> None:
@@ -521,6 +540,11 @@ class DAC3DAgentRuntime:
             self.memory_provider = LocalMemoryProvider(self.memory_store)
         if self.skill_registry is None:
             self.skill_registry = SkillRegistry(self.config.agent_skills_dir)
+        if self.skill_patch_store is None:
+            self.skill_patch_store = SkillPatchStore.from_root(
+                self.config.conversation_memory_dir,
+                self.skill_registry,
+            )
 
     @classmethod
     def create(
@@ -726,6 +750,65 @@ class DAC3DAgentRuntime:
             "count": len(patches),
         }
 
+    def list_conversation_procedure_memories(self) -> dict[str, Any]:
+        """List approved Markdown procedure memories."""
+        if self.memory_provider is None:
+            return {"enabled": False, "procedures": [], "count": 0}
+        return {"enabled": True, **self.memory_provider.list_procedures()}
+
+    def read_conversation_procedure_memory(self, name: str) -> dict[str, Any]:
+        """Read one approved Markdown procedure memory."""
+        if self.memory_provider is None:
+            return {"enabled": False, "name": name, "text": ""}
+        return {"enabled": True, **self.memory_provider.read_procedure(name)}
+
+    def write_conversation_procedure_memory(
+        self,
+        *,
+        name: str,
+        content: str,
+        reason: str = "procedure_memory_candidate",
+        mode: str = "append",
+    ) -> dict[str, Any]:
+        """Create a procedure-memory patch instead of editing Markdown directly."""
+        if self.memory_provider is None:
+            return {"enabled": False, "name": name, "message": "Memory disabled."}
+        trace = self.memory_provider.record_trace(
+            {
+                "session_id": "memory-tool",
+                "user_message": f"procedure memory update requested: {name}",
+                "assistant_answer": "已生成流程记忆补丁，等待审核。",
+                "intent": "procedure_memory_update_request",
+                "parsed_result": {
+                    "memory_write_candidates": [
+                        {
+                            "target": "procedure_memory",
+                            "topic": name,
+                            "content": content,
+                            "mode": mode,
+                            "reason": reason,
+                            "metadata": {
+                                "source": "memory_agent_tool",
+                                "procedure_name": name,
+                                "title": name,
+                            },
+                        }
+                    ]
+                },
+            }
+        )
+        patches = self.memory_provider.propose_writes(trace)
+        return {
+            "enabled": True,
+            "backend": "json+markdown",
+            "name": name,
+            "applied": False,
+            "requires_approval": True,
+            "patches": patches,
+            "count": len(patches),
+            "procedures": self.memory_provider.list_procedures(),
+        }
+
     def list_conversation_memory_patches(self, status: str = "pending") -> dict[str, Any]:
         """List auditable Memory OS patches."""
         if self.memory_provider is None:
@@ -771,6 +854,52 @@ class DAC3DAgentRuntime:
         if self.skill_registry is None:
             return {"enabled": False, "name": name}
         return {"enabled": True, **self.skill_registry.read(name, include_assets=include_assets)}
+
+    def propose_dac_skill_patch(
+        self,
+        *,
+        target_skill: str,
+        reason: str,
+        diff: str = "",
+        replacement_section: str = "",
+        evidence_trace_ids: list[str] | None = None,
+        risk_level: str = "medium",
+        proposed_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Create a reviewable skill patch proposal without editing SKILL.md."""
+        if self.skill_patch_store is None:
+            return {"enabled": False, "backend": "json_skill_patch_queue", "patch": None}
+        return {
+            "enabled": True,
+            **self.skill_patch_store.propose_patch(
+                target_skill=target_skill,
+                reason=reason,
+                diff=diff,
+                replacement_section=replacement_section,
+                evidence_trace_ids=evidence_trace_ids or [],
+                risk_level=risk_level,
+                proposed_by=proposed_by,
+            ),
+        }
+
+    def list_dac_skill_patches(self, status: str = "pending") -> dict[str, Any]:
+        """List reviewable skill patch proposals."""
+        if self.skill_patch_store is None:
+            return {"enabled": False, "backend": "json_skill_patch_queue", "patches": [], "count": 0}
+        normalized_status = str(status or "").strip() or None
+        return {"enabled": True, **self.skill_patch_store.list_patches(status=normalized_status)}
+
+    def approve_dac_skill_patch(self, patch_id: str) -> dict[str, Any]:
+        """Approve a pending skill patch proposal without auto-applying it."""
+        if self.skill_patch_store is None:
+            return {"enabled": False, "patch_id": patch_id, "message": "Skill patch store is disabled."}
+        return {"enabled": True, **self.skill_patch_store.approve_patch(patch_id)}
+
+    def reject_dac_skill_patch(self, patch_id: str, reason: str = "") -> dict[str, Any]:
+        """Reject a pending skill patch proposal."""
+        if self.skill_patch_store is None:
+            return {"enabled": False, "patch_id": patch_id, "message": "Skill patch store is disabled."}
+        return {"enabled": True, **self.skill_patch_store.reject_patch(patch_id, reason=reason)}
 
     def review_command_safety(
         self,
@@ -1056,13 +1185,17 @@ class DAC3DAgentRuntime:
                 "hermes_style_curated_memory",
                 "topic_knowledge_notes",
                 "auditable_memory_patches",
+                "reviewed_procedure_memory_markdown",
                 "trace_based_memory_feedback",
                 "append_only_trace_logger",
                 "local_eval_runner",
                 "progressive_skill_selection",
+                "reviewable_skill_patch_queue",
                 "context_engineering",
                 "runtime_status_context",
+                "shared_workspace_artifacts",
                 "mcp_style_tool_gateway",
+                "mcp_capability_manifest",
                 "path_allowlist_validation",
                 "command_safety_review",
                 "specialist_tool_isolation",
@@ -1089,6 +1222,7 @@ class DAC3DAgentRuntime:
                     "dac3d_status",
                     "dac3d_safety_review",
                     "dac_tool_manifest",
+                    "dac_mcp_manifest",
                     "dac_tool_allowed_dirs",
                     "dac_tool_validate_command",
                     "dac_tool_cancel_pending_command",
@@ -1113,6 +1247,9 @@ class DAC3DAgentRuntime:
                     "conversation_knowledge_notes",
                     "conversation_knowledge_read",
                     "conversation_knowledge_write",
+                    "conversation_procedure_memories",
+                    "conversation_procedure_read",
+                    "conversation_procedure_write",
                     "conversation_memory_patches",
                     "conversation_memory_approve_patch",
                     "conversation_memory_reject_patch",
@@ -1121,12 +1258,17 @@ class DAC3DAgentRuntime:
                     "dac_skill_list",
                     "dac_skill_select",
                     "dac_skill_read",
+                    "dac_skill_propose_patch",
+                    "dac_skill_patches",
+                    "dac_skill_approve_patch",
+                    "dac_skill_reject_patch",
                 ],
                 "safety_agent": [
                     "dac3d_safety_review",
                     "dac3d_preview_command",
                     "dac3d_status",
                     "dac_tool_manifest",
+                    "dac_mcp_manifest",
                     "dac_tool_allowed_dirs",
                     "dac_tool_validate_command",
                     "dac_tool_cancel_pending_command",
@@ -1153,6 +1295,7 @@ class DAC3DAgentRuntime:
                     "session_recent_json",
                     "session_summary",
                     "topic_knowledge_notes",
+                    "procedure_markdown_memory",
                     "long_term_json_search",
                 ],
                 "curated_files": ["MEMORY.md", "USER.md"],
@@ -1163,6 +1306,11 @@ class DAC3DAgentRuntime:
                 if self.skill_registry is not None
                 else {"enabled": False, "backend": "local_agent_skills"}
             ),
+            "skill_patches": (
+                self.skill_patch_store.describe()
+                if self.skill_patch_store is not None
+                else {"enabled": False, "backend": "json_skill_patch_queue"}
+            ),
             "control": {
                 "preview_tool": "dac3d_preview_command",
                 "execute_tool": "dac3d_execute_command",
@@ -1172,7 +1320,12 @@ class DAC3DAgentRuntime:
                 "bridge_modes": ["embedded", "command_file_bridge", "mock"],
             },
             "tool_gateway": self.tool_controller("default").tool_gateway_manifest(),
+            "mcp": self.mcp_capability_manifest(session_id="default"),
         }
+
+    def mcp_capability_manifest(self, *, session_id: str = "default") -> dict[str, Any]:
+        """Return MCP-compatible capability discovery metadata for this runtime."""
+        return self.tool_controller(session_id).mcp_capability_manifest()
 
     def resolved_agent_api_type(self) -> str:
         """Resolve the Agent model API mode for OpenAI or OpenAI-compatible providers."""
@@ -1486,6 +1639,44 @@ class DAC3DAgentRuntime:
             )
 
         @function_tool(
+            name_override="conversation_procedure_memories",
+            description_override="List reviewed Markdown procedure memories available to Memory Agent.",
+        )
+        def conversation_procedure_memories() -> dict[str, Any]:
+            """List approved procedure memories."""
+            return self.list_conversation_procedure_memories()
+
+        @function_tool(
+            name_override="conversation_procedure_read",
+            description_override="Read one reviewed Markdown procedure memory by name.",
+        )
+        def conversation_procedure_read(name: str) -> dict[str, Any]:
+            """Read one approved procedure memory."""
+            return self.read_conversation_procedure_memory(name)
+
+        @function_tool(
+            name_override="conversation_procedure_write",
+            description_override=(
+                "Propose a reviewed Markdown procedure memory patch. This records a "
+                "pending procedure_memory patch only; it never edits procedure files "
+                "until the patch is approved."
+            ),
+        )
+        def conversation_procedure_write(
+            name: str,
+            content: str,
+            reason: str = "procedure_memory_candidate",
+            mode: str = "append",
+        ) -> dict[str, Any]:
+            """Propose a procedure memory patch."""
+            return self.write_conversation_procedure_memory(
+                name=name,
+                content=content,
+                reason=reason,
+                mode=mode,
+            )
+
+        @function_tool(
             name_override="conversation_memory_patches",
             description_override="List auditable pending/approved/rejected Memory OS patches.",
         )
@@ -1543,6 +1734,64 @@ class DAC3DAgentRuntime:
             return self.read_dac_skill(name, include_assets=include_assets)
 
         @function_tool(
+            name_override="dac_skill_propose_patch",
+            description_override=(
+                "Propose a reviewable change to a DAC-Agent skill. This records a "
+                "pending patch only; it never edits SKILL.md automatically."
+            ),
+        )
+        def dac_skill_propose_patch(
+            target_skill: str,
+            reason: str,
+            diff: str = "",
+            replacement_section: str = "",
+            evidence_trace_ids: str = "",
+            risk_level: str = "medium",
+        ) -> dict[str, Any]:
+            """Propose a skill patch without applying it."""
+            trace_ids = [
+                item.strip()
+                for item in str(evidence_trace_ids or "").split(",")
+                if item.strip()
+            ]
+            return self.propose_dac_skill_patch(
+                target_skill=target_skill,
+                reason=reason,
+                diff=diff,
+                replacement_section=replacement_section,
+                evidence_trace_ids=trace_ids,
+                risk_level=risk_level,
+                proposed_by="skill_agent",
+            )
+
+        @function_tool(
+            name_override="dac_skill_patches",
+            description_override="List pending/approved/rejected DAC-Agent skill patch proposals.",
+        )
+        def dac_skill_patches(status: str = "pending") -> dict[str, Any]:
+            """List reviewable skill patches."""
+            return self.list_dac_skill_patches(status=status)
+
+        @function_tool(
+            name_override="dac_skill_approve_patch",
+            description_override=(
+                "Mark a pending skill patch approved for human review records. "
+                "This does not edit SKILL.md automatically."
+            ),
+        )
+        def dac_skill_approve_patch(patch_id: str) -> dict[str, Any]:
+            """Approve one skill patch proposal."""
+            return self.approve_dac_skill_patch(patch_id)
+
+        @function_tool(
+            name_override="dac_skill_reject_patch",
+            description_override="Reject one DAC-Agent skill patch proposal by id.",
+        )
+        def dac_skill_reject_patch(patch_id: str, reason: str = "") -> dict[str, Any]:
+            """Reject one skill patch proposal."""
+            return self.reject_dac_skill_patch(patch_id, reason=reason)
+
+        @function_tool(
             name_override="dac3d_safety_review",
             description_override=(
                 "Review a DAC-3D control instruction before execution. It previews the "
@@ -1568,6 +1817,17 @@ class DAC3DAgentRuntime:
         def dac_tool_manifest() -> dict[str, Any]:
             """Describe the controlled DAC Tool Gateway."""
             return tools.tool_gateway_manifest()
+
+        @function_tool(
+            name_override="dac_mcp_manifest",
+            description_override=(
+                "Return MCP-compatible capability metadata for DAC tools, resources, "
+                "prompts, roots, and deployment modes."
+            ),
+        )
+        def dac_mcp_manifest() -> dict[str, Any]:
+            """Describe future MCP/Agents SDK integration surfaces."""
+            return tools.mcp_capability_manifest()
 
         @function_tool(
             name_override="dac_tool_allowed_dirs",
@@ -1627,6 +1887,7 @@ class DAC3DAgentRuntime:
             dac3d_status,
             dac3d_safety_review,
             dac_tool_manifest,
+            dac_mcp_manifest,
             dac_tool_allowed_dirs,
             dac_tool_validate_command,
             dac_tool_cancel_pending_command,
@@ -1654,6 +1915,9 @@ class DAC3DAgentRuntime:
             conversation_knowledge_notes,
             conversation_knowledge_read,
             conversation_knowledge_write,
+            conversation_procedure_memories,
+            conversation_procedure_read,
+            conversation_procedure_write,
             conversation_memory_patches,
             conversation_memory_approve_patch,
             conversation_memory_reject_patch,
@@ -1663,6 +1927,7 @@ class DAC3DAgentRuntime:
             dac3d_preview_command,
             dac3d_status,
             dac_tool_manifest,
+            dac_mcp_manifest,
             dac_tool_allowed_dirs,
             dac_tool_validate_command,
             dac_tool_cancel_pending_command,
@@ -1672,6 +1937,10 @@ class DAC3DAgentRuntime:
             dac_skill_list,
             dac_skill_select,
             dac_skill_read,
+            dac_skill_propose_patch,
+            dac_skill_patches,
+            dac_skill_approve_patch,
+            dac_skill_reject_patch,
         ]
         all_tools = [
             dac3d_answer,
@@ -1876,9 +2145,14 @@ class DAC3DAgentChatAdapter:
     memory_store: ConversationMemoryStore | None = None
     memory_provider: LocalMemoryProvider | None = None
     skill_registry: SkillRegistry | None = None
+    skill_patch_store: SkillPatchStore | None = None
     context_builder: ContextBuilder | None = None
     context_tree: FileBackedContextTree | None = None
     goal_store: GoalStore | None = None
+    task_board_store: TaskBoardStore | None = None
+    automation_store: AutomationPlannerStore | None = None
+    workflow_store: WorkflowTemplateStore | None = None
+    artifact_store: ArtifactStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -1898,11 +2172,27 @@ class DAC3DAgentChatAdapter:
         if self.skill_registry is None:
             self.skill_registry = SkillRegistry(self.config.agent_skills_dir)
             self.runtime.skill_registry = self.skill_registry
+        if self.skill_patch_store is None and self.runtime.skill_patch_store is not None:
+            self.skill_patch_store = self.runtime.skill_patch_store
+        if self.skill_patch_store is None:
+            self.skill_patch_store = SkillPatchStore.from_root(
+                self.config.conversation_memory_dir,
+                self.skill_registry,
+            )
+            self.runtime.skill_patch_store = self.skill_patch_store
         if self.context_tree is None:
             self.context_tree = FileBackedContextTree(self.config.conversation_memory_dir / "context_tree")
             self.context_tree.ensure_defaults()
         if self.goal_store is None:
             self.goal_store = GoalStore.from_root(self.config.conversation_memory_dir)
+        if self.task_board_store is None:
+            self.task_board_store = TaskBoardStore.from_root(self.config.conversation_memory_dir)
+        if self.automation_store is None:
+            self.automation_store = AutomationPlannerStore.from_root(self.config.conversation_memory_dir)
+        if self.workflow_store is None:
+            self.workflow_store = WorkflowTemplateStore.from_root(self.config.conversation_memory_dir)
+        if self.artifact_store is None:
+            self.artifact_store = ArtifactStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -1990,6 +2280,11 @@ class DAC3DAgentChatAdapter:
             if self.skill_registry is not None
             else {"enabled": False, "backend": "local_agent_skills"}
         )
+        summary["skill_patches"] = (
+            self.skill_patch_store.describe()
+            if self.skill_patch_store is not None
+            else {"enabled": False, "backend": "json_skill_patch_queue"}
+        )
         summary["context_builder"] = (
             self.context_builder.describe()
             if self.context_builder is not None
@@ -2004,6 +2299,26 @@ class DAC3DAgentChatAdapter:
             self.goal_store.describe()
             if self.goal_store is not None
             else {"enabled": False, "backend": "local_goal_store"}
+        )
+        summary["task_board"] = (
+            self.task_board_store.describe()
+            if self.task_board_store is not None
+            else {"enabled": False, "backend": "local_agent_task_board"}
+        )
+        summary["automations"] = (
+            self.automation_store.describe()
+            if self.automation_store is not None
+            else {"enabled": False, "backend": "local_automation_planner"}
+        )
+        summary["workflow_templates"] = (
+            self.workflow_store.describe()
+            if self.workflow_store is not None
+            else {"enabled": False, "backend": "local_workflow_templates"}
+        )
+        summary["artifacts"] = (
+            self.artifact_store.describe()
+            if self.artifact_store is not None
+            else {"enabled": False, "backend": "local_agent_artifact_store"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2031,6 +2346,10 @@ class DAC3DAgentChatAdapter:
             },
         }
         return summary
+
+    def mcp_capability_manifest(self, *, session_id: str = "web") -> dict[str, Any]:
+        """Expose MCP-compatible capability discovery through the chat adapter."""
+        return self.runtime.mcp_capability_manifest(session_id=session_id)
 
     def knowledge_base_summary(self) -> dict[str, Any]:
         """Delegate knowledge-base diagnostics to the underlying assistant."""
@@ -2125,6 +2444,11 @@ class DAC3DAgentChatAdapter:
             if self.skill_registry is not None
             else {"enabled": False, "backend": "local_agent_skills", "skills": []}
         )
+        skill_patches = (
+            self.skill_patch_store.describe()
+            if self.skill_patch_store is not None
+            else {"enabled": False, "backend": "json_skill_patch_queue", "patch_count": 0}
+        )
         memory = (
             self.memory_provider.describe()
             if self.memory_provider is not None
@@ -2135,6 +2459,26 @@ class DAC3DAgentChatAdapter:
             if self.goal_store is not None
             else {"enabled": False, "backend": "local_goal_store"}
         )
+        task_board = (
+            self.task_board_store.describe()
+            if self.task_board_store is not None
+            else {"enabled": False, "backend": "local_agent_task_board"}
+        )
+        automations = (
+            self.automation_store.describe()
+            if self.automation_store is not None
+            else {"enabled": False, "backend": "local_automation_planner"}
+        )
+        workflow_templates = (
+            self.workflow_store.describe()
+            if self.workflow_store is not None
+            else {"enabled": False, "backend": "local_workflow_templates"}
+        )
+        artifacts = (
+            self.artifact_store.describe()
+            if self.artifact_store is not None
+            else {"enabled": False, "backend": "local_agent_artifact_store"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2143,12 +2487,21 @@ class DAC3DAgentChatAdapter:
             "tool_groups": agent.get("tool_groups", {}),
             "capabilities": agent.get("network_capabilities", []),
             "skills": skills,
+            "skill_patches": skill_patches,
             "context_tree": context_tree,
             "memory_os": memory,
             "goals": goals,
+            "task_board": task_board,
+            "automations": automations,
+            "workflow_templates": workflow_templates,
+            "artifacts": artifacts,
             "workflow": [
                 "user_task",
                 "goal_tracking",
+                "task_board_card",
+                "automation_planning",
+                "workflow_template",
+                "artifact_store",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2197,6 +2550,305 @@ class DAC3DAgentChatAdapter:
         if self.goal_store is None:
             raise ValueError("Goal store is not enabled.")
         return {"enabled": True, **self.goal_store.complete_goal(goal_id, note=note)}
+
+    def list_agent_tasks(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        goal_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent task-board cards."""
+        if self.task_board_store is None:
+            return {"enabled": False, "backend": "local_agent_task_board", "tasks": [], "count": 0}
+        return self.task_board_store.list_tasks(
+            session_id=session_id,
+            status=status,
+            goal_id=goal_id,
+            limit=limit,
+        )
+
+    def create_agent_task(
+        self,
+        title: str,
+        *,
+        session_id: str = "web",
+        description: str = "",
+        status: str = "backlog",
+        priority: str = "normal",
+        goal_id: str = "",
+        agent_path: list[Any] | None = None,
+        tool_candidates: list[Any] | None = None,
+        dependencies: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a local Agent task-board card."""
+        if self.task_board_store is None:
+            raise ValueError("Task board is not enabled.")
+        return {
+            "enabled": True,
+            **self.task_board_store.create_task(
+                title,
+                session_id=session_id,
+                description=description,
+                status=status,
+                priority=priority,
+                goal_id=goal_id,
+                agent_path=agent_path,
+                tool_candidates=tool_candidates,
+                dependencies=dependencies,
+                metadata=metadata,
+            ),
+        }
+
+    def update_agent_task_status(self, task_id: str, status: str, *, note: str = "") -> dict[str, Any]:
+        """Move one Agent task-board card to another status column."""
+        if self.task_board_store is None:
+            raise ValueError("Task board is not enabled.")
+        return {"enabled": True, **self.task_board_store.update_status(task_id, status, note=note)}
+
+    def create_agent_task_from_workflow(
+        self,
+        task: str,
+        *,
+        session_id: str = "web",
+        goal_id: str = "",
+        status: str = "ready",
+        priority: str = "normal",
+    ) -> dict[str, Any]:
+        """Create a task-board card from the current workflow preview."""
+        if self.task_board_store is None:
+            raise ValueError("Task board is not enabled.")
+        preview = self.preview_agent_workflow(task, session_id=session_id)
+        created = self.task_board_store.create_from_workflow_preview(
+            preview,
+            session_id=session_id,
+            goal_id=goal_id,
+            status=status,
+            priority=priority,
+        )
+        return {"enabled": True, "preview": preview, **created}
+
+    def list_agent_automations(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent automation plans."""
+        if self.automation_store is None:
+            return {"enabled": False, "backend": "local_automation_planner", "automations": [], "count": 0}
+        return self.automation_store.list_automations(
+            session_id=session_id,
+            status=status,
+            limit=limit,
+        )
+
+    def list_due_agent_automations(self, *, limit: int = 20) -> dict[str, Any]:
+        """List active automation plans whose next_run_at is due."""
+        if self.automation_store is None:
+            return {"enabled": False, "backend": "local_automation_planner", "automations": [], "count": 0}
+        return self.automation_store.due_automations(limit=limit)
+
+    def create_agent_automation(
+        self,
+        name: str,
+        prompt: str,
+        *,
+        session_id: str = "web",
+        schedule: dict[str, Any] | None = None,
+        status: str = "active",
+        task_id: str = "",
+        goal_id: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a local scheduled automation definition."""
+        if self.automation_store is None:
+            raise ValueError("Automation planner is not enabled.")
+        return {
+            "enabled": True,
+            **self.automation_store.create_automation(
+                name,
+                prompt,
+                session_id=session_id,
+                schedule=schedule,
+                status=status,
+                task_id=task_id,
+                goal_id=goal_id,
+                metadata=metadata,
+            ),
+        }
+
+    def update_agent_automation_status(
+        self,
+        automation_id: str,
+        status: str,
+        *,
+        note: str = "",
+    ) -> dict[str, Any]:
+        """Pause, resume, or archive one local automation definition."""
+        if self.automation_store is None:
+            raise ValueError("Automation planner is not enabled.")
+        return {"enabled": True, **self.automation_store.update_status(automation_id, status, note=note)}
+
+    def record_agent_automation_run(
+        self,
+        automation_id: str,
+        *,
+        result: str = "",
+        status: str = "completed",
+        trace_id: str = "",
+    ) -> dict[str, Any]:
+        """Record one external/future-worker automation run result."""
+        if self.automation_store is None:
+            raise ValueError("Automation planner is not enabled.")
+        return {
+            "enabled": True,
+            **self.automation_store.record_run(
+                automation_id,
+                result=result,
+                status=status,
+                trace_id=trace_id,
+            ),
+        }
+
+    def list_agent_workflows(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List reusable Agent workflow templates."""
+        if self.workflow_store is None:
+            return {"enabled": False, "backend": "local_workflow_templates", "workflows": [], "count": 0}
+        return self.workflow_store.list_workflows(
+            session_id=session_id,
+            status=status,
+            limit=limit,
+        )
+
+    def read_agent_workflow(self, workflow_id: str) -> dict[str, Any]:
+        """Read one reusable Agent workflow template."""
+        if self.workflow_store is None:
+            raise ValueError("Workflow template store is not enabled.")
+        return self.workflow_store.read_workflow(workflow_id)
+
+    def create_agent_workflow(
+        self,
+        name: str,
+        *,
+        session_id: str = "web",
+        description: str = "",
+        nodes: list[Any] | None = None,
+        edges: list[Any] | None = None,
+        status: str = "draft",
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a reusable Agent workflow template from a DAG payload."""
+        if self.workflow_store is None:
+            raise ValueError("Workflow template store is not enabled.")
+        return {
+            "enabled": True,
+            **self.workflow_store.create_workflow(
+                name,
+                session_id=session_id,
+                description=description,
+                nodes=nodes,
+                edges=edges,
+                status=status,
+                tags=tags,
+                metadata=metadata,
+            ),
+        }
+
+    def create_agent_workflow_from_preview(
+        self,
+        task: str,
+        *,
+        name: str = "",
+        session_id: str = "web",
+        status: str = "draft",
+        tags: list[Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a reusable workflow template from the current workflow preview."""
+        if self.workflow_store is None:
+            raise ValueError("Workflow template store is not enabled.")
+        preview = self.preview_agent_workflow(task, session_id=session_id)
+        created = self.workflow_store.create_from_preview(
+            preview,
+            name=name,
+            session_id=session_id,
+            status=status,
+            tags=tags,
+        )
+        return {"enabled": True, "preview": preview, **created}
+
+    def update_agent_workflow_status(self, workflow_id: str, status: str) -> dict[str, Any]:
+        """Move one workflow template between draft, active, and archived states."""
+        if self.workflow_store is None:
+            raise ValueError("Workflow template store is not enabled.")
+        return {"enabled": True, **self.workflow_store.update_status(workflow_id, status)}
+
+    def list_agent_artifacts(
+        self,
+        *,
+        session_id: str | None = None,
+        artifact_type: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent workspace artifacts."""
+        if self.artifact_store is None:
+            return {"enabled": False, "backend": "local_agent_artifact_store", "artifacts": [], "count": 0}
+        return self.artifact_store.list_artifacts(
+            session_id=session_id,
+            artifact_type=artifact_type,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def create_agent_artifact(
+        self,
+        title: str,
+        content: Any,
+        *,
+        artifact_type: str = "markdown",
+        session_id: str = "web",
+        task_id: str = "",
+        workflow_id: str = "",
+        trace_id: str = "",
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a file-backed Agent workspace artifact."""
+        if self.artifact_store is None:
+            raise ValueError("Artifact store is not enabled.")
+        return {
+            "enabled": True,
+            **self.artifact_store.create_artifact(
+                title,
+                content,
+                artifact_type=artifact_type,
+                session_id=session_id,
+                task_id=task_id,
+                workflow_id=workflow_id,
+                trace_id=trace_id,
+                tags=tags,
+                metadata=metadata,
+            ),
+        }
+
+    def read_agent_artifact(self, artifact_id: str) -> dict[str, Any]:
+        """Read one Agent workspace artifact and its file content."""
+        if self.artifact_store is None:
+            raise ValueError("Artifact store is not enabled.")
+        return self.artifact_store.read_artifact(artifact_id)
 
     def preview_agent_workflow(
         self,
@@ -2335,6 +2987,63 @@ class DAC3DAgentChatAdapter:
         if not tools:
             tools.append("dac3d_answer")
         return tools
+
+    def propose_skill_patch(
+        self,
+        *,
+        target_skill: str,
+        reason: str,
+        diff: str = "",
+        replacement_section: str = "",
+        evidence_trace_ids: list[str] | None = None,
+        risk_level: str = "medium",
+    ) -> dict[str, Any]:
+        """Create a reviewable skill patch proposal from the UI/API path."""
+        return self.runtime.propose_dac_skill_patch(
+            target_skill=target_skill,
+            reason=reason,
+            diff=diff,
+            replacement_section=replacement_section,
+            evidence_trace_ids=evidence_trace_ids or [],
+            risk_level=risk_level,
+            proposed_by="ui",
+        )
+
+    def list_skill_patches(self, status: str = "pending") -> dict[str, Any]:
+        """List skill patch proposals for human review."""
+        return self.runtime.list_dac_skill_patches(status=status)
+
+    def approve_skill_patch(self, patch_id: str) -> dict[str, Any]:
+        """Approve one pending skill patch without auto-applying it."""
+        return self.runtime.approve_dac_skill_patch(patch_id)
+
+    def reject_skill_patch(self, patch_id: str, reason: str = "") -> dict[str, Any]:
+        """Reject one skill patch proposal."""
+        return self.runtime.reject_dac_skill_patch(patch_id, reason=reason)
+
+    def list_procedure_memories(self) -> dict[str, Any]:
+        """List approved Markdown procedure memories."""
+        return self.runtime.list_conversation_procedure_memories()
+
+    def read_procedure_memory(self, name: str) -> dict[str, Any]:
+        """Read one approved Markdown procedure memory."""
+        return self.runtime.read_conversation_procedure_memory(name)
+
+    def propose_procedure_memory(
+        self,
+        *,
+        name: str,
+        content: str,
+        reason: str = "procedure_memory_candidate",
+        mode: str = "append",
+    ) -> dict[str, Any]:
+        """Create a reviewable procedure-memory patch."""
+        return self.runtime.write_conversation_procedure_memory(
+            name=name,
+            content=content,
+            reason=reason,
+            mode=mode,
+        )
 
     def list_memory_patches(self, status: str = "pending") -> dict[str, Any]:
         """List Memory OS patches for human review."""

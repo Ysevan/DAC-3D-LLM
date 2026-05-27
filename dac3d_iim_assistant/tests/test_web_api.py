@@ -92,6 +92,28 @@ def test_web_api_runtime_endpoint_returns_runtime_summary(tmp_path) -> None:
     assert "dac3d" in payload
 
 
+def test_web_api_mcp_manifest_endpoint_exposes_discovery_payload(tmp_path) -> None:
+    """The API should expose MCP-compatible tools, resources, and prompts for discovery."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    response = client.get("/api/mcp/manifest", params={"session_id": "mcp-web"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["protocol"]["style"] == "mcp-compatible"
+    assert payload["capabilities"]["tools"]["count"] >= 8
+    assert {resource["uri"] for resource in payload["resources"]} >= {
+        "dac3d://runtime/status",
+        "dac3d://memory/profile",
+    }
+    assert "future_agents_sdk_orchestration" in payload["deployment_modes"]
+
+
 def test_web_api_chat_endpoint_rejects_empty_message(tmp_path) -> None:
     """The API should reject invalid chat payloads with a client error."""
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
@@ -434,6 +456,104 @@ def test_web_api_memory_patch_review_endpoints(tmp_path) -> None:
     assert pending_response.json()["count"] == 0
 
 
+def test_web_api_procedure_memory_uses_patch_approval_before_markdown_write(tmp_path) -> None:
+    """Reviewed procedure memory should be proposed first, then written as Markdown after approval."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+    procedure_path = config.conversation_memory_dir / "procedures" / "offline-inspection-flow.md"
+
+    propose_response = client.post(
+        "/api/memory/procedures",
+        json={
+            "name": "offline-inspection-flow",
+            "content": "离线检测目录选择后，先生成命令预览，再等待用户审核。",
+            "reason": "reviewed_flow",
+        },
+    )
+
+    assert propose_response.status_code == 200
+    payload = propose_response.json()
+    patch = payload["patches"][0]
+    assert patch["target"] == "procedure_memory"
+    assert patch["status"] == "pending"
+    assert not procedure_path.exists()
+
+    approve_response = client.post(f"/api/memory/patches/{patch['id']}/approve")
+    list_response = client.get("/api/memory/procedures")
+    read_response = client.get("/api/memory/procedures/offline-inspection-flow")
+
+    assert approve_response.status_code == 200
+    assert approve_response.json()["applied"] is True
+    assert procedure_path.exists()
+    assert list_response.json()["count"] == 1
+    procedure = read_response.json()
+    assert procedure["frontmatter"]["target"] == "procedure_memory"
+    assert procedure["frontmatter"]["provenance"]["trace_id"] == patch["source_trace_id"]
+    assert "命令预览" in procedure["body"]
+
+
+def test_web_api_skill_patch_review_endpoints(tmp_path) -> None:
+    """The web UI should review skill patch proposals without editing SKILL.md."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+    skill_path = config.agent_skills_dir / "dac-command-preview" / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text(
+        """---
+name: dac-command-preview
+description: Preview DAC commands.
+triggers:
+  - 扫描
+tools:
+  - dac3d_preview_command
+---
+
+# DAC Command Preview
+
+Original preview flow.
+""",
+        encoding="utf-8",
+    )
+    original_skill = skill_path.read_text(encoding="utf-8")
+
+    propose_response = client.post(
+        "/api/skills/patches",
+        json={
+            "target_skill": "dac-command-preview",
+            "reason": "trace shows preview validation should be called out",
+            "diff": "+ Require validate_command in the preview checklist.",
+            "evidence_trace_ids": ["trace-skill-1"],
+            "risk_level": "medium",
+        },
+    )
+
+    assert propose_response.status_code == 200
+    patch = propose_response.json()["patch"]
+    assert patch["status"] == "pending"
+    assert patch["evidence_trace_ids"] == ["trace-skill-1"]
+
+    list_response = client.get("/api/skills/patches")
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+
+    approve_response = client.post(f"/api/skills/patches/{patch['id']}/approve")
+    assert approve_response.status_code == 200
+    assert approve_response.json()["approved"] is True
+    assert approve_response.json()["applied"] is False
+    assert skill_path.read_text(encoding="utf-8") == original_skill
+
+    approved_response = client.get("/api/skills/patches?status=approved")
+    assert approved_response.json()["count"] == 1
+
+
 def test_web_api_agent_workspace_and_workflow_preview(tmp_path) -> None:
     """The React client should be able to inspect the multi-agent workspace."""
     config = make_config(tmp_path)
@@ -469,6 +589,159 @@ def test_web_api_agent_workspace_and_workflow_preview(tmp_path) -> None:
         item["node"]["kind"] == "procedure"
         for item in preview["context_tree_matches"]
     )
+
+
+def test_web_api_agent_workflow_template_endpoints(tmp_path) -> None:
+    """The web UI should persist workflow previews as reusable DAG templates."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/workflows/from-preview",
+        json={
+            "task": "选择 pre_fusion_images 下的图片进行离线检测",
+            "name": "离线检测 DAG",
+            "session_id": "workflow-ui-session",
+            "status": "active",
+        },
+    )
+    workflow_id = create_response.json()["workflow"]["id"]
+    read_response = client.get(f"/api/agent/workflows/{workflow_id}")
+    list_response = client.get("/api/agent/workflows?session_id=workflow-ui-session&status=active")
+    archive_response = client.post(
+        f"/api/agent/workflows/{workflow_id}/status",
+        json={"status": "archived"},
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["workflow"]["metadata"]["source"] == "workflow_preview"
+    assert create_response.json()["workflow"]["edges"]
+    assert read_response.status_code == 200
+    assert read_response.json()["workflow"]["name"] == "离线检测 DAG"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert archive_response.status_code == 200
+    assert archive_response.json()["workflow"]["status"] == "archived"
+    assert workspace_response.json()["workflow_templates"]["workflow_count"] == 1
+
+
+def test_web_api_agent_artifact_store_endpoints(tmp_path) -> None:
+    """The web UI should create, search, and read shared Agent artifacts."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/artifacts",
+        json={
+            "title": "离线检测执行摘要",
+            "content": {"result": "queued", "step": "preview"},
+            "artifact_type": "json",
+            "session_id": "artifact-ui-session",
+            "tags": ["offline", "summary"],
+            "metadata": {"task": "offline_inspection"},
+        },
+    )
+    artifact_id = create_response.json()["artifact"]["id"]
+    list_response = client.get(
+        "/api/agent/artifacts?session_id=artifact-ui-session&artifact_type=json&q=queued"
+    )
+    read_response = client.get(f"/api/agent/artifacts/{artifact_id}")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["artifact"]["artifact_type"] == "json"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert '"result": "queued"' in read_response.json()["content"]
+    assert workspace_response.json()["artifacts"]["artifact_count"] == 1
+
+
+def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
+    """The web UI should create, move, and list Agent task-board cards."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/tasks/from-workflow",
+        json={
+            "task": "选择 pre_fusion_images 下的图片进行离线检测",
+            "session_id": "task-ui-session",
+            "priority": "high",
+        },
+    )
+    task_id = create_response.json()["task"]["id"]
+    move_response = client.post(
+        f"/api/agent/tasks/{task_id}/status",
+        json={"status": "in_progress", "note": "UI 已开始处理。"},
+    )
+    list_response = client.get("/api/agent/tasks?session_id=task-ui-session&status=in_progress")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["task"]["metadata"]["source"] == "workflow_preview"
+    assert move_response.status_code == 200
+    assert move_response.json()["task"]["status"] == "in_progress"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert workspace_response.json()["task_board"]["task_count"] == 1
+
+
+def test_web_api_agent_automation_planner_endpoints(tmp_path) -> None:
+    """The web UI should create, pause, record, and list automation plans."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/automations",
+        json={
+            "name": "每日 DAC 状态摘要",
+            "prompt": "每天生成一次 DAC-3D 状态摘要。",
+            "session_id": "automation-ui-session",
+            "schedule": {"type": "daily", "time": "08:30"},
+        },
+    )
+    automation_id = create_response.json()["automation"]["id"]
+    run_response = client.post(
+        f"/api/agent/automations/{automation_id}/runs",
+        json={"result": "已完成摘要。", "trace_id": "trace-web-auto"},
+    )
+    pause_response = client.post(
+        f"/api/agent/automations/{automation_id}/status",
+        json={"status": "paused", "note": "演示暂停。"},
+    )
+    list_response = client.get("/api/agent/automations?session_id=automation-ui-session")
+    due_response = client.get("/api/agent/automations/due")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["automation"]["schedule_summary"] == "daily at 08:30"
+    assert run_response.status_code == 200
+    assert run_response.json()["run"]["trace_id"] == "trace-web-auto"
+    assert pause_response.status_code == 200
+    assert pause_response.json()["automation"]["status"] == "paused"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert due_response.status_code == 200
+    assert due_response.json()["count"] == 0
+    assert workspace_response.json()["automations"]["automation_count"] == 1
 
 
 def test_web_api_goal_tracker_endpoints(tmp_path) -> None:
