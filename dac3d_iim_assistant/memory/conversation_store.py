@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -107,6 +108,14 @@ class ConversationMemoryHit:
         )
 
 
+class MemoryApprovalError(ValueError):
+    """Raised when a memory approval lifecycle operation is invalid."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class ConversationMemoryStore:
     """Persist conversation history as JSON and expose layered search."""
 
@@ -121,6 +130,8 @@ class ConversationMemoryStore:
         self.root_dir = root_dir
         self.sessions_dir = root_dir / "sessions"
         self.index_path = root_dir / "index.json"
+        self.pending_path = root_dir / "pending_patches.json"
+        self.deleted_path = root_dir / "deleted_memory.json"
         self.max_turns_per_session = max(1, int(max_turns_per_session))
         self.max_index_items = max(1, int(max_index_items))
         self.max_field_chars = max(200, int(max_field_chars))
@@ -138,6 +149,165 @@ class ConversationMemoryStore:
 
     def ensure_directories(self) -> None:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    def propose_turn(
+        self,
+        *,
+        session_id: str | None,
+        user: str,
+        assistant: str,
+        intent: str = "",
+        structured_data: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Create a pending memory patch without adding it to prompt context."""
+        normalized = _safe_session_id(session_id)
+        if not str(user or "").strip() and not str(assistant or "").strip():
+            return None
+        assert_no_secrets(
+            {
+                "user": user,
+                "assistant": assistant,
+                "structured_data": structured_data or {},
+            },
+            location="conversation_memory_pending_patch",
+        )
+
+        with self._lock:
+            now = _utc_now_iso()
+            patch = {
+                "id": f"mempatch-{uuid.uuid4().hex}",
+                "kind": "conversation_turn",
+                "status": "pending",
+                "created_at": now,
+                "updated_at": now,
+                "session_id": normalized,
+                "turn": {
+                    "created_at": now,
+                    "user": _clip_text(user, self.max_field_chars),
+                    "assistant": _clip_text(assistant, self.max_field_chars),
+                    "intent": str(intent or ""),
+                    "structured_data": structured_data if isinstance(structured_data, dict) else {},
+                },
+            }
+            pending = self._load_pending()
+            patches = [entry for entry in pending.get("patches", []) if isinstance(entry, dict)]
+            patches.append(patch)
+            if len(patches) > self.max_index_items:
+                patches = patches[-self.max_index_items :]
+            pending["version"] = 1
+            pending["updated_at"] = now
+            pending["patches"] = patches
+            _write_json(self.pending_path, pending)
+            return self._public_patch(patch)
+
+    def list_pending_patches(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str = "pending",
+    ) -> list[dict[str, Any]]:
+        """Return pending memory patches for privileged review surfaces."""
+        normalized = _safe_session_id(session_id) if session_id else None
+        expected_status = str(status or "").strip()
+        pending = self._load_pending()
+        patches: list[dict[str, Any]] = []
+        for patch in pending.get("patches", []):
+            if not isinstance(patch, dict):
+                continue
+            if normalized and patch.get("session_id") != normalized:
+                continue
+            if expected_status and patch.get("status") != expected_status:
+                continue
+            patches.append(self._public_patch(patch))
+        return patches
+
+    def approve_pending_patch(
+        self,
+        *,
+        patch_id: str,
+        operator_id: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Approve a pending memory patch and commit it to session/index memory."""
+        with self._lock:
+            patch = self._get_patch_for_update(patch_id, session_id=session_id)
+            turn = patch.get("turn")
+            if not isinstance(turn, dict):
+                raise MemoryApprovalError("MEMORY_PATCH_INVALID", "Memory patch payload is invalid.")
+
+            session = self.append_turn(
+                session_id=str(patch.get("session_id") or ""),
+                user=str(turn.get("user") or ""),
+                assistant=str(turn.get("assistant") or ""),
+                intent=str(turn.get("intent") or ""),
+                structured_data=turn.get("structured_data") if isinstance(turn.get("structured_data"), dict) else {},
+            )
+            committed_turn = (session.get("turns") or [{}])[-1]
+            now = _utc_now_iso()
+            patch["status"] = "approved"
+            patch["updated_at"] = now
+            patch["approved_at"] = now
+            patch["approved_by"] = _safe_session_id(operator_id)
+            patch["committed_turn_id"] = str(committed_turn.get("id") or "")
+            self._replace_patch(patch)
+            return self._public_patch(patch)
+
+    def reject_pending_patch(
+        self,
+        *,
+        patch_id: str,
+        operator_id: str,
+        reason: str = "",
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Reject a pending memory patch without committing it to context memory."""
+        with self._lock:
+            patch = self._get_patch_for_update(patch_id, session_id=session_id)
+            now = _utc_now_iso()
+            patch["status"] = "rejected"
+            patch["updated_at"] = now
+            patch["rejected_at"] = now
+            patch["rejected_by"] = _safe_session_id(operator_id)
+            patch["rejection_reason"] = _clip_text(reason, 500)
+            self._replace_patch(patch)
+            return self._public_patch(patch)
+
+    def delete_turn(
+        self,
+        *,
+        session_id: str | None,
+        turn_id: str,
+        operator_id: str,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        """Delete an approved memory turn and remove it from search context."""
+        normalized = _safe_session_id(session_id)
+        clean_turn_id = str(turn_id or "").strip()
+        if not clean_turn_id:
+            raise MemoryApprovalError("MEMORY_TURN_ID_REQUIRED", "turn_id is required.")
+
+        with self._lock:
+            session = self.load_session(normalized)
+            turns = [turn for turn in session.get("turns", []) if isinstance(turn, dict)]
+            kept_turns = [turn for turn in turns if str(turn.get("id") or "") != clean_turn_id]
+            if len(kept_turns) == len(turns):
+                raise MemoryApprovalError("MEMORY_TURN_NOT_FOUND", "Memory turn was not found.")
+
+            now = _utc_now_iso()
+            session["turns"] = kept_turns
+            session["updated_at"] = now
+            session["summary"] = self._build_session_summary(kept_turns)
+            _write_json(self._session_path(normalized), session)
+            self._remove_index_item(normalized, clean_turn_id)
+            tombstone = {
+                "session_id": normalized,
+                "turn_id": clean_turn_id,
+                "deleted_at": now,
+                "deleted_by": _safe_session_id(operator_id),
+                "reason": _clip_text(reason, 500),
+            }
+            self._append_deleted_tombstone(tombstone)
+            return dict(tombstone)
 
     def append_turn(
         self,
@@ -307,9 +477,11 @@ class ConversationMemoryStore:
         return {
             "enabled": True,
             "backend": "json",
+            "approval_required": True,
             "path": str(self.root_dir),
             "session_count": len(list(self.sessions_dir.glob("*.json"))) if self.sessions_dir.exists() else 0,
             "index_items": len(index.get("items", [])),
+            "pending_patches": len(self.list_pending_patches()),
             "layers": [
                 "short_term_history",
                 "session_recent_json",
@@ -327,6 +499,61 @@ class ConversationMemoryStore:
         if not isinstance(index.get("items"), list):
             index["items"] = []
         return index
+
+    def _load_pending(self) -> dict[str, Any]:
+        default = {"version": 1, "updated_at": "", "patches": []}
+        pending = _read_json(self.pending_path, default)
+        if not isinstance(pending.get("patches"), list):
+            pending["patches"] = []
+        return pending
+
+    def _get_patch_for_update(
+        self,
+        patch_id: str,
+        *,
+        session_id: str | None,
+    ) -> dict[str, Any]:
+        clean_patch_id = str(patch_id or "").strip()
+        if not clean_patch_id:
+            raise MemoryApprovalError("MEMORY_PATCH_ID_REQUIRED", "patch_id is required.")
+        expected_session = _safe_session_id(session_id) if session_id else None
+        pending = self._load_pending()
+        for patch in pending.get("patches", []):
+            if not isinstance(patch, dict):
+                continue
+            if patch.get("id") != clean_patch_id:
+                continue
+            if expected_session and patch.get("session_id") != expected_session:
+                raise MemoryApprovalError("MEMORY_SESSION_MISMATCH", "Memory patch session mismatch.")
+            if patch.get("status") != "pending":
+                raise MemoryApprovalError("MEMORY_PATCH_NOT_PENDING", "Memory patch is not pending.")
+            return dict(patch)
+        raise MemoryApprovalError("MEMORY_PATCH_NOT_FOUND", "Memory patch was not found.")
+
+    def _replace_patch(self, updated_patch: dict[str, Any]) -> None:
+        pending = self._load_pending()
+        patches: list[dict[str, Any]] = []
+        replaced = False
+        for patch in pending.get("patches", []):
+            if not isinstance(patch, dict):
+                continue
+            if patch.get("id") == updated_patch.get("id"):
+                patches.append(dict(updated_patch))
+                replaced = True
+            else:
+                patches.append(patch)
+        if not replaced:
+            raise MemoryApprovalError("MEMORY_PATCH_NOT_FOUND", "Memory patch was not found.")
+        pending["version"] = 1
+        pending["updated_at"] = _utc_now_iso()
+        pending["patches"] = patches
+        _write_json(self.pending_path, pending)
+
+    def _public_patch(self, patch: dict[str, Any]) -> dict[str, Any]:
+        public = dict(patch)
+        turn = public.get("turn")
+        public["turn"] = dict(turn) if isinstance(turn, dict) else {}
+        return public
 
     def _append_index_item(self, session_id: str, turn: dict[str, Any]) -> None:
         index = self._load_index()
@@ -350,6 +577,33 @@ class ConversationMemoryStore:
         index["updated_at"] = now
         index["items"] = items
         _write_json(self.index_path, index)
+
+    def _remove_index_item(self, session_id: str, turn_id: str) -> None:
+        index = self._load_index()
+        items = [
+            entry
+            for entry in index.get("items", [])
+            if not (
+                isinstance(entry, dict)
+                and entry.get("session_id") == session_id
+                and entry.get("turn_id") == turn_id
+            )
+        ]
+        index["version"] = 1
+        index["updated_at"] = _utc_now_iso()
+        index["items"] = items
+        _write_json(self.index_path, index)
+
+    def _append_deleted_tombstone(self, tombstone: dict[str, Any]) -> None:
+        deleted = _read_json(self.deleted_path, {"version": 1, "updated_at": "", "items": []})
+        items = [entry for entry in deleted.get("items", []) if isinstance(entry, dict)]
+        items.append(tombstone)
+        if len(items) > self.max_index_items:
+            items = items[-self.max_index_items :]
+        deleted["version"] = 1
+        deleted["updated_at"] = _utc_now_iso()
+        deleted["items"] = items
+        _write_json(self.deleted_path, deleted)
 
     def _search_session_summary(self, query: str, session_id: str) -> list[ConversationMemoryHit]:
         session = self.load_session(session_id)

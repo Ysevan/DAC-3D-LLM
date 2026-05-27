@@ -25,9 +25,17 @@
 - 状态文件读取会拒绝 secret-like 文件和不安全路径；知识库上传文件名会拒绝路径分隔符、`../` 和 secret-like 文件名。
 - 已补回归测试覆盖 canonical path、`../`、symlink escape、allowlist、secret-file-read、unsafe upload filename、command bridge 输出目录和任意文件名拒绝。
 
+## S15-4 已修复
+
+- Agent chat runtime 不再把每轮对话直接写入长期 memory；`_remember_turn()` 现在只生成 pending memory patch，并在响应里暴露 `memory_pending_patch` 元数据。
+- 新增 memory approval 生命周期：`ConversationMemoryStore.propose_turn()`、`approve_pending_patch()`、`reject_pending_patch()` 和 `delete_turn()`。只有 approved patch 会进入 session JSON 和全局 index。
+- `/api/memory/approve`、`/api/memory/reject` 已从 501 占位改为真实 privileged API；新增 `/api/memory/pending` 与 `/api/memory/delete` 供管理员审查和删除。
+- rejected patch 不会写入 session/index；deleted turn 会同时从 session JSON 和 index 移除，并写入删除 tombstone，确保不会进入后续 prompt context。
+- 已补回归测试覆盖 pending-before-approval、approve commit、reject no-context、delete no-context、API approve/reject/delete 和 Agent adapter 注入前置审批。
+
 ## P0 必须修复
 
-1. 长期 memory 写入仍未经过 approval 生命周期。`ConversationMemoryStore.append_turn()` 已拒绝 secret-like 内容，但 `agent_runtime.py` 在每轮结束后会直接 `_remember_turn()`，并写入 session JSON 和全局 index；`/api/memory/approve`、`/api/memory/reject` 还是 501 占位。上线前必须把长期写入改成 pending patch，经授权 operator 审批后落库，rejected/deleted memory 不得进入上下文。参考：`dac3d_iim_assistant/agent_runtime.py:917`、`dac3d_iim_assistant/memory/conversation_store.py:142`、`dac3d_iim_assistant/ui/web_api.py:259`。
+当前审查范围内的 P0 项已完成。下一步应把 P1 的真实 runtime security eval 接入 CI，避免后续安全边界退化。
 
 ## P1 建议修复
 
@@ -65,17 +73,17 @@
 - Agent/CLI 直接执行命令已 fail closed；confirmed flag 只返回 token-bound confirmation 要求，不能直接提交到 mock runtime 或 command-file bridge。
 - Agent 工具已通过 `ToolGateway -> PolicyEngine` 强制注册和策略判定；未注册工具默认拒绝，禁用的写类工具不会触发底层 handler。
 - Path/File 边界已通过 `PathPolicy` 强制执行；离线目录、状态文件读取、command bridge 写入和知识库上传文件名都进入统一 canonical/allowlist/secret/symlink/traversal 检查。
+- 长期 memory 已改为 pending patch 审批生命周期；未批准、已拒绝、已删除的 memory 都不会进入 prompt context。
 
 ## 缺失测试
 
-- memory approval/reject/delete/patch 生命周期测试，以及 rejected/deleted memory 不进入上下文的测试。
 - security eval runner 对真实 runtime/tool trace 的集成测试。
 - Chrome 插件 UI smoke 的自动化回归测试。
 
 ## 生产上线前阻塞项
 
 - 生产设置 `DAC3D_ALLOW_COMMAND_SUBMIT=true` 前必须明确配置 `DAC3D_ALLOWED_INPUT_DIRS`、`DAC3D_ALLOWED_COMMAND_OUTPUT_DIR`，并保留 preview/confirm/token-bound confirmation 链路。
-- 不能启用生产长期 memory 写入，直到 memory approval P0 完成；临时策略应设置 `DAC3D_ENABLE_MEMORY_WRITE=false` 或只保留短期会话上下文。
+- 生产长期 memory 写入必须保留 privileged approval API；如需临时冻结落库，可设置 `DAC3D_ENABLE_MEMORY_WRITE=false`，pending patch 仍不会进入 prompt context。
 - remote/open-world/skill patch 类能力必须保持关闭，直到纳入 ToolGateway 风险策略并完成专项 review。
 - 生产必须使用明确 CORS origin、明确输入目录 allowlist、明确 command 输出目录、非 mock DAC-3D writer，并保留 rate limit 与 redaction。
 
@@ -87,6 +95,6 @@
 
 3. S15-3：已完成。引入 `PathPolicy`，统一处理 canonicalize、allowlist、symlink、secret file、bridge output path，并接入 uploads、offline folder validation、status file read、command bridge。
 
-4. S15-4：改 memory 为 approval patch 生命周期。默认生成 pending memory patch，operator 审批后写入；reject/delete 不再进入 prompt context。
+4. S15-4：已完成。memory 改为 approval patch 生命周期；默认生成 pending memory patch，operator 审批后写入；reject/delete 不再进入 prompt context。
 
 5. S15-5：把 security eval runner 接入真实 runtime，把 P0 修复转为 CI 门禁。

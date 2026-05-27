@@ -692,7 +692,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["memory"]["backend"] == "json"
 
 
-def test_agent_chat_adapter_persists_and_injects_json_memory(
+def test_agent_chat_adapter_requires_approval_before_injecting_json_memory(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -727,13 +727,27 @@ def test_agent_chat_adapter_persists_and_injects_json_memory(
         "反光还要注意什么？",
         session_id="memory-session",
     )
+    pending = adapter.memory_store.list_pending_patches(session_id="memory-session")
+    approved = adapter.memory_store.approve_pending_patch(
+        patch_id=pending[0]["id"],
+        operator_id="admin-1",
+        session_id="memory-session",
+    )
+    third = adapter.handle_message(
+        "反光还要注意什么？",
+        session_id="memory-session",
+    )
 
     assert first.answer == "已处理。"
     assert seen_messages[0] == "样品表面反光很强怎么办？"
-    assert "会话记忆（JSON 最近对话）" in seen_messages[1]
-    assert "长期记忆检索（JSON 索引命中）" in seen_messages[1]
-    assert "样品表面反光很强怎么办？" in seen_messages[1]
-    assert second.parsed_result["memory"]["backend"] == "json"
+    assert "memory_pending_patch" in first.parsed_result
+    assert "样品表面反光很强怎么办？" not in seen_messages[1]
+    assert second.parsed_result.get("memory", {}) == {}
+    assert approved["status"] == "approved"
+    assert "会话记忆（JSON 最近对话）" in seen_messages[2]
+    assert "长期记忆检索（JSON 索引命中）" in seen_messages[2]
+    assert "样品表面反光很强怎么办？" in seen_messages[2]
+    assert third.parsed_result["memory"]["backend"] == "json"
     session_file = config.conversation_memory_dir / "sessions" / "memory-session.json"
     assert session_file.exists()
 

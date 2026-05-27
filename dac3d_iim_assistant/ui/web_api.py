@@ -9,6 +9,7 @@ from inspect import signature
 from pathlib import Path
 from typing import Any
 
+from memory import ConversationMemoryStore, MemoryApprovalError
 from security.path_policy import PathPolicy, PathPolicyError
 from security.production_config import ProductionSecurityConfig, SecurityConfigError
 from tracing.logger import AuditTraceLogger
@@ -57,6 +58,7 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
     )
     if hasattr(getattr(assistant, "dac3d_client", None), "path_policy"):
         assistant.dac3d_client.path_policy = app.state.path_policy
+    app.state.memory_store = _ensure_memory_store(assistant)
     app.state.command_confirmations = ConfirmationTokenStore()
     app.state.audit_logger = (
         AuditTraceLogger(assistant.config.audit_trace_path)
@@ -263,6 +265,27 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         )
         return _attach_trace(http_request, payload)
 
+    @app.get("/api/memory/pending")
+    def memory_pending(http_request: Request) -> dict[str, Any]:
+        actor = _require_actor(
+            http_request,
+            require_operator=True,
+            required_roles=PRIVILEGED_ROLES,
+        )
+        memory_store = _require_memory_store(http_request)
+        patches = memory_store.list_pending_patches(
+            session_id=http_request.query_params.get("session_id"),
+            status=http_request.query_params.get("status") or "pending",
+        )
+        return _attach_trace(
+            http_request,
+            {
+                "memory_patches": patches,
+                "memory": memory_store.describe(),
+                "actor": {"session_id": actor.session_id, "operator_id": actor.operator_id},
+            },
+        )
+
     @app.post("/api/memory/approve")
     def memory_approve(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
         actor = _require_actor(
@@ -272,8 +295,36 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             require_operator=True,
             required_roles=PRIVILEGED_ROLES,
         )
-        del actor
-        raise HTTPException(status_code=501, detail="Memory approval API is not implemented yet.")
+        security_config: ProductionSecurityConfig = http_request.app.state.security_config
+        if not security_config.enable_memory_write:
+            raise ApiSecurityError(
+                code="MEMORY_WRITE_DISABLED",
+                message="Memory writes are disabled by security configuration.",
+                status_code=403,
+            )
+        memory_store = _require_memory_store(http_request)
+        try:
+            patch = memory_store.approve_pending_patch(
+                patch_id=str(request.get("patch_id") or request.get("memory_patch_id") or ""),
+                operator_id=str(actor.operator_id or ""),
+                session_id=request.get("session_id"),
+            )
+        except MemoryApprovalError as exc:
+            raise ApiSecurityError(code=exc.code, message=str(exc), status_code=400) from exc
+        _audit_event(
+            http_request,
+            actor=actor,
+            event_type="memory_approve",
+            tool_call={"name": "memory_approve", "patch_id": patch.get("id")},
+            policy_decision={"status": patch.get("status")},
+        )
+        return _attach_trace(
+            http_request,
+            {
+                "memory_patch": patch,
+                "memory": memory_store.describe(),
+            },
+        )
 
     @app.post("/api/memory/reject")
     def memory_reject(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
@@ -284,8 +335,64 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             require_operator=True,
             required_roles=PRIVILEGED_ROLES,
         )
-        del actor
-        raise HTTPException(status_code=501, detail="Memory rejection API is not implemented yet.")
+        memory_store = _require_memory_store(http_request)
+        try:
+            patch = memory_store.reject_pending_patch(
+                patch_id=str(request.get("patch_id") or request.get("memory_patch_id") or ""),
+                operator_id=str(actor.operator_id or ""),
+                reason=str(request.get("reason") or ""),
+                session_id=request.get("session_id"),
+            )
+        except MemoryApprovalError as exc:
+            raise ApiSecurityError(code=exc.code, message=str(exc), status_code=400) from exc
+        _audit_event(
+            http_request,
+            actor=actor,
+            event_type="memory_reject",
+            tool_call={"name": "memory_reject", "patch_id": patch.get("id")},
+            policy_decision={"status": patch.get("status")},
+        )
+        return _attach_trace(
+            http_request,
+            {
+                "memory_patch": patch,
+                "memory": memory_store.describe(),
+            },
+        )
+
+    @app.post("/api/memory/delete")
+    def memory_delete(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        actor = _require_actor(
+            http_request,
+            payload=request,
+            write=True,
+            require_operator=True,
+            required_roles=PRIVILEGED_ROLES,
+        )
+        memory_store = _require_memory_store(http_request)
+        try:
+            deleted = memory_store.delete_turn(
+                session_id=str(request.get("session_id") or actor.session_id),
+                turn_id=str(request.get("turn_id") or ""),
+                operator_id=str(actor.operator_id or ""),
+                reason=str(request.get("reason") or ""),
+            )
+        except MemoryApprovalError as exc:
+            raise ApiSecurityError(code=exc.code, message=str(exc), status_code=400) from exc
+        _audit_event(
+            http_request,
+            actor=actor,
+            event_type="memory_delete",
+            tool_call={"name": "memory_delete", "turn_id": deleted.get("turn_id")},
+            policy_decision={"status": "deleted"},
+        )
+        return _attach_trace(
+            http_request,
+            {
+                "deleted_memory": deleted,
+                "memory": memory_store.describe(),
+            },
+        )
 
     @app.post("/api/skill-patches/apply")
     def skill_patch_apply(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
@@ -495,6 +602,30 @@ def _core_assistant(assistant: Any) -> Any:
     if runtime is not None and hasattr(runtime, "assistant"):
         return runtime.assistant
     return assistant
+
+
+def _ensure_memory_store(assistant: Any) -> ConversationMemoryStore | None:
+    """Return the app memory store, creating one when memory is enabled."""
+    memory_store = getattr(assistant, "memory_store", None)
+    config = getattr(assistant, "config", None)
+    if memory_store is None and getattr(config, "memory_enabled", False):
+        memory_store = ConversationMemoryStore.from_config(config)
+        memory_store.ensure_directories()
+        if hasattr(assistant, "memory_store"):
+            assistant.memory_store = memory_store
+    return memory_store
+
+
+def _require_memory_store(request: Any) -> ConversationMemoryStore:
+    """Return the configured memory store or fail closed."""
+    memory_store = getattr(request.app.state, "memory_store", None)
+    if memory_store is None:
+        raise ApiSecurityError(
+            code="MEMORY_DISABLED",
+            message="Conversation memory is disabled.",
+            status_code=403,
+        )
+    return memory_store
 
 
 def _response_payload(response: Any) -> dict[str, Any]:

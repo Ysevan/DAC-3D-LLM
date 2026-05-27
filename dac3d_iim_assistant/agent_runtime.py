@@ -942,13 +942,25 @@ class DAC3DAgentChatAdapter:
         if self.memory_store is None:
             return
         structured_data = response.parsed_result if isinstance(response.parsed_result, dict) else {}
-        self.memory_store.append_turn(
+        pending_patch = self.memory_store.propose_turn(
             session_id=session_id,
             user=message,
             assistant=response.answer,
             intent=response.intent,
             structured_data=structured_data,
         )
+        if pending_patch is None:
+            return
+        parsed_result = response.parsed_result if isinstance(response.parsed_result, dict) else {}
+        parsed_result.setdefault(
+            "memory_pending_patch",
+            {
+                "id": pending_patch["id"],
+                "status": pending_patch["status"],
+                "approval_required": True,
+            },
+        )
+        response.parsed_result = parsed_result
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
