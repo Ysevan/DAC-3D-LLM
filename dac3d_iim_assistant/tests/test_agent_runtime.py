@@ -781,6 +781,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["context_builder"]["actions"] == ["write", "select", "compress", "isolate"]
     assert summary["task_board"]["backend"] == "local_agent_task_board"
     assert summary["automations"]["backend"] == "local_automation_planner"
+    assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1139,6 +1140,35 @@ def test_agent_chat_adapter_automation_planner_roundtrip(tmp_path) -> None:
     assert due["count"] == 0
     assert workspace["automations"]["automation_count"] == 1
     assert "automation_planning" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_workflow_template_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    created = adapter.create_agent_workflow_from_preview(
+        "选择 pre_fusion_images 下的图片进行离线检测",
+        name="离线检测 Agent DAG",
+        session_id="workflow-template-agent",
+        status="active",
+        tags=["offline"],
+    )
+    workflow_id = created["workflow"]["id"]
+    read = adapter.read_agent_workflow(workflow_id)
+    listed = adapter.list_agent_workflows(session_id="workflow-template-agent", status="active")
+    archived = adapter.update_agent_workflow_status(workflow_id, "archived")
+    workspace = adapter.agent_workspace()
+
+    assert created["workflow"]["metadata"]["source"] == "workflow_preview"
+    assert created["workflow"]["edges"]
+    assert read["workflow"]["name"] == "离线检测 Agent DAG"
+    assert listed["count"] == 1
+    assert archived["workflow"]["status"] == "archived"
+    assert workspace["workflow_templates"]["workflow_count"] == 1
+    assert "workflow_template" in workspace["workflow"]
 
 
 def test_agent_runtime_parser_supports_agent_project_commands() -> None:

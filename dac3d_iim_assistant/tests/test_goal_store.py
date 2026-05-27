@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from goals import AutomationPlannerStore, GoalStore, TaskBoardStore
+from goals import AutomationPlannerStore, GoalStore, TaskBoardStore, WorkflowTemplateStore
 
 
 def test_goal_store_tracks_progress_and_completion(tmp_path: Path) -> None:
@@ -124,3 +124,58 @@ def test_automation_planner_store_validates_schedule(tmp_path: Path) -> None:
         assert "interval_minutes" in str(exc)
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected invalid interval to be rejected.")
+
+
+def test_workflow_template_store_creates_and_reads_dag(tmp_path: Path) -> None:
+    store = WorkflowTemplateStore.from_root(tmp_path)
+
+    created = store.create_workflow(
+        "离线检测流程模板",
+        session_id="workflow-template-session",
+        nodes=[
+            {"id": "coordinator", "label": "Coordinator", "kind": "agent"},
+            {"id": "control", "label": "Control Agent", "kind": "agent"},
+            {"id": "preview", "label": "Preview Command", "kind": "tool"},
+        ],
+        edges=[
+            {"source": "coordinator", "target": "control"},
+            {"source": "control", "target": "preview"},
+        ],
+        status="draft",
+        tags=["offline"],
+    )
+    workflow_id = created["workflow"]["id"]
+    activated = store.update_status(workflow_id, "active")
+    read = store.read_workflow(workflow_id)
+    listed = store.list_workflows(session_id="workflow-template-session", status="active")
+
+    assert created["workflow"]["edges"][0]["source"] == "coordinator"
+    assert activated["workflow"]["status"] == "active"
+    assert read["workflow"]["nodes"][2]["kind"] == "tool"
+    assert listed["count"] == 1
+    assert store.describe()["by_status"]["active"] == 1
+
+
+def test_workflow_template_store_creates_from_preview(tmp_path: Path) -> None:
+    store = WorkflowTemplateStore.from_root(tmp_path)
+
+    created = store.create_from_preview(
+        {
+            "backend": "agent_workflow_preview",
+            "task": "当前检测状态是什么？",
+            "session_id": "workflow-preview-session",
+            "agent_path": ["coordinator", "dac3d_control_agent"],
+            "tool_candidates": ["dac3d_status"],
+            "context_tree_matches": [{}],
+            "nodes": [
+                {"id": "route", "label": "Route", "kind": "agent", "status": "selected"},
+                {"id": "tool", "label": "dac3d_status", "kind": "tool", "status": "selected"},
+            ],
+        },
+        session_id="workflow-preview-session",
+        status="active",
+    )
+
+    assert created["workflow"]["metadata"]["source"] == "workflow_preview"
+    assert created["workflow"]["edges"] == [{"source": "route", "target": "tool", "label": "next"}]
+    assert created["workflow"]["metadata"]["tool_candidates"] == ["dac3d_status"]

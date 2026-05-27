@@ -83,6 +83,81 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/workflows")
+    def list_agent_workflows(
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_workflows = getattr(assistant, "list_agent_workflows", None)
+        if not callable(list_workflows):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        return list_workflows(session_id=session_id, status=status, limit=limit)
+
+    @app.get("/api/agent/workflows/{workflow_id}")
+    def read_agent_workflow(workflow_id: str) -> dict[str, Any]:
+        read_workflow = getattr(assistant, "read_agent_workflow", None)
+        if not callable(read_workflow):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        try:
+            return read_workflow(workflow_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/workflows")
+    def create_agent_workflow(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_workflow = getattr(assistant, "create_agent_workflow", None)
+        if not callable(create_workflow):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        name = str(request.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        try:
+            return create_workflow(
+                name,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                description=str(request.get("description") or ""),
+                nodes=request.get("nodes") if isinstance(request.get("nodes"), list) else None,
+                edges=request.get("edges") if isinstance(request.get("edges"), list) else None,
+                status=str(request.get("status") or "draft"),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/workflows/from-preview")
+    def create_agent_workflow_from_preview(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_from_preview = getattr(assistant, "create_agent_workflow_from_preview", None)
+        if not callable(create_from_preview):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        task = str(request.get("task") or "").strip()
+        if not task:
+            raise HTTPException(status_code=422, detail="The `task` field is required.")
+        try:
+            return create_from_preview(
+                task,
+                name=str(request.get("name") or ""),
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                status=str(request.get("status") or "draft"),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/workflows/{workflow_id}/status")
+    def update_agent_workflow_status(workflow_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_workflow_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent workflow templates are unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(workflow_id, status)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/knowledge-base/summary")
     def knowledge_base_summary() -> dict[str, Any]:
         return assistant.knowledge_base_summary()

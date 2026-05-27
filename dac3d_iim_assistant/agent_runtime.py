@@ -29,7 +29,7 @@ from agent_core import (
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree
-from goals import AutomationPlannerStore, GoalStore, TaskBoardStore
+from goals import AutomationPlannerStore, GoalStore, TaskBoardStore, WorkflowTemplateStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
 from skill_system import SkillPatchStore, SkillRegistry
 from trace_eval import CodexHandoffGenerator, EvalDraftGenerator, EvalRunner, TraceLogger
@@ -2150,6 +2150,7 @@ class DAC3DAgentChatAdapter:
     goal_store: GoalStore | None = None
     task_board_store: TaskBoardStore | None = None
     automation_store: AutomationPlannerStore | None = None
+    workflow_store: WorkflowTemplateStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -2186,6 +2187,8 @@ class DAC3DAgentChatAdapter:
             self.task_board_store = TaskBoardStore.from_root(self.config.conversation_memory_dir)
         if self.automation_store is None:
             self.automation_store = AutomationPlannerStore.from_root(self.config.conversation_memory_dir)
+        if self.workflow_store is None:
+            self.workflow_store = WorkflowTemplateStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2302,6 +2305,11 @@ class DAC3DAgentChatAdapter:
             self.automation_store.describe()
             if self.automation_store is not None
             else {"enabled": False, "backend": "local_automation_planner"}
+        )
+        summary["workflow_templates"] = (
+            self.workflow_store.describe()
+            if self.workflow_store is not None
+            else {"enabled": False, "backend": "local_workflow_templates"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2452,6 +2460,11 @@ class DAC3DAgentChatAdapter:
             if self.automation_store is not None
             else {"enabled": False, "backend": "local_automation_planner"}
         )
+        workflow_templates = (
+            self.workflow_store.describe()
+            if self.workflow_store is not None
+            else {"enabled": False, "backend": "local_workflow_templates"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2466,11 +2479,13 @@ class DAC3DAgentChatAdapter:
             "goals": goals,
             "task_board": task_board,
             "automations": automations,
+            "workflow_templates": workflow_templates,
             "workflow": [
                 "user_task",
                 "goal_tracking",
                 "task_board_card",
                 "automation_planning",
+                "workflow_template",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2682,6 +2697,85 @@ class DAC3DAgentChatAdapter:
                 trace_id=trace_id,
             ),
         }
+
+    def list_agent_workflows(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List reusable Agent workflow templates."""
+        if self.workflow_store is None:
+            return {"enabled": False, "backend": "local_workflow_templates", "workflows": [], "count": 0}
+        return self.workflow_store.list_workflows(
+            session_id=session_id,
+            status=status,
+            limit=limit,
+        )
+
+    def read_agent_workflow(self, workflow_id: str) -> dict[str, Any]:
+        """Read one reusable Agent workflow template."""
+        if self.workflow_store is None:
+            raise ValueError("Workflow template store is not enabled.")
+        return self.workflow_store.read_workflow(workflow_id)
+
+    def create_agent_workflow(
+        self,
+        name: str,
+        *,
+        session_id: str = "web",
+        description: str = "",
+        nodes: list[Any] | None = None,
+        edges: list[Any] | None = None,
+        status: str = "draft",
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a reusable Agent workflow template from a DAG payload."""
+        if self.workflow_store is None:
+            raise ValueError("Workflow template store is not enabled.")
+        return {
+            "enabled": True,
+            **self.workflow_store.create_workflow(
+                name,
+                session_id=session_id,
+                description=description,
+                nodes=nodes,
+                edges=edges,
+                status=status,
+                tags=tags,
+                metadata=metadata,
+            ),
+        }
+
+    def create_agent_workflow_from_preview(
+        self,
+        task: str,
+        *,
+        name: str = "",
+        session_id: str = "web",
+        status: str = "draft",
+        tags: list[Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a reusable workflow template from the current workflow preview."""
+        if self.workflow_store is None:
+            raise ValueError("Workflow template store is not enabled.")
+        preview = self.preview_agent_workflow(task, session_id=session_id)
+        created = self.workflow_store.create_from_preview(
+            preview,
+            name=name,
+            session_id=session_id,
+            status=status,
+            tags=tags,
+        )
+        return {"enabled": True, "preview": preview, **created}
+
+    def update_agent_workflow_status(self, workflow_id: str, status: str) -> dict[str, Any]:
+        """Move one workflow template between draft, active, and archived states."""
+        if self.workflow_store is None:
+            raise ValueError("Workflow template store is not enabled.")
+        return {"enabled": True, **self.workflow_store.update_status(workflow_id, status)}
 
     def preview_agent_workflow(
         self,

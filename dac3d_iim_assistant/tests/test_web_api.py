@@ -521,6 +521,45 @@ def test_web_api_agent_workspace_and_workflow_preview(tmp_path) -> None:
     )
 
 
+def test_web_api_agent_workflow_template_endpoints(tmp_path) -> None:
+    """The web UI should persist workflow previews as reusable DAG templates."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/workflows/from-preview",
+        json={
+            "task": "选择 pre_fusion_images 下的图片进行离线检测",
+            "name": "离线检测 DAG",
+            "session_id": "workflow-ui-session",
+            "status": "active",
+        },
+    )
+    workflow_id = create_response.json()["workflow"]["id"]
+    read_response = client.get(f"/api/agent/workflows/{workflow_id}")
+    list_response = client.get("/api/agent/workflows?session_id=workflow-ui-session&status=active")
+    archive_response = client.post(
+        f"/api/agent/workflows/{workflow_id}/status",
+        json={"status": "archived"},
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["workflow"]["metadata"]["source"] == "workflow_preview"
+    assert create_response.json()["workflow"]["edges"]
+    assert read_response.status_code == 200
+    assert read_response.json()["workflow"]["name"] == "离线检测 DAG"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert archive_response.status_code == 200
+    assert archive_response.json()["workflow"]["status"] == "archived"
+    assert workspace_response.json()["workflow_templates"]["workflow_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)
