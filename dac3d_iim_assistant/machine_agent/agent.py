@@ -46,7 +46,6 @@ class MachineAgentService:
 
         time_range = self.resolve_time_range(question)
         tool_calls: list[ToolCallRecord] = []
-        lowered = question.lower()
 
         wants_status = _contains_any(question, ("现在", "当前", "实时", "状态", "status"))
         wants_alarm = _contains_any(question, ("报警", "告警", "异常", "alarm", "为什么", "老是", "变多"))

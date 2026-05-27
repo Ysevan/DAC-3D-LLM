@@ -306,6 +306,8 @@ def test_agent_runtime_can_call_existing_assistant_router(tmp_path) -> None:
     assert payload["intent"] == "status"
     assert "DAC-3D" in payload["answer"]
     assert payload["status_summary"]["state"] == "idle"
+    assert payload["tool_gateway"]["decision"]["tool_name"] == "dac3d_answer"
+    assert payload["policy_decision"]["allowed"] is True
 
 
 def test_agent_runtime_uses_llm_authored_structured_output(tmp_path, monkeypatch) -> None:
@@ -378,7 +380,35 @@ def test_agent_runtime_previews_control_command_without_submitting(tmp_path) -> 
     assert payload["intent"] == "operation"
     assert payload["command_preview"]["action"] == "start_online_scan"
     assert payload["status_summary"]["state"] == "idle"
+    assert payload["tool_gateway"]["decision"]["tool_name"] == "dac3d_preview_command"
+    assert payload["policy_decision"]["requires_confirmation"] is True
     assert assistant.dac3d_client.runtime_snapshot()["last_command_action"] is None
+
+
+def test_agent_runtime_blocks_agent_direct_knowledge_base_rebuild(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+
+    payload = runtime.tool_controller().rebuild_knowledge_base()
+
+    assert payload["intent"] == "tool_policy"
+    assert payload["policy_decision"]["allowed"] is False
+    assert payload["policy_decision"]["reason"] == "TOOL_DIRECT_USE_DISABLED"
+    assert payload["policy_decision"]["tool_name"] == "dac3d_rebuild_knowledge_base"
+
+
+def test_agent_runtime_machine_tools_use_gateway_policy(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+
+    payload = runtime.tool_controller().machine_status()
+
+    assert payload["machine_id"] == "IM-Press-01"
+    assert payload["tool_gateway"]["decision"]["tool_name"] == "machine_status"
+    assert payload["policy_decision"]["allowed"] is True
+    assert payload["policy_decision"]["read_only"] is True
 
 
 def test_agents_sdk_dialogue_tool_call_covers_machine_agent(tmp_path) -> None:
@@ -534,6 +564,8 @@ def test_agent_runtime_blocks_confirmed_control_command_without_api_token(tmp_pa
     assert payload["command_preview"]["action"] == "start_online_scan"
     assert payload["policy_decision"]["allowed"] is False
     assert payload["policy_decision"]["reason"] == "TOKEN_BOUND_CONFIRMATION_REQUIRED"
+    assert payload["tool_gateway"]["decision"]["tool_name"] == "dac3d_execute_command"
+    assert payload["tool_gateway"]["decision"]["requires_token_bound_confirmation"] is True
     assert payload["confirmation"]["blocked_direct_submit"] is True
     assert payload["agent_session"]["has_pending_command"] is True
     assert assistant.dac3d_client.runtime_snapshot()["last_command_action"] is None
@@ -755,7 +787,10 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert description["tools"] == list(AGENT_TOOL_NAMES)
     assert description["control"]["execute_tool"] == "dac3d_execute_command"
     assert description["control"]["direct_agent_submit_allowed"] is False
+    assert description["control"]["tool_gateway_enforced"] is True
     assert description["control"]["confirmation_flow"] == "api_preview_confirm_token"
+    assert description["tool_gateway"]["fail_closed"] is True
+    assert set(description["tool_gateway"]["registered_tools"]) == set(AGENT_TOOL_NAMES)
     assert description["model_provider"]["resolved_api_type"] == "responses"
 
 

@@ -7,19 +7,21 @@ import json
 import math
 import re
 import sys
-import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+import defusedxml.ElementTree as ET
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from config import AppConfig
+from config import AppConfig  # noqa: E402
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:\.[0-9]+)?|[\u4e00-\u9fff]+")
 SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？.!?])\s+|\n{2,}")
@@ -498,10 +500,10 @@ def _persist_with_chroma(chunks: list[dict[str, object]], config: AppConfig) -> 
 
     config.vector_store_path.mkdir(parents=True, exist_ok=True)
     client = chromadb.PersistentClient(path=str(config.vector_store_path))
-    try:
+    from chromadb.errors import NotFoundError
+
+    with suppress(NotFoundError):
         client.delete_collection(config.vector_store_collection)
-    except Exception:
-        pass
     collection = client.get_or_create_collection(
         name=config.vector_store_collection,
         metadata={"hnsw:space": "cosine"},
@@ -648,7 +650,7 @@ def _hash_embedding(text: str, dimensions: int) -> list[float]:
         return vector
 
     for token in tokens:
-        digest = hashlib.md5(token.encode("utf-8")).digest()
+        digest = hashlib.md5(token.encode("utf-8"), usedforsecurity=False).digest()
         index = int.from_bytes(digest[:4], "big") % dimensions
         sign = 1.0 if digest[4] % 2 == 0 else -1.0
         vector[index] += sign

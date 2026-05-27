@@ -15,6 +15,7 @@ from agent_core import (
     AssistantResponsePayload,
     DAC3DAgentSessionStore,
     DAC3DAgentToolController,
+    DEFAULT_AGENT_TOOL_GATEWAY,
 )
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
@@ -345,7 +346,8 @@ class DAC3DAgentRuntime:
     def run_local_tool_plan(self, message: str, *, session_id: str = "default") -> dict[str, Any]:
         """Explicit local diagnostic planner; production chat enters the LLM first."""
         tools = self.tool_controller(session_id)
-        assert self.sessions is not None
+        if self.sessions is None:
+            raise RuntimeError("Agent session store is not initialized.")
         if self.sessions.should_use_pending_confirmation(message):
             payload = tools.execute_command(message, confirmed_by_user=True)
         else:
@@ -408,7 +410,8 @@ class DAC3DAgentRuntime:
 
     def tool_controller(self, session_id: str = "default") -> DAC3DAgentToolController:
         """Return a DAC-3D tool controller bound to one Agent session."""
-        assert self.sessions is not None
+        if self.sessions is None:
+            raise RuntimeError("Agent session store is not initialized.")
         return DAC3DAgentToolController(
             assistant=self.assistant,
             sessions=self.sessions,
@@ -460,6 +463,7 @@ class DAC3DAgentRuntime:
                 "execute_tool": "dac3d_execute_command",
                 "confirmation_required_for_risky_commands": True,
                 "direct_agent_submit_allowed": False,
+                "tool_gateway_enforced": True,
                 "confirmation_flow": "api_preview_confirm_token",
                 "confirmation_requirements": [
                     "preview_id",
@@ -470,6 +474,7 @@ class DAC3DAgentRuntime:
                 ],
                 "bridge_modes": ["embedded", "command_file_bridge", "mock"],
             },
+            "tool_gateway": DEFAULT_AGENT_TOOL_GATEWAY.describe(),
         }
 
     def resolved_agent_api_type(self) -> str:
@@ -561,7 +566,7 @@ class DAC3DAgentRuntime:
         )
         def dac3d_operation(instruction: str) -> dict[str, Any]:
             """Preview a DAC-3D operation request through the compatibility tool name."""
-            return tools.preview_command(instruction)
+            return tools.operation(instruction)
 
         @function_tool(
             name_override="dac3d_preview_command",
@@ -600,7 +605,7 @@ class DAC3DAgentRuntime:
         )
         def dac3d_status() -> dict[str, Any]:
             """Read current DAC-3D runtime status."""
-            return tools.handle_with_assistant("查询当前检测状态")
+            return tools.status()
 
         @function_tool(
             name_override="dac3d_latest_result",
@@ -611,11 +616,7 @@ class DAC3DAgentRuntime:
         )
         def dac3d_latest_result(sample_position: int) -> dict[str, Any]:
             """Read a DAC-3D inspection result summary."""
-            if sample_position > 0:
-                message = f"第{sample_position}个样品检测结果怎么样？"
-            else:
-                message = "当前检测结果怎么样？"
-            return tools.handle_with_assistant(message)
+            return tools.latest_result(sample_position)
 
         @function_tool(
             name_override="dac3d_rebuild_knowledge_base",

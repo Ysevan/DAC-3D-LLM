@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   security:
     name: Supply Chain Security
@@ -18,12 +21,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           lfs: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -56,7 +59,7 @@ jobs:
 
       - name: Python security static analysis
         working-directory: dac3d_iim_assistant
-        run: bandit -q -r . -x tests,pytest,frontend,ui2,knowledge_base/vector_store
+        run: bandit -q -r . -x ./tests,./pytest,./frontend,./ui2,./knowledge_base/vector_store
 
       - name: Python dependency audit
         working-directory: dac3d_iim_assistant
@@ -66,9 +69,9 @@ jobs:
         run: python scripts/security_static_scan.py dac3d_iim_assistant
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: |
             dac3d_iim_assistant/frontend/package-lock.json

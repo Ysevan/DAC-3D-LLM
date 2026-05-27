@@ -10,13 +10,18 @@
 - 真实命令下发仍只允许走 Web API `/api/commands/preview` + `/api/commands/confirm`，并绑定 `preview_id`、`preview_hash`、一次性 `confirmation_token`、operator 和 session。
 - 已补回归测试覆盖英文直通、中文“执行扫描”、pending preview 后“确认执行”、command-file bridge 不写出，以及 Agents SDK 工具调用不改变 runtime。
 
+## S15-2 已修复
+
+- Agent 工具已接入最小 `ToolGateway`/`PolicyEngine`。所有 `AGENT_TOOL_NAMES` 都在注册表中声明风险级别、side effect、参数 schema、确认要求和是否允许 Agent 直用。
+- `DAC3DAgentToolController` 的工具入口统一先经过 gateway；未知工具、缺失/额外参数、禁用的写类工具都会 fail closed，且不会调用底层 handler。
+- `dac3d_rebuild_knowledge_base` 已禁止 Agent 直接触发，因为它会产生文件系统写入；Web/API 授权路径后续仍可独立治理。
+- 运行时摘要现在暴露 `tool_gateway.enforced=true`、注册工具清单和每个工具的风险元数据，工具返回也会带 `tool_gateway` 与 `policy_decision`。
+
 ## P0 必须修复
 
-1. Tool Gateway/PolicyEngine 还不是强制边界。当前工具是 `agent_runtime.py` 内直接注册的一组 `function_tool`，再调用 `DAC3DAgentToolController`；没有一个所有工具调用都必须经过的注册表、schema 校验、policy decision、risk classification 与 fail-closed 网关。高风险命令在 Web API 有确认，但 machine tools、KB rebuild、未来 remote/open-world/file tools 没有统一策略面。上线前必须先引入中心化 `ToolGateway`，所有 Agent 工具只调用网关，未注册工具默认拒绝。
+1. Path/File 策略不完整。知识库上传只做了 `Path(file.filename).name` 落到临时目录，离线目录校验和 command bridge 写入直接使用传入或配置路径；目前没有统一 canonicalize、`../` 阻断、symlink escape 阻断、allowlist 外拒绝、secret 文件读取拒绝、任意覆盖拒绝策略。上线前必须新增中心化 PathPolicy，并覆盖 `integration/dac3d_client.py` 的离线目录读取与 command 文件写入。参考：`dac3d_iim_assistant/ui/web_api.py:303`、`dac3d_iim_assistant/integration/dac3d_client.py:251`、`:436`、`:462`。
 
-2. Path/File 策略不完整。知识库上传只做了 `Path(file.filename).name` 落到临时目录，离线目录校验和 command bridge 写入直接使用传入或配置路径；目前没有统一 canonicalize、`../` 阻断、symlink escape 阻断、allowlist 外拒绝、secret 文件读取拒绝、任意覆盖拒绝策略。上线前必须新增中心化 PathPolicy，并覆盖 `integration/dac3d_client.py` 的离线目录读取与 command 文件写入。参考：`dac3d_iim_assistant/ui/web_api.py:303`、`dac3d_iim_assistant/integration/dac3d_client.py:251`、`:436`、`:462`。
-
-3. 长期 memory 写入仍未经过 approval 生命周期。`ConversationMemoryStore.append_turn()` 已拒绝 secret-like 内容，但 `agent_runtime.py` 在每轮结束后会直接 `_remember_turn()`，并写入 session JSON 和全局 index；`/api/memory/approve`、`/api/memory/reject` 还是 501 占位。上线前必须把长期写入改成 pending patch，经授权 operator 审批后落库，rejected/deleted memory 不得进入上下文。参考：`dac3d_iim_assistant/agent_runtime.py:917`、`dac3d_iim_assistant/memory/conversation_store.py:142`、`dac3d_iim_assistant/ui/web_api.py:259`。
+2. 长期 memory 写入仍未经过 approval 生命周期。`ConversationMemoryStore.append_turn()` 已拒绝 secret-like 内容，但 `agent_runtime.py` 在每轮结束后会直接 `_remember_turn()`，并写入 session JSON 和全局 index；`/api/memory/approve`、`/api/memory/reject` 还是 501 占位。上线前必须把长期写入改成 pending patch，经授权 operator 审批后落库，rejected/deleted memory 不得进入上下文。参考：`dac3d_iim_assistant/agent_runtime.py:917`、`dac3d_iim_assistant/memory/conversation_store.py:142`、`dac3d_iim_assistant/ui/web_api.py:259`。
 
 ## P1 建议修复
 
@@ -52,10 +57,10 @@
 - CI 安全工作流已覆盖 pytest、compileall、ruff、bandit、pip-audit、npm audit、frontend build、static scan、security eval smoke。
 - red-team cases 已覆盖 prompt injection、indirect prompt injection、RAG poisoning、memory poisoning、confirmation bypass、path traversal、secret exfiltration、tool misuse、API auth bypass、trace tampering、XSS 输出注入、DoS oversized input 等类别。
 - Agent/CLI 直接执行命令已 fail closed；confirmed flag 只返回 token-bound confirmation 要求，不能直接提交到 mock runtime 或 command-file bridge。
+- Agent 工具已通过 `ToolGateway -> PolicyEngine` 强制注册和策略判定；未注册工具默认拒绝，禁用的写类工具不会触发底层 handler。
 
 ## 缺失测试
 
-- 所有 function tools 必须经过 `ToolGateway -> PolicyEngine` 的注册、schema、risk、confirmation、fail-closed 测试。
 - PathPolicy 的 canonical path、`../`、symlink escape、allowlist、secret-file-read、任意覆盖测试。
 - memory approval/reject/delete/patch 生命周期测试，以及 rejected/deleted memory 不进入上下文的测试。
 - security eval runner 对真实 runtime/tool trace 的集成测试。
@@ -63,16 +68,16 @@
 
 ## 生产上线前阻塞项
 
-- 不能在生产设置 `DAC3D_ALLOW_COMMAND_SUBMIT=true`，直到剩余 ToolGateway/PolicyEngine 与 PathPolicy P0 完成并有回归测试。
+- 不能在生产设置 `DAC3D_ALLOW_COMMAND_SUBMIT=true`，直到 PathPolicy P0 完成并有回归测试。
 - 不能启用生产长期 memory 写入，直到 memory approval P0 完成；临时策略应设置 `DAC3D_ENABLE_MEMORY_WRITE=false` 或只保留短期会话上下文。
-- remote/open-world/file/skill patch 类能力必须保持关闭，直到统一 ToolGateway/PolicyEngine 与 PathPolicy 完成。
+- remote/open-world/file/skill patch 类能力必须保持关闭，直到 PathPolicy 完成并纳入 ToolGateway 风险策略。
 - 生产必须使用明确 CORS origin、明确输入目录 allowlist、明确 command 输出目录、非 mock DAC-3D writer，并保留 rate limit 与 redaction。
 
 ## 修复计划
 
 1. S15-1：已完成。Agent/CLI 的 `confirmed_by_user` 直通路径改为 fail-closed，不再直接 submit；真实下发保留 Web API token-bound confirmation。
 
-2. S15-2：引入最小 `ToolGateway`/`PolicyEngine`。所有 Agent tools 注册 schema/risk/context policy；未注册工具 fail closed；high-risk/destructive 工具必须返回 confirmation_required，不能直接 submit。
+2. S15-2：已完成。所有 Agent tools 进入最小 `ToolGateway`/`PolicyEngine` 注册表；未注册工具 fail closed；写类 KB rebuild 禁止 Agent 直用。
 
 3. S15-3：引入 `PathPolicy`。统一处理 canonicalize、allowlist、symlink、secret file、bridge output path，接入 uploads、offline folder validation、command bridge。
 
