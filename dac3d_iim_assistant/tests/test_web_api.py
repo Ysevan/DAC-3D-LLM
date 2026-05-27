@@ -694,6 +694,32 @@ def test_web_api_agent_event_queue_endpoints(tmp_path) -> None:
     assert workspace_response.json()["event_queue"]["event_count"] == 1
 
 
+def test_web_api_agent_verification_feedback_endpoints(tmp_path) -> None:
+    """The web UI should list presets, run one verification, and read feedback records."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    presets_response = client.get("/api/agent/verifications/presets")
+    run_response = client.post(
+        "/api/agent/verifications/run",
+        json={"preset_id": "python_compile", "timeout_seconds": 30},
+    )
+    list_response = client.get("/api/agent/verifications?preset_id=python_compile")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert presets_response.status_code == 200
+    assert presets_response.json()["backend"] == "local_verification_runner"
+    assert run_response.status_code == 200
+    assert run_response.json()["run"]["status"] == "passed"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert workspace_response.json()["verification_feedback"]["run_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

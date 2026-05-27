@@ -787,6 +787,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
     assert summary["artifacts"]["backend"] == "local_agent_artifact_store"
     assert summary["event_queue"]["backend"] == "local_agent_event_queue"
+    assert summary["verification_feedback"]["backend"] == "local_verification_runner"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1064,6 +1065,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "durable_event_queue" in description["network_capabilities"]
     assert "static_repo_context_map" in description["network_capabilities"]
     assert "git_workspace_context" in description["network_capabilities"]
+    assert "verification_feedback_runner" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1241,6 +1243,24 @@ def test_agent_chat_adapter_event_queue_roundtrip(tmp_path) -> None:
     assert listed["count"] == 1
     assert workspace["event_queue"]["event_count"] == 1
     assert "event_queue" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_verification_feedback_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    presets = adapter.list_agent_verification_presets()
+    result = adapter.run_agent_verification("python_compile", timeout_seconds=30)
+    listed = adapter.list_agent_verification_runs(preset_id="python_compile")
+    workspace = adapter.agent_workspace()
+
+    assert presets["backend"] == "local_verification_runner"
+    assert result["run"]["status"] == "passed"
+    assert listed["count"] == 1
+    assert workspace["verification_feedback"]["run_count"] == 1
+    assert "verification_feedback" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

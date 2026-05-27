@@ -10,6 +10,7 @@ from goals import (
     EventQueueStore,
     GoalStore,
     TaskBoardStore,
+    VerificationRunnerStore,
     WorkflowTemplateStore,
 )
 
@@ -254,3 +255,22 @@ def test_event_queue_store_claims_and_completes_due_events(tmp_path: Path) -> No
     assert listed["count"] == 1
     assert summary["event_count"] == 2
     assert summary["by_status"]["completed"] == 1
+
+
+def test_verification_runner_store_runs_and_records_compileall(tmp_path: Path) -> None:
+    base_dir = tmp_path / "workspace"
+    base_dir.mkdir()
+    (base_dir / "demo.py").write_text("value = 1\n", encoding="utf-8")
+    store = VerificationRunnerStore.from_root(tmp_path, base_dir)
+
+    presets = store.presets()
+    result = store.run_preset("python_compile", timeout_seconds=30)
+    listed = store.list_runs(preset_id="python_compile")
+    summary = store.describe()
+
+    assert presets["count"] >= 3
+    assert result["run"]["status"] == "passed"
+    assert result["run"]["preset_id"] == "python_compile"
+    assert listed["count"] == 1
+    assert listed["runs"][0]["id"] == result["run"]["id"]
+    assert summary["by_status"]["passed"] == 1

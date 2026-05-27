@@ -69,6 +69,44 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             raise HTTPException(status_code=503, detail="Agent workspace is unavailable.")
         return workspace()
 
+    @app.get("/api/agent/verifications")
+    def list_agent_verification_runs(
+        status: str | None = None,
+        preset_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_runs = getattr(assistant, "list_agent_verification_runs", None)
+        if not callable(list_runs):
+            raise HTTPException(status_code=503, detail="Verification feedback runner is unavailable.")
+        try:
+            return list_runs(status=status, preset_id=preset_id, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/verifications/presets")
+    def list_agent_verification_presets() -> dict[str, Any]:
+        list_presets = getattr(assistant, "list_agent_verification_presets", None)
+        if not callable(list_presets):
+            raise HTTPException(status_code=503, detail="Verification feedback runner is unavailable.")
+        return list_presets()
+
+    @app.post("/api/agent/verifications/run")
+    def run_agent_verification(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        run_verification = getattr(assistant, "run_agent_verification", None)
+        if not callable(run_verification):
+            raise HTTPException(status_code=503, detail="Verification feedback runner is unavailable.")
+        preset_id = str(request.get("preset_id") or request.get("preset") or "").strip()
+        if not preset_id:
+            raise HTTPException(status_code=422, detail="The `preset_id` field is required.")
+        try:
+            timeout_seconds = int(request.get("timeout_seconds") or 120)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="The `timeout_seconds` field must be an integer.") from exc
+        try:
+            return run_verification(preset_id, timeout_seconds=timeout_seconds)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/repo-map")
     def read_repo_context_map() -> dict[str, Any]:
         read_map = getattr(assistant, "read_repo_context_map", None)

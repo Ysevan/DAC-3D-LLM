@@ -35,6 +35,7 @@ from goals import (
     EventQueueStore,
     GoalStore,
     TaskBoardStore,
+    VerificationRunnerStore,
     WorkflowTemplateStore,
 )
 from memory import ConversationMemoryStore, LocalMemoryProvider
@@ -1204,6 +1205,7 @@ class DAC3DAgentRuntime:
                 "durable_event_queue",
                 "static_repo_context_map",
                 "git_workspace_context",
+                "verification_feedback_runner",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2166,6 +2168,7 @@ class DAC3DAgentChatAdapter:
     workflow_store: WorkflowTemplateStore | None = None
     artifact_store: ArtifactStore | None = None
     event_queue_store: EventQueueStore | None = None
+    verification_store: VerificationRunnerStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -2215,6 +2218,11 @@ class DAC3DAgentChatAdapter:
             self.artifact_store = ArtifactStore.from_root(self.config.conversation_memory_dir)
         if self.event_queue_store is None:
             self.event_queue_store = EventQueueStore.from_root(self.config.conversation_memory_dir)
+        if self.verification_store is None:
+            self.verification_store = VerificationRunnerStore.from_root(
+                self.config.conversation_memory_dir,
+                self.config.base_dir,
+            )
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2356,6 +2364,11 @@ class DAC3DAgentChatAdapter:
             self.event_queue_store.describe()
             if self.event_queue_store is not None
             else {"enabled": False, "backend": "local_agent_event_queue"}
+        )
+        summary["verification_feedback"] = (
+            self.verification_store.describe()
+            if self.verification_store is not None
+            else {"enabled": False, "backend": "local_verification_runner"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2531,6 +2544,11 @@ class DAC3DAgentChatAdapter:
             if self.event_queue_store is not None
             else {"enabled": False, "backend": "local_agent_event_queue"}
         )
+        verification_feedback = (
+            self.verification_store.describe()
+            if self.verification_store is not None
+            else {"enabled": False, "backend": "local_verification_runner"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2550,6 +2568,7 @@ class DAC3DAgentChatAdapter:
             "workflow_templates": workflow_templates,
             "artifacts": artifacts,
             "event_queue": event_queue,
+            "verification_feedback": verification_feedback,
             "workflow": [
                 "user_task",
                 "goal_tracking",
@@ -2558,6 +2577,7 @@ class DAC3DAgentChatAdapter:
                 "workflow_template",
                 "artifact_store",
                 "event_queue",
+                "verification_feedback",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2569,6 +2589,45 @@ class DAC3DAgentChatAdapter:
                 "trace_feedback",
             ],
         }
+
+    def list_agent_verification_presets(self) -> dict[str, Any]:
+        """List runnable local verification feedback presets."""
+        if self.verification_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_verification_runner",
+                "presets": [],
+                "count": 0,
+            }
+        return self.verification_store.presets()
+
+    def list_agent_verification_runs(
+        self,
+        *,
+        status: str | None = None,
+        preset_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List recent local verification run records."""
+        if self.verification_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_verification_runner",
+                "runs": [],
+                "count": 0,
+            }
+        return self.verification_store.list_runs(status=status, preset_id=preset_id, limit=limit)
+
+    def run_agent_verification(
+        self,
+        preset_id: str,
+        *,
+        timeout_seconds: int = 120,
+    ) -> dict[str, Any]:
+        """Run one known local verification preset and persist its feedback."""
+        if self.verification_store is None:
+            raise ValueError("Verification feedback runner is not enabled.")
+        return self.verification_store.run_preset(preset_id, timeout_seconds=timeout_seconds)
 
     def list_goals(
         self,
