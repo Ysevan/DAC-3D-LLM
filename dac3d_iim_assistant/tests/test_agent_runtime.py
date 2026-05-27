@@ -782,6 +782,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["task_board"]["backend"] == "local_agent_task_board"
     assert summary["automations"]["backend"] == "local_automation_planner"
     assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
+    assert summary["artifacts"]["backend"] == "local_agent_artifact_store"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1055,6 +1056,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "mcp_capability_manifest" in description["network_capabilities"]
     assert "context_engineering" in description["network_capabilities"]
     assert "runtime_status_context" in description["network_capabilities"]
+    assert "shared_workspace_artifacts" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1169,6 +1171,33 @@ def test_agent_chat_adapter_workflow_template_roundtrip(tmp_path) -> None:
     assert archived["workflow"]["status"] == "archived"
     assert workspace["workflow_templates"]["workflow_count"] == 1
     assert "workflow_template" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_artifact_store_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    created = adapter.create_agent_artifact(
+        "执行日志片段",
+        "preview generated\nsubmit queued\n",
+        artifact_type="log",
+        session_id="artifact-agent",
+        trace_id="trace-artifact-1",
+        tags=["log", "offline"],
+    )
+    artifact_id = created["artifact"]["id"]
+    listed = adapter.list_agent_artifacts(session_id="artifact-agent", query="submit queued")
+    read = adapter.read_agent_artifact(artifact_id)
+    workspace = adapter.agent_workspace()
+
+    assert created["artifact"]["trace_id"] == "trace-artifact-1"
+    assert listed["count"] == 1
+    assert read["content"].splitlines()[-1] == "submit queued"
+    assert workspace["artifacts"]["artifact_count"] == 1
+    assert "artifact_store" in workspace["workflow"]
 
 
 def test_agent_runtime_parser_supports_agent_project_commands() -> None:

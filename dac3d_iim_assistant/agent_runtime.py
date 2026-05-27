@@ -29,7 +29,7 @@ from agent_core import (
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree
-from goals import AutomationPlannerStore, GoalStore, TaskBoardStore, WorkflowTemplateStore
+from goals import ArtifactStore, AutomationPlannerStore, GoalStore, TaskBoardStore, WorkflowTemplateStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
 from skill_system import SkillPatchStore, SkillRegistry
 from trace_eval import CodexHandoffGenerator, EvalDraftGenerator, EvalRunner, TraceLogger
@@ -1193,6 +1193,7 @@ class DAC3DAgentRuntime:
                 "reviewable_skill_patch_queue",
                 "context_engineering",
                 "runtime_status_context",
+                "shared_workspace_artifacts",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2151,6 +2152,7 @@ class DAC3DAgentChatAdapter:
     task_board_store: TaskBoardStore | None = None
     automation_store: AutomationPlannerStore | None = None
     workflow_store: WorkflowTemplateStore | None = None
+    artifact_store: ArtifactStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -2189,6 +2191,8 @@ class DAC3DAgentChatAdapter:
             self.automation_store = AutomationPlannerStore.from_root(self.config.conversation_memory_dir)
         if self.workflow_store is None:
             self.workflow_store = WorkflowTemplateStore.from_root(self.config.conversation_memory_dir)
+        if self.artifact_store is None:
+            self.artifact_store = ArtifactStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2310,6 +2314,11 @@ class DAC3DAgentChatAdapter:
             self.workflow_store.describe()
             if self.workflow_store is not None
             else {"enabled": False, "backend": "local_workflow_templates"}
+        )
+        summary["artifacts"] = (
+            self.artifact_store.describe()
+            if self.artifact_store is not None
+            else {"enabled": False, "backend": "local_agent_artifact_store"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2465,6 +2474,11 @@ class DAC3DAgentChatAdapter:
             if self.workflow_store is not None
             else {"enabled": False, "backend": "local_workflow_templates"}
         )
+        artifacts = (
+            self.artifact_store.describe()
+            if self.artifact_store is not None
+            else {"enabled": False, "backend": "local_agent_artifact_store"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2480,12 +2494,14 @@ class DAC3DAgentChatAdapter:
             "task_board": task_board,
             "automations": automations,
             "workflow_templates": workflow_templates,
+            "artifacts": artifacts,
             "workflow": [
                 "user_task",
                 "goal_tracking",
                 "task_board_card",
                 "automation_planning",
                 "workflow_template",
+                "artifact_store",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2776,6 +2792,63 @@ class DAC3DAgentChatAdapter:
         if self.workflow_store is None:
             raise ValueError("Workflow template store is not enabled.")
         return {"enabled": True, **self.workflow_store.update_status(workflow_id, status)}
+
+    def list_agent_artifacts(
+        self,
+        *,
+        session_id: str | None = None,
+        artifact_type: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent workspace artifacts."""
+        if self.artifact_store is None:
+            return {"enabled": False, "backend": "local_agent_artifact_store", "artifacts": [], "count": 0}
+        return self.artifact_store.list_artifacts(
+            session_id=session_id,
+            artifact_type=artifact_type,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def create_agent_artifact(
+        self,
+        title: str,
+        content: Any,
+        *,
+        artifact_type: str = "markdown",
+        session_id: str = "web",
+        task_id: str = "",
+        workflow_id: str = "",
+        trace_id: str = "",
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a file-backed Agent workspace artifact."""
+        if self.artifact_store is None:
+            raise ValueError("Artifact store is not enabled.")
+        return {
+            "enabled": True,
+            **self.artifact_store.create_artifact(
+                title,
+                content,
+                artifact_type=artifact_type,
+                session_id=session_id,
+                task_id=task_id,
+                workflow_id=workflow_id,
+                trace_id=trace_id,
+                tags=tags,
+                metadata=metadata,
+            ),
+        }
+
+    def read_agent_artifact(self, artifact_id: str) -> dict[str, Any]:
+        """Read one Agent workspace artifact and its file content."""
+        if self.artifact_store is None:
+            raise ValueError("Artifact store is not enabled.")
+        return self.artifact_store.read_artifact(artifact_id)
 
     def preview_agent_workflow(
         self,

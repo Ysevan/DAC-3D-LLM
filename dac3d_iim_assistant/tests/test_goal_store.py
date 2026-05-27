@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from goals import AutomationPlannerStore, GoalStore, TaskBoardStore, WorkflowTemplateStore
+from goals import ArtifactStore, AutomationPlannerStore, GoalStore, TaskBoardStore, WorkflowTemplateStore
 
 
 def test_goal_store_tracks_progress_and_completion(tmp_path: Path) -> None:
@@ -179,3 +179,31 @@ def test_workflow_template_store_creates_from_preview(tmp_path: Path) -> None:
     assert created["workflow"]["metadata"]["source"] == "workflow_preview"
     assert created["workflow"]["edges"] == [{"source": "route", "target": "tool", "label": "next"}]
     assert created["workflow"]["metadata"]["tool_candidates"] == ["dac3d_status"]
+
+
+def test_artifact_store_creates_searches_and_reads_files(tmp_path: Path) -> None:
+    store = ArtifactStore.from_root(tmp_path)
+
+    created = store.create_artifact(
+        "离线检测摘要",
+        "# 离线检测摘要\n\n命令预览已生成，等待执行。",
+        artifact_type="markdown",
+        session_id="artifact-session",
+        task_id="task-1",
+        tags=["offline", "summary"],
+        metadata={"source": "test"},
+    )
+    artifact_id = created["artifact"]["id"]
+    listed = store.list_artifacts(session_id="artifact-session", tag="offline", query="命令预览")
+    read = store.read_artifact(artifact_id)
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert created["artifact"]["artifact_type"] == "markdown"
+    assert created["artifact"]["task_id"] == "task-1"
+    assert listed["count"] == 1
+    assert listed["artifacts"][0]["id"] == artifact_id
+    assert "命令预览" in read["content"]
+    assert (tmp_path / created["artifact"]["content_path"]).exists()
+    assert summary["artifact_count"] == 1
+    assert summary["by_type"]["markdown"] == 1

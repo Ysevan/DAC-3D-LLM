@@ -560,6 +560,42 @@ def test_web_api_agent_workflow_template_endpoints(tmp_path) -> None:
     assert workspace_response.json()["workflow_templates"]["workflow_count"] == 1
 
 
+def test_web_api_agent_artifact_store_endpoints(tmp_path) -> None:
+    """The web UI should create, search, and read shared Agent artifacts."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/artifacts",
+        json={
+            "title": "离线检测执行摘要",
+            "content": {"result": "queued", "step": "preview"},
+            "artifact_type": "json",
+            "session_id": "artifact-ui-session",
+            "tags": ["offline", "summary"],
+            "metadata": {"task": "offline_inspection"},
+        },
+    )
+    artifact_id = create_response.json()["artifact"]["id"]
+    list_response = client.get(
+        "/api/agent/artifacts?session_id=artifact-ui-session&artifact_type=json&q=queued"
+    )
+    read_response = client.get(f"/api/agent/artifacts/{artifact_id}")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["artifact"]["artifact_type"] == "json"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert '"result": "queued"' in read_response.json()["content"]
+    assert workspace_response.json()["artifacts"]["artifact_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

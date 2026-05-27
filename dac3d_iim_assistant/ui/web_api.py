@@ -69,6 +69,60 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             raise HTTPException(status_code=503, detail="Agent workspace is unavailable.")
         return workspace()
 
+    @app.get("/api/agent/artifacts")
+    def list_agent_artifacts(
+        session_id: str | None = None,
+        artifact_type: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_artifacts = getattr(assistant, "list_agent_artifacts", None)
+        if not callable(list_artifacts):
+            raise HTTPException(status_code=503, detail="Agent artifact store is unavailable.")
+        return list_artifacts(
+            session_id=session_id,
+            artifact_type=artifact_type,
+            tag=tag,
+            query=q,
+            limit=limit,
+        )
+
+    @app.get("/api/agent/artifacts/{artifact_id}")
+    def read_agent_artifact(artifact_id: str) -> dict[str, Any]:
+        read_artifact = getattr(assistant, "read_agent_artifact", None)
+        if not callable(read_artifact):
+            raise HTTPException(status_code=503, detail="Agent artifact store is unavailable.")
+        try:
+            return read_artifact(artifact_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/artifacts")
+    def create_agent_artifact(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_artifact = getattr(assistant, "create_agent_artifact", None)
+        if not callable(create_artifact):
+            raise HTTPException(status_code=503, detail="Agent artifact store is unavailable.")
+        title = str(request.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        if "content" not in request:
+            raise HTTPException(status_code=422, detail="The `content` field is required.")
+        try:
+            return create_artifact(
+                title,
+                request.get("content"),
+                artifact_type=str(request.get("artifact_type") or "markdown"),
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                task_id=str(request.get("task_id") or ""),
+                workflow_id=str(request.get("workflow_id") or ""),
+                trace_id=str(request.get("trace_id") or ""),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.post("/api/agent/workflow/preview")
     def preview_agent_workflow(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
         preview = getattr(assistant, "preview_agent_workflow", None)
