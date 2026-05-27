@@ -521,6 +521,40 @@ def test_web_api_agent_workspace_and_workflow_preview(tmp_path) -> None:
     )
 
 
+def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
+    """The web UI should create, move, and list Agent task-board cards."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/tasks/from-workflow",
+        json={
+            "task": "选择 pre_fusion_images 下的图片进行离线检测",
+            "session_id": "task-ui-session",
+            "priority": "high",
+        },
+    )
+    task_id = create_response.json()["task"]["id"]
+    move_response = client.post(
+        f"/api/agent/tasks/{task_id}/status",
+        json={"status": "in_progress", "note": "UI 已开始处理。"},
+    )
+    list_response = client.get("/api/agent/tasks?session_id=task-ui-session&status=in_progress")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["task"]["metadata"]["source"] == "workflow_preview"
+    assert move_response.status_code == 200
+    assert move_response.json()["task"]["status"] == "in_progress"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert workspace_response.json()["task_board"]["task_count"] == 1
+
+
 def test_web_api_goal_tracker_endpoints(tmp_path) -> None:
     """The web UI should create, update, complete, and list Agent goals."""
     config = make_config(tmp_path)

@@ -779,6 +779,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["memory"]["memory_os"]["workflow"] == "trace -> memory_patch -> approval -> long_term_memory"
     assert summary["context_builder"]["backend"] == "context_builder"
     assert summary["context_builder"]["actions"] == ["write", "select", "compress", "isolate"]
+    assert summary["task_board"]["backend"] == "local_agent_task_board"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1078,6 +1079,31 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert description["control"]["execute_tool"] == "dac3d_execute_command"
     assert description["control"]["safety_review_tool"] == "dac3d_safety_review"
     assert description["model_provider"]["resolved_api_type"] == "responses"
+
+
+def test_agent_chat_adapter_task_board_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    created = adapter.create_agent_task_from_workflow(
+        "选择 pre_fusion_images 下的图片进行离线检测",
+        session_id="task-board-agent",
+        priority="high",
+    )
+    task_id = created["task"]["id"]
+    moved = adapter.update_agent_task_status(task_id, "in_progress", note="开始执行预览。")
+    listed = adapter.list_agent_tasks(session_id="task-board-agent", status="in_progress")
+    workspace = adapter.agent_workspace()
+
+    assert created["task"]["metadata"]["source"] == "workflow_preview"
+    assert "dac3d_preview_command" in created["task"]["tool_candidates"]
+    assert moved["task"]["status"] == "in_progress"
+    assert listed["count"] == 1
+    assert workspace["task_board"]["task_count"] == 1
+    assert "task_board_card" in workspace["workflow"]
 
 
 def test_agent_runtime_parser_supports_agent_project_commands() -> None:

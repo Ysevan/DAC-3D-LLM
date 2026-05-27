@@ -192,6 +192,76 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/agent/tasks")
+    def list_agent_tasks(
+        session_id: str | None = None,
+        status: str | None = None,
+        goal_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_tasks = getattr(assistant, "list_agent_tasks", None)
+        if not callable(list_tasks):
+            raise HTTPException(status_code=503, detail="Agent task board is unavailable.")
+        return list_tasks(session_id=session_id, status=status, goal_id=goal_id, limit=limit)
+
+    @app.post("/api/agent/tasks")
+    def create_agent_task(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_task = getattr(assistant, "create_agent_task", None)
+        if not callable(create_task):
+            raise HTTPException(status_code=503, detail="Agent task board is unavailable.")
+        title = str(request.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        try:
+            return create_task(
+                title,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                description=str(request.get("description") or ""),
+                status=str(request.get("status") or "backlog"),
+                priority=str(request.get("priority") or "normal"),
+                goal_id=str(request.get("goal_id") or ""),
+                agent_path=request.get("agent_path") if isinstance(request.get("agent_path"), list) else None,
+                tool_candidates=request.get("tool_candidates")
+                if isinstance(request.get("tool_candidates"), list)
+                else None,
+                dependencies=request.get("dependencies") if isinstance(request.get("dependencies"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/tasks/from-workflow")
+    def create_agent_task_from_workflow(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_from_workflow = getattr(assistant, "create_agent_task_from_workflow", None)
+        if not callable(create_from_workflow):
+            raise HTTPException(status_code=503, detail="Agent task board is unavailable.")
+        task = str(request.get("task") or "").strip()
+        if not task:
+            raise HTTPException(status_code=422, detail="The `task` field is required.")
+        try:
+            return create_from_workflow(
+                task,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                goal_id=str(request.get("goal_id") or ""),
+                status=str(request.get("status") or "ready"),
+                priority=str(request.get("priority") or "normal"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/tasks/{task_id}/status")
+    def update_agent_task_status(task_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_task_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent task board is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(task_id, status, note=str(request.get("note") or ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.post("/api/evals/run")
     def run_evals(request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
         request = dict(request or {})

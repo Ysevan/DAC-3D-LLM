@@ -29,7 +29,7 @@ from agent_core import (
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree
-from goals import GoalStore
+from goals import GoalStore, TaskBoardStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
 from skill_system import SkillPatchStore, SkillRegistry
 from trace_eval import CodexHandoffGenerator, EvalDraftGenerator, EvalRunner, TraceLogger
@@ -2148,6 +2148,7 @@ class DAC3DAgentChatAdapter:
     context_builder: ContextBuilder | None = None
     context_tree: FileBackedContextTree | None = None
     goal_store: GoalStore | None = None
+    task_board_store: TaskBoardStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -2180,6 +2181,8 @@ class DAC3DAgentChatAdapter:
             self.context_tree.ensure_defaults()
         if self.goal_store is None:
             self.goal_store = GoalStore.from_root(self.config.conversation_memory_dir)
+        if self.task_board_store is None:
+            self.task_board_store = TaskBoardStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2286,6 +2289,11 @@ class DAC3DAgentChatAdapter:
             self.goal_store.describe()
             if self.goal_store is not None
             else {"enabled": False, "backend": "local_goal_store"}
+        )
+        summary["task_board"] = (
+            self.task_board_store.describe()
+            if self.task_board_store is not None
+            else {"enabled": False, "backend": "local_agent_task_board"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2426,6 +2434,11 @@ class DAC3DAgentChatAdapter:
             if self.goal_store is not None
             else {"enabled": False, "backend": "local_goal_store"}
         )
+        task_board = (
+            self.task_board_store.describe()
+            if self.task_board_store is not None
+            else {"enabled": False, "backend": "local_agent_task_board"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2438,9 +2451,11 @@ class DAC3DAgentChatAdapter:
             "context_tree": context_tree,
             "memory_os": memory,
             "goals": goals,
+            "task_board": task_board,
             "workflow": [
                 "user_task",
                 "goal_tracking",
+                "task_board_card",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2489,6 +2504,85 @@ class DAC3DAgentChatAdapter:
         if self.goal_store is None:
             raise ValueError("Goal store is not enabled.")
         return {"enabled": True, **self.goal_store.complete_goal(goal_id, note=note)}
+
+    def list_agent_tasks(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        goal_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent task-board cards."""
+        if self.task_board_store is None:
+            return {"enabled": False, "backend": "local_agent_task_board", "tasks": [], "count": 0}
+        return self.task_board_store.list_tasks(
+            session_id=session_id,
+            status=status,
+            goal_id=goal_id,
+            limit=limit,
+        )
+
+    def create_agent_task(
+        self,
+        title: str,
+        *,
+        session_id: str = "web",
+        description: str = "",
+        status: str = "backlog",
+        priority: str = "normal",
+        goal_id: str = "",
+        agent_path: list[Any] | None = None,
+        tool_candidates: list[Any] | None = None,
+        dependencies: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a local Agent task-board card."""
+        if self.task_board_store is None:
+            raise ValueError("Task board is not enabled.")
+        return {
+            "enabled": True,
+            **self.task_board_store.create_task(
+                title,
+                session_id=session_id,
+                description=description,
+                status=status,
+                priority=priority,
+                goal_id=goal_id,
+                agent_path=agent_path,
+                tool_candidates=tool_candidates,
+                dependencies=dependencies,
+                metadata=metadata,
+            ),
+        }
+
+    def update_agent_task_status(self, task_id: str, status: str, *, note: str = "") -> dict[str, Any]:
+        """Move one Agent task-board card to another status column."""
+        if self.task_board_store is None:
+            raise ValueError("Task board is not enabled.")
+        return {"enabled": True, **self.task_board_store.update_status(task_id, status, note=note)}
+
+    def create_agent_task_from_workflow(
+        self,
+        task: str,
+        *,
+        session_id: str = "web",
+        goal_id: str = "",
+        status: str = "ready",
+        priority: str = "normal",
+    ) -> dict[str, Any]:
+        """Create a task-board card from the current workflow preview."""
+        if self.task_board_store is None:
+            raise ValueError("Task board is not enabled.")
+        preview = self.preview_agent_workflow(task, session_id=session_id)
+        created = self.task_board_store.create_from_workflow_preview(
+            preview,
+            session_id=session_id,
+            goal_id=goal_id,
+            status=status,
+            priority=priority,
+        )
+        return {"enabled": True, "preview": preview, **created}
 
     def preview_agent_workflow(
         self,
