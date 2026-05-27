@@ -353,6 +353,28 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    @app.post("/api/evals/codex-handoff")
+    def generate_codex_handoff(request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+        request = dict(request or {})
+        categories = request.get("categories")
+        recent_trace_limit = request.get("recent_trace_limit", 8)
+        if categories is not None and not isinstance(categories, list):
+            raise HTTPException(status_code=422, detail="The `categories` field must be a list.")
+        try:
+            safe_trace_limit = int(recent_trace_limit)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="The `recent_trace_limit` field must be an integer.") from exc
+        generate = getattr(assistant, "generate_codex_handoff", None)
+        if not callable(generate):
+            raise HTTPException(status_code=503, detail="Codex handoff generator is unavailable.")
+        try:
+            return generate(
+                categories=[str(item) for item in categories] if categories else None,
+                recent_trace_limit=safe_trace_limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     @app.get("/api/traces/{trace_id}")
     def read_trace(request: Request, trace_id: str) -> dict[str, Any]:
         _require_actor(request)

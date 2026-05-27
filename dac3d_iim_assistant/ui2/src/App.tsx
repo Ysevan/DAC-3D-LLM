@@ -14,6 +14,7 @@ import {
   fetchKnowledgeBaseSummary,
   fetchMemoryPatches,
   fetchRuntimeSummary,
+  generateCodexHandoff,
   generateEvalDrafts,
   previewAgentWorkflow,
   rejectMemoryPatch,
@@ -27,6 +28,7 @@ import type {
   AgentWorkspace,
   AssistantPayload,
   ChatHistoryTurn,
+  CodexHandoffResult,
   EvalDraftListResult,
   EvalRunResult,
   KnowledgeBaseSummary,
@@ -119,6 +121,9 @@ function App() {
   const [evalDrafts, setEvalDrafts] = useState<EvalDraftListResult | null>(null);
   const [isGeneratingEvalDrafts, setIsGeneratingEvalDrafts] = useState(false);
   const [evalDraftStatus, setEvalDraftStatus] = useState("");
+  const [codexHandoff, setCodexHandoff] = useState<CodexHandoffResult | null>(null);
+  const [isGeneratingCodexHandoff, setIsGeneratingCodexHandoff] = useState(false);
+  const [codexHandoffStatus, setCodexHandoffStatus] = useState("");
   const [memoryPatches, setMemoryPatches] = useState<MemoryPatchListResult | null>(null);
   const [memoryPatchStatus, setMemoryPatchStatus] = useState("");
   const [memoryPatchBusyId, setMemoryPatchBusyId] = useState<string | null>(null);
@@ -599,6 +604,25 @@ function App() {
       setEvalDraftStatus(error instanceof Error ? error.message : String(error));
     } finally {
       setIsGeneratingEvalDrafts(false);
+    }
+  }
+
+  async function handleGenerateCodexHandoff(): Promise<void> {
+    if (isGeneratingCodexHandoff) {
+      return;
+    }
+    setIsGeneratingCodexHandoff(true);
+    setCodexHandoffStatus("正在生成 Codex handoff...");
+    setPanelMode("settings");
+    try {
+      const result = await generateCodexHandoff(8);
+      setCodexHandoff(result);
+      setCodexHandoffStatus(`已生成 handoff：${result.failed_count} 个失败 / ${result.trace_count} 条 trace。`);
+      void refreshSidebarData();
+    } catch (error) {
+      setCodexHandoffStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsGeneratingCodexHandoff(false);
     }
   }
 
@@ -1212,6 +1236,30 @@ function App() {
                       <p>{item.draft.input}</p>
                     </div>
                   ))}
+                </div>
+              ) : null}
+              <div className="eval-draft-card">
+                <div>
+                  <span>Codex Handoff</span>
+                  <strong>{codexHandoff ? `${codexHandoff.failed_count} 失败` : "未生成"}</strong>
+                </div>
+                <button
+                  className="btn-run-evals"
+                  disabled={isGeneratingCodexHandoff}
+                  onClick={() => void handleGenerateCodexHandoff()}
+                  type="button"
+                >
+                  {isGeneratingCodexHandoff ? "生成中…" : "生成 Handoff"}
+                </button>
+              </div>
+              {codexHandoffStatus ? <div className="status-msg">{codexHandoffStatus}</div> : null}
+              {codexHandoff ? (
+                <div className="eval-draft-list">
+                  <div className="eval-draft-item">
+                    <span>{codexHandoff.workflow || "codex_handoff"}</span>
+                    <strong>{codexHandoff.path}</strong>
+                    <p>{codexHandoff.recommendations?.[0]?.title || "当前评测通过，可从最近 trace 扩展回归覆盖。"}</p>
+                  </div>
                 </div>
               ) : null}
             </section>

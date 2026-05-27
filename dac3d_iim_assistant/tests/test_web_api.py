@@ -355,6 +355,30 @@ def test_web_api_eval_draft_endpoint_generates_reviewable_trace_cases(tmp_path) 
     assert list_response.json()["count"] == 1
 
 
+def test_web_api_codex_handoff_endpoint_generates_reviewable_markdown(tmp_path) -> None:
+    """The API should generate a Codex handoff from eval results and traces."""
+    config = make_config(tmp_path)
+    config.agent_model_name = LOCAL_VALIDATION_MODEL_NAME
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    response = client.post("/api/evals/codex-handoff", json={"recent_trace_limit": 3})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["backend"] == "codex_handoff_generator"
+    assert payload["auto_applied"] is False
+    assert payload["eval_summary"]["case_count"] >= 5
+    assert payload["trace_count"] >= 1
+    handoff_path = tmp_path / "docs" / "generated" / "codex_handoff_next.md"
+    assert payload["path"] == str(handoff_path)
+    assert handoff_path.exists()
+    assert "Codex Handoff" in handoff_path.read_text(encoding="utf-8")
+
+
 def test_web_api_memory_patch_review_endpoints(tmp_path) -> None:
     """The web UI should be able to review, approve, and reject Memory OS patches."""
     config = make_config(tmp_path)
