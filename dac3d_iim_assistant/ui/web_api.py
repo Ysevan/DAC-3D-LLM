@@ -145,6 +145,114 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/agent/threads")
+    def list_agent_threads(
+        session_id: str | None = None,
+        status: str | None = None,
+        participant: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_threads = getattr(assistant, "list_agent_threads", None)
+        if not callable(list_threads):
+            raise HTTPException(status_code=503, detail="Conversation thread store is unavailable.")
+        try:
+            return list_threads(
+                session_id=session_id,
+                status=status,
+                participant=participant,
+                tag=tag,
+                query=q,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/threads")
+    def create_agent_thread(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_thread = getattr(assistant, "create_agent_thread", None)
+        if not callable(create_thread):
+            raise HTTPException(status_code=503, detail="Conversation thread store is unavailable.")
+        title = str(request.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        try:
+            return create_thread(
+                title,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                summary=str(request.get("summary") or ""),
+                participants=request.get("participants")
+                if isinstance(request.get("participants"), list)
+                else None,
+                status=str(request.get("status") or "active"),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                shared_state_ids=request.get("shared_state_ids")
+                if isinstance(request.get("shared_state_ids"), list)
+                else None,
+                artifact_ids=request.get("artifact_ids")
+                if isinstance(request.get("artifact_ids"), list)
+                else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                created_by=str(request.get("created_by") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/threads/{thread_id}")
+    def read_agent_thread(thread_id: str) -> dict[str, Any]:
+        read_thread = getattr(assistant, "read_agent_thread", None)
+        if not callable(read_thread):
+            raise HTTPException(status_code=503, detail="Conversation thread store is unavailable.")
+        try:
+            return read_thread(thread_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/threads/{thread_id}/messages")
+    def append_agent_thread_message(thread_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        append_message = getattr(assistant, "append_agent_thread_message", None)
+        if not callable(append_message):
+            raise HTTPException(status_code=503, detail="Conversation thread store is unavailable.")
+        content = str(request.get("content") or "").strip()
+        if not content:
+            raise HTTPException(status_code=422, detail="The `content` field is required.")
+        try:
+            return append_message(
+                thread_id,
+                role=str(request.get("role") or "agent"),
+                content=content,
+                agent_role=str(request.get("agent_role") or ""),
+                tool_calls=request.get("tool_calls") if isinstance(request.get("tool_calls"), list) else None,
+                artifact_ids=request.get("artifact_ids")
+                if isinstance(request.get("artifact_ids"), list)
+                else None,
+                shared_state_ids=request.get("shared_state_ids")
+                if isinstance(request.get("shared_state_ids"), list)
+                else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/threads/{thread_id}/status")
+    def update_agent_thread_status(thread_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_thread_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Conversation thread store is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(
+                thread_id,
+                status,
+                note=str(request.get("note") or ""),
+                actor=str(request.get("actor") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/observability")
     def agent_observability(recent_trace_limit: int = 20) -> dict[str, Any]:
         observability = getattr(assistant, "agent_observability", None)

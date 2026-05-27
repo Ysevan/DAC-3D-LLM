@@ -9,6 +9,7 @@ from goals import (
     AgentRegistryStore,
     AutomationPlannerStore,
     CheckpointStore,
+    ConversationThreadStore,
     EventQueueStore,
     GoalStore,
     ObservabilityReporter,
@@ -461,3 +462,40 @@ def test_agent_registry_store_registers_and_routes_agents(tmp_path: Path) -> Non
     assert read["agent"]["id"] == created["agent"]["id"]
     assert summary["agent_count"] == 1
     assert summary["by_status"]["active"] == 1
+
+
+def test_conversation_thread_store_tracks_messages_and_context_refs(tmp_path: Path) -> None:
+    store = ConversationThreadStore.from_root(tmp_path)
+
+    created = store.create_thread(
+        "离线检测协作",
+        session_id="thread-session",
+        participants=["coordinator", "dac3d_control"],
+        shared_state_ids=["state-1"],
+        tags=["offline"],
+    )
+    thread_id = created["thread"]["id"]
+    appended = store.append_message(
+        thread_id,
+        role="agent",
+        agent_role="dac3d_control",
+        content="已生成离线检测命令预览。",
+        tool_calls=[{"name": "dac3d_preview_command"}],
+        artifact_ids=["artifact-1"],
+        shared_state_ids=["state-2"],
+    )
+    resolved = store.update_status(thread_id, "resolved", note="协作完成。")
+    listed = store.list_threads(session_id="thread-session", participant="dac3d_control")
+    read = store.read_thread(thread_id)
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert appended["message"]["tool_calls"][0]["name"] == "dac3d_preview_command"
+    assert appended["thread"]["message_count"] == 1
+    assert "artifact-1" in appended["thread"]["artifact_ids"]
+    assert "state-2" in appended["thread"]["shared_state_ids"]
+    assert resolved["history"]["to"] == "resolved"
+    assert listed["count"] == 1
+    assert read["thread"]["messages"][0]["content"] == "已生成离线检测命令预览。"
+    assert summary["thread_count"] == 1
+    assert summary["message_count"] == 1

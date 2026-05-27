@@ -34,6 +34,7 @@ from goals import (
     AgentRegistryStore,
     AutomationPlannerStore,
     CheckpointStore,
+    ConversationThreadStore,
     EventQueueStore,
     GoalStore,
     ObservabilityReporter,
@@ -1336,6 +1337,7 @@ class DAC3DAgentRuntime:
                 "agent_observability_snapshot",
                 "scoped_shared_state",
                 "agent_registry_discovery",
+                "threaded_agent_conversation",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2293,6 +2295,7 @@ class DAC3DAgentChatAdapter:
     repo_context_map: RepoContextMapStore | None = None
     git_workspace_context: GitWorkspaceContext | None = None
     agent_registry_store: AgentRegistryStore | None = None
+    conversation_thread_store: ConversationThreadStore | None = None
     goal_store: GoalStore | None = None
     task_board_store: TaskBoardStore | None = None
     automation_store: AutomationPlannerStore | None = None
@@ -2344,6 +2347,10 @@ class DAC3DAgentChatAdapter:
         if self.agent_registry_store is None:
             self.agent_registry_store = AgentRegistryStore.from_root(self.config.conversation_memory_dir)
             self.agent_registry_store.seed_defaults(_default_agent_registry_entries())
+        if self.conversation_thread_store is None:
+            self.conversation_thread_store = ConversationThreadStore.from_root(
+                self.config.conversation_memory_dir
+            )
         if self.goal_store is None:
             self.goal_store = GoalStore.from_root(self.config.conversation_memory_dir)
         if self.task_board_store is None:
@@ -2496,6 +2503,11 @@ class DAC3DAgentChatAdapter:
             self.agent_registry_store.describe()
             if self.agent_registry_store is not None
             else {"enabled": False, "backend": "local_agent_registry"}
+        )
+        summary["conversation_threads"] = (
+            self.conversation_thread_store.describe()
+            if self.conversation_thread_store is not None
+            else {"enabled": False, "backend": "local_agent_threads"}
         )
         summary["goals"] = (
             self.goal_store.describe()
@@ -2691,6 +2703,11 @@ class DAC3DAgentChatAdapter:
             if self.agent_registry_store is not None
             else {"enabled": False, "backend": "local_agent_registry"}
         )
+        conversation_threads = (
+            self.conversation_thread_store.describe()
+            if self.conversation_thread_store is not None
+            else {"enabled": False, "backend": "local_agent_threads"}
+        )
         skills = (
             self.skill_registry.describe()
             if self.skill_registry is not None
@@ -2775,6 +2792,7 @@ class DAC3DAgentChatAdapter:
             "code_symbols": code_symbols,
             "git_workspace": git_workspace,
             "agent_registry": agent_registry,
+            "conversation_threads": conversation_threads,
             "memory_os": memory,
             "goals": goals,
             "task_board": task_board,
@@ -2807,6 +2825,7 @@ class DAC3DAgentChatAdapter:
                 "symbol_navigation",
                 "git_workspace_context",
                 "agent_registry",
+                "conversation_thread",
                 "memory_prefetch",
                 "specialist_agent",
                 "tool_loop",
@@ -2823,6 +2842,7 @@ class DAC3DAgentChatAdapter:
             "workflow": workspace.get("workflow", []),
             "counts": {
                 "agents": (workspace.get("agent_registry") or {}).get("agent_count", 0),
+                "threads": (workspace.get("conversation_threads") or {}).get("thread_count", 0),
                 "goals": (workspace.get("goals") or {}).get("goal_count", 0),
                 "tasks": (workspace.get("task_board") or {}).get("task_count", 0),
                 "events": (workspace.get("event_queue") or {}).get("event_count", 0),
@@ -2906,6 +2926,117 @@ class DAC3DAgentChatAdapter:
         if self.agent_registry_store is None:
             raise ValueError("Agent registry is not enabled.")
         return self.agent_registry_store.route_candidates(task, limit=limit)
+
+    def list_agent_threads(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        participant: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local multi-agent conversation threads."""
+        if self.conversation_thread_store is None:
+            return {"enabled": False, "backend": "local_agent_threads", "threads": [], "count": 0}
+        return self.conversation_thread_store.list_threads(
+            session_id=session_id,
+            status=status,
+            participant=participant,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def read_agent_thread(self, thread_id: str) -> dict[str, Any]:
+        """Read one multi-agent conversation thread."""
+        if self.conversation_thread_store is None:
+            raise ValueError("Conversation thread store is not enabled.")
+        return self.conversation_thread_store.read_thread(thread_id)
+
+    def create_agent_thread(
+        self,
+        title: str,
+        *,
+        session_id: str = "web",
+        summary: str = "",
+        participants: list[Any] | None = None,
+        status: str = "active",
+        tags: list[Any] | None = None,
+        shared_state_ids: list[Any] | None = None,
+        artifact_ids: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        created_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Create a local conversation thread for multi-agent handoff context."""
+        if self.conversation_thread_store is None:
+            raise ValueError("Conversation thread store is not enabled.")
+        return {
+            "enabled": True,
+            **self.conversation_thread_store.create_thread(
+                title,
+                session_id=session_id,
+                summary=summary,
+                participants=participants,
+                status=status,
+                tags=tags,
+                shared_state_ids=shared_state_ids,
+                artifact_ids=artifact_ids,
+                metadata=metadata,
+                created_by=created_by,
+            ),
+        }
+
+    def append_agent_thread_message(
+        self,
+        thread_id: str,
+        *,
+        role: str,
+        content: str,
+        agent_role: str = "",
+        tool_calls: list[Any] | None = None,
+        artifact_ids: list[Any] | None = None,
+        shared_state_ids: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Append one message to a local multi-agent conversation thread."""
+        if self.conversation_thread_store is None:
+            raise ValueError("Conversation thread store is not enabled.")
+        return {
+            "enabled": True,
+            **self.conversation_thread_store.append_message(
+                thread_id,
+                role=role,
+                content=content,
+                agent_role=agent_role,
+                tool_calls=tool_calls,
+                artifact_ids=artifact_ids,
+                shared_state_ids=shared_state_ids,
+                metadata=metadata,
+            ),
+        }
+
+    def update_agent_thread_status(
+        self,
+        thread_id: str,
+        status: str,
+        *,
+        note: str = "",
+        actor: str = "agent",
+    ) -> dict[str, Any]:
+        """Move one multi-agent conversation thread between local statuses."""
+        if self.conversation_thread_store is None:
+            raise ValueError("Conversation thread store is not enabled.")
+        return {
+            "enabled": True,
+            **self.conversation_thread_store.update_status(
+                thread_id,
+                status,
+                note=note,
+                actor=actor,
+            ),
+        }
 
     def list_agent_shared_state(
         self,

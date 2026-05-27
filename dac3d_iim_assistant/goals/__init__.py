@@ -4,6 +4,7 @@ from goals.artifacts import ArtifactStore
 from goals.agent_registry import AgentRegistryStore
 from goals.automation_planner import AutomationPlannerStore
 from goals.checkpoints import CheckpointStore
+from goals.conversation_threads import ConversationThreadStore
 from goals.event_queue import EventQueueStore
 from goals.observability import ObservabilityReporter
 from goals.review_handoff import ReviewHandoffStore
@@ -18,6 +19,7 @@ __all__ = [
     "AgentRegistryStore",
     "AutomationPlannerStore",
     "CheckpointStore",
+    "ConversationThreadStore",
     "EventQueueStore",
     "GoalStore",
     "ObservabilityReporter",

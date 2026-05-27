@@ -784,6 +784,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["code_symbols"]["backend"] == "code_symbol_navigator"
     assert summary["git_workspace"]["backend"] == "git_workspace_context"
     assert summary["agent_registry"]["backend"] == "local_agent_registry"
+    assert summary["conversation_threads"]["backend"] == "local_agent_threads"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
     assert summary["automations"]["backend"] == "local_automation_planner"
     assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
@@ -1078,6 +1079,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "agent_observability_snapshot" in description["network_capabilities"]
     assert "scoped_shared_state" in description["network_capabilities"]
     assert "agent_registry_discovery" in description["network_capabilities"]
+    assert "threaded_agent_conversation" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1437,6 +1439,41 @@ def test_agent_chat_adapter_agent_registry_routes_specialists(tmp_path) -> None:
     assert read["agent"]["id"] == registered["agent"]["id"]
     assert workspace["agent_registry"]["agent_count"] >= 8
     assert "agent_registry" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_conversation_thread_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    created = adapter.create_agent_thread(
+        "状态查询协作",
+        session_id="thread-agent-session",
+        participants=["coordinator"],
+        tags=["status"],
+        shared_state_ids=["state-runtime"],
+    )
+    thread_id = created["thread"]["id"]
+    message = adapter.append_agent_thread_message(
+        thread_id,
+        role="agent",
+        agent_role="dac3d_control",
+        content="已读取当前 DAC-3D 状态。",
+        tool_calls=[{"name": "dac3d_status"}],
+    )
+    listed = adapter.list_agent_threads(session_id="thread-agent-session", participant="dac3d_control")
+    read = adapter.read_agent_thread(thread_id)
+    updated = adapter.update_agent_thread_status(thread_id, "resolved", actor="coordinator")
+    workspace = adapter.agent_workspace()
+
+    assert created["created"] is True
+    assert message["message"]["tool_calls"][0]["name"] == "dac3d_status"
+    assert listed["count"] == 1
+    assert read["thread"]["message_count"] == 1
+    assert updated["thread"]["status"] == "resolved"
+    assert workspace["conversation_threads"]["thread_count"] == 1
+    assert "conversation_thread" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

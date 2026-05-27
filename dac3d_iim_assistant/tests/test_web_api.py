@@ -939,6 +939,56 @@ def test_web_api_agent_registry_endpoints(tmp_path) -> None:
     assert workspace_response.json()["agent_registry"]["agent_count"] >= 8
 
 
+def test_web_api_agent_thread_endpoints(tmp_path) -> None:
+    """The web UI should create, append, list, read, and resolve Agent threads."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/threads",
+        json={
+            "title": "离线检测协作",
+            "session_id": "thread-ui-session",
+            "participants": ["coordinator"],
+            "shared_state_ids": ["state-ui"],
+            "tags": ["offline"],
+        },
+    )
+    thread_id = create_response.json()["thread"]["id"]
+    message_response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={
+            "role": "agent",
+            "agent_role": "dac3d_control",
+            "content": "已生成命令预览。",
+            "tool_calls": [{"name": "dac3d_preview_command"}],
+        },
+    )
+    list_response = client.get("/api/agent/threads?session_id=thread-ui-session&participant=dac3d_control")
+    read_response = client.get(f"/api/agent/threads/{thread_id}")
+    status_response = client.post(
+        f"/api/agent/threads/{thread_id}/status",
+        json={"status": "resolved", "actor": "coordinator"},
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert message_response.status_code == 200
+    assert message_response.json()["thread"]["message_count"] == 1
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert read_response.json()["thread"]["messages"][0]["content"] == "已生成命令预览。"
+    assert status_response.status_code == 200
+    assert status_response.json()["thread"]["status"] == "resolved"
+    assert workspace_response.json()["conversation_threads"]["thread_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)
