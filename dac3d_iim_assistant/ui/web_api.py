@@ -123,6 +123,89 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/events")
+    def list_agent_events(
+        session_id: str | None = None,
+        status: str | None = None,
+        event_type: str | None = None,
+        priority: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_events = getattr(assistant, "list_agent_events", None)
+        if not callable(list_events):
+            raise HTTPException(status_code=503, detail="Agent event queue is unavailable.")
+        return list_events(
+            session_id=session_id,
+            status=status,
+            event_type=event_type,
+            priority=priority,
+            limit=limit,
+        )
+
+    @app.get("/api/agent/events/due")
+    def list_due_agent_events(limit: int = 20) -> dict[str, Any]:
+        list_due = getattr(assistant, "list_due_agent_events", None)
+        if not callable(list_due):
+            raise HTTPException(status_code=503, detail="Agent event queue is unavailable.")
+        return list_due(limit=limit)
+
+    @app.post("/api/agent/events")
+    def enqueue_agent_event(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        enqueue = getattr(assistant, "enqueue_agent_event", None)
+        if not callable(enqueue):
+            raise HTTPException(status_code=503, detail="Agent event queue is unavailable.")
+        event_type = str(request.get("event_type") or "").strip()
+        if not event_type:
+            raise HTTPException(status_code=422, detail="The `event_type` field is required.")
+        try:
+            return enqueue(
+                event_type,
+                payload=request.get("payload") if isinstance(request.get("payload"), dict) else None,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                priority=str(request.get("priority") or "normal"),
+                scheduled_for=str(request.get("scheduled_for") or ""),
+                task_id=str(request.get("task_id") or ""),
+                workflow_id=str(request.get("workflow_id") or ""),
+                automation_id=str(request.get("automation_id") or ""),
+                goal_id=str(request.get("goal_id") or ""),
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/events/claim")
+    def claim_next_agent_event(request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+        claim = getattr(assistant, "claim_next_agent_event", None)
+        if not callable(claim):
+            raise HTTPException(status_code=503, detail="Agent event queue is unavailable.")
+        payload = dict(request or {})
+        try:
+            return claim(
+                worker_id=str(payload.get("worker_id") or "agent-worker"),
+                session_id=str(payload.get("session_id") or "").strip() or None,
+                event_type=str(payload.get("event_type") or "").strip() or None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/events/{event_id}/status")
+    def update_agent_event_status(event_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_event_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent event queue is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(
+                event_id,
+                status,
+                note=str(request.get("note") or ""),
+                result=request.get("result") if isinstance(request.get("result"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.post("/api/agent/workflow/preview")
     def preview_agent_workflow(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
         preview = getattr(assistant, "preview_agent_workflow", None)

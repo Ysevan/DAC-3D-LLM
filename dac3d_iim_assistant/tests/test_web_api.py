@@ -596,6 +596,52 @@ def test_web_api_agent_artifact_store_endpoints(tmp_path) -> None:
     assert workspace_response.json()["artifacts"]["artifact_count"] == 1
 
 
+def test_web_api_agent_event_queue_endpoints(tmp_path) -> None:
+    """The web UI should enqueue, claim, complete, and list Agent events."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/events",
+        json={
+            "event_type": "workflow.resume",
+            "payload": {"workflow_id": "workflow-web"},
+            "session_id": "event-ui-session",
+            "priority": "high",
+            "workflow_id": "workflow-web",
+        },
+    )
+    event_id = create_response.json()["event"]["id"]
+    due_response = client.get("/api/agent/events/due")
+    claim_response = client.post(
+        "/api/agent/events/claim",
+        json={"worker_id": "web-worker", "session_id": "event-ui-session"},
+    )
+    complete_response = client.post(
+        f"/api/agent/events/{event_id}/status",
+        json={"status": "completed", "note": "UI worker completed.", "result": {"ok": True}},
+    )
+    list_response = client.get("/api/agent/events?session_id=event-ui-session&status=completed")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["event"]["priority"] == "high"
+    assert due_response.status_code == 200
+    assert due_response.json()["count"] == 1
+    assert claim_response.status_code == 200
+    assert claim_response.json()["event"]["worker_id"] == "web-worker"
+    assert complete_response.status_code == 200
+    assert complete_response.json()["event"]["status"] == "completed"
+    assert complete_response.json()["event"]["result"] == {"ok": True}
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert workspace_response.json()["event_queue"]["event_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

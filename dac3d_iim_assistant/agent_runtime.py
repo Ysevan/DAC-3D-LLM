@@ -29,7 +29,14 @@ from agent_core import (
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree
-from goals import ArtifactStore, AutomationPlannerStore, GoalStore, TaskBoardStore, WorkflowTemplateStore
+from goals import (
+    ArtifactStore,
+    AutomationPlannerStore,
+    EventQueueStore,
+    GoalStore,
+    TaskBoardStore,
+    WorkflowTemplateStore,
+)
 from memory import ConversationMemoryStore, LocalMemoryProvider
 from skill_system import SkillPatchStore, SkillRegistry
 from trace_eval import CodexHandoffGenerator, EvalDraftGenerator, EvalRunner, TraceLogger
@@ -1194,6 +1201,7 @@ class DAC3DAgentRuntime:
                 "context_engineering",
                 "runtime_status_context",
                 "shared_workspace_artifacts",
+                "durable_event_queue",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2153,6 +2161,7 @@ class DAC3DAgentChatAdapter:
     automation_store: AutomationPlannerStore | None = None
     workflow_store: WorkflowTemplateStore | None = None
     artifact_store: ArtifactStore | None = None
+    event_queue_store: EventQueueStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -2193,6 +2202,8 @@ class DAC3DAgentChatAdapter:
             self.workflow_store = WorkflowTemplateStore.from_root(self.config.conversation_memory_dir)
         if self.artifact_store is None:
             self.artifact_store = ArtifactStore.from_root(self.config.conversation_memory_dir)
+        if self.event_queue_store is None:
+            self.event_queue_store = EventQueueStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2319,6 +2330,11 @@ class DAC3DAgentChatAdapter:
             self.artifact_store.describe()
             if self.artifact_store is not None
             else {"enabled": False, "backend": "local_agent_artifact_store"}
+        )
+        summary["event_queue"] = (
+            self.event_queue_store.describe()
+            if self.event_queue_store is not None
+            else {"enabled": False, "backend": "local_agent_event_queue"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2479,6 +2495,11 @@ class DAC3DAgentChatAdapter:
             if self.artifact_store is not None
             else {"enabled": False, "backend": "local_agent_artifact_store"}
         )
+        event_queue = (
+            self.event_queue_store.describe()
+            if self.event_queue_store is not None
+            else {"enabled": False, "backend": "local_agent_event_queue"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2495,6 +2516,7 @@ class DAC3DAgentChatAdapter:
             "automations": automations,
             "workflow_templates": workflow_templates,
             "artifacts": artifacts,
+            "event_queue": event_queue,
             "workflow": [
                 "user_task",
                 "goal_tracking",
@@ -2502,6 +2524,7 @@ class DAC3DAgentChatAdapter:
                 "automation_planning",
                 "workflow_template",
                 "artifact_store",
+                "event_queue",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2849,6 +2872,102 @@ class DAC3DAgentChatAdapter:
         if self.artifact_store is None:
             raise ValueError("Artifact store is not enabled.")
         return self.artifact_store.read_artifact(artifact_id)
+
+    def list_agent_events(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        event_type: str | None = None,
+        priority: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List durable Agent workflow events."""
+        if self.event_queue_store is None:
+            return {"enabled": False, "backend": "local_agent_event_queue", "events": [], "count": 0}
+        return self.event_queue_store.list_events(
+            session_id=session_id,
+            status=status,
+            event_type=event_type,
+            priority=priority,
+            limit=limit,
+        )
+
+    def enqueue_agent_event(
+        self,
+        event_type: str,
+        *,
+        payload: dict[str, Any] | None = None,
+        session_id: str = "web",
+        priority: str = "normal",
+        scheduled_for: str = "",
+        task_id: str = "",
+        workflow_id: str = "",
+        automation_id: str = "",
+        goal_id: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a queued event for a future Agent worker or UI action."""
+        if self.event_queue_store is None:
+            raise ValueError("Event queue is not enabled.")
+        return {
+            "enabled": True,
+            **self.event_queue_store.enqueue_event(
+                event_type,
+                payload=payload,
+                session_id=session_id,
+                priority=priority,
+                scheduled_for=scheduled_for,
+                task_id=task_id,
+                workflow_id=workflow_id,
+                automation_id=automation_id,
+                goal_id=goal_id,
+                metadata=metadata,
+            ),
+        }
+
+    def list_due_agent_events(self, *, limit: int = 20) -> dict[str, Any]:
+        """List queued events that are ready to be claimed."""
+        if self.event_queue_store is None:
+            return {"enabled": False, "backend": "local_agent_event_queue", "events": [], "count": 0}
+        return self.event_queue_store.due_events(limit=limit)
+
+    def claim_next_agent_event(
+        self,
+        *,
+        worker_id: str = "agent-worker",
+        session_id: str | None = None,
+        event_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Claim the next due queued event for a worker."""
+        if self.event_queue_store is None:
+            raise ValueError("Event queue is not enabled.")
+        return self.event_queue_store.claim_next(
+            worker_id=worker_id,
+            session_id=session_id,
+            event_type=event_type,
+        )
+
+    def update_agent_event_status(
+        self,
+        event_id: str,
+        status: str,
+        *,
+        note: str = "",
+        result: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Update one Agent event after a worker or UI action."""
+        if self.event_queue_store is None:
+            raise ValueError("Event queue is not enabled.")
+        return {
+            "enabled": True,
+            **self.event_queue_store.update_status(
+                event_id,
+                status,
+                note=note,
+                result=result,
+            ),
+        }
 
     def preview_agent_workflow(
         self,

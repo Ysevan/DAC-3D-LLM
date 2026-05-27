@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from config import AppConfig
 from context_engineering import ContextBuilder
 from rag.prompts import format_retrieval_context
 from rag.retriever import RetrievalItem
@@ -56,8 +53,7 @@ def test_user_input_can_request_task_but_cannot_grant_tool_permission() -> None:
     assert item.injection_signal.detected is True
 
 
-def test_context_builder_reports_untrusted_instruction_authority(tmp_path: Path) -> None:
-    config = AppConfig(base_dir=tmp_path, vector_store_type="manifest")
+def test_context_builder_reports_untrusted_instruction_authority() -> None:
     builder = ContextBuilder(
         runtime_status_getter=lambda: {
             "mode": "mock",

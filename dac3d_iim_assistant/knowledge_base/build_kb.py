@@ -19,7 +19,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from config import AppConfig
+from config import AppConfig  # noqa: E402
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:\.[0-9]+)?|[\u4e00-\u9fff]+")
 SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？.!?])\s+|\n{2,}")

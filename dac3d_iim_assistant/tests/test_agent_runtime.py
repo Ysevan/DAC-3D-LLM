@@ -783,6 +783,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["automations"]["backend"] == "local_automation_planner"
     assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
     assert summary["artifacts"]["backend"] == "local_agent_artifact_store"
+    assert summary["event_queue"]["backend"] == "local_agent_event_queue"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1057,6 +1058,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "context_engineering" in description["network_capabilities"]
     assert "runtime_status_context" in description["network_capabilities"]
     assert "shared_workspace_artifacts" in description["network_capabilities"]
+    assert "durable_event_queue" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1198,6 +1200,42 @@ def test_agent_chat_adapter_artifact_store_roundtrip(tmp_path) -> None:
     assert read["content"].splitlines()[-1] == "submit queued"
     assert workspace["artifacts"]["artifact_count"] == 1
     assert "artifact_store" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_event_queue_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    queued = adapter.enqueue_agent_event(
+        "automation.run",
+        payload={"automation_id": "auto-1"},
+        session_id="event-agent",
+        priority="high",
+        automation_id="auto-1",
+    )
+    event_id = queued["event"]["id"]
+    due = adapter.list_due_agent_events()
+    claimed = adapter.claim_next_agent_event(worker_id="worker-agent", session_id="event-agent")
+    completed = adapter.update_agent_event_status(
+        event_id,
+        "completed",
+        note="自动化事件已处理。",
+        result={"trace_id": "trace-event-1"},
+    )
+    listed = adapter.list_agent_events(session_id="event-agent", status="completed")
+    workspace = adapter.agent_workspace()
+
+    assert queued["queued"] is True
+    assert due["count"] == 1
+    assert claimed["claimed"] is True
+    assert claimed["event"]["attempts"] == 1
+    assert completed["event"]["result"]["trace_id"] == "trace-event-1"
+    assert listed["count"] == 1
+    assert workspace["event_queue"]["event_count"] == 1
+    assert "event_queue" in workspace["workflow"]
 
 
 def test_agent_runtime_parser_supports_agent_project_commands() -> None:

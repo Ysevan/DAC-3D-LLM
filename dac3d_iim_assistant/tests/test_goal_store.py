@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from goals import ArtifactStore, AutomationPlannerStore, GoalStore, TaskBoardStore, WorkflowTemplateStore
+from goals import (
+    ArtifactStore,
+    AutomationPlannerStore,
+    EventQueueStore,
+    GoalStore,
+    TaskBoardStore,
+    WorkflowTemplateStore,
+)
 
 
 def test_goal_store_tracks_progress_and_completion(tmp_path: Path) -> None:
@@ -207,3 +214,43 @@ def test_artifact_store_creates_searches_and_reads_files(tmp_path: Path) -> None
     assert (tmp_path / created["artifact"]["content_path"]).exists()
     assert summary["artifact_count"] == 1
     assert summary["by_type"]["markdown"] == 1
+
+
+def test_event_queue_store_claims_and_completes_due_events(tmp_path: Path) -> None:
+    store = EventQueueStore.from_root(tmp_path)
+
+    delayed = store.enqueue_event(
+        "automation.run",
+        session_id="event-session",
+        priority="high",
+        scheduled_for="2999-01-01T00:00:00Z",
+    )
+    queued = store.enqueue_event(
+        "workflow.resume",
+        payload={"workflow_id": "workflow-1"},
+        session_id="event-session",
+        priority="normal",
+        workflow_id="workflow-1",
+    )
+    event_id = queued["event"]["id"]
+    due = store.due_events()
+    claimed = store.claim_next(worker_id="worker-1", session_id="event-session")
+    completed = store.update_status(
+        event_id,
+        "completed",
+        note="Worker finished event.",
+        result={"ok": True},
+    )
+    listed = store.list_events(session_id="event-session", status="completed")
+    summary = store.describe()
+
+    assert delayed["event"]["scheduled_for"] == "2999-01-01T00:00:00Z"
+    assert due["count"] == 1
+    assert due["events"][0]["id"] == event_id
+    assert claimed["claimed"] is True
+    assert claimed["event"]["worker_id"] == "worker-1"
+    assert completed["event"]["status"] == "completed"
+    assert completed["event"]["result"] == {"ok": True}
+    assert listed["count"] == 1
+    assert summary["event_count"] == 2
+    assert summary["by_status"]["completed"] == 1
