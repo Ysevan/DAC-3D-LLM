@@ -6,6 +6,8 @@ import type {
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const SESSION_STORAGE_KEY = "dac3d.session_id";
+const OPERATOR_STORAGE_KEY = "dac3d.operator_id";
 
 type StreamHandlers = {
   onMeta?: (payload: Omit<AssistantPayload, "answer">) => void;
@@ -16,7 +18,7 @@ type StreamHandlers = {
 };
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, init);
+  const response = await fetch(`${API_BASE}${path}`, withSecurityHeaders(init));
   if (!response.ok) {
     throw new Error(await response.text());
   }
@@ -32,18 +34,20 @@ export function fetchKnowledgeBaseSummary(): Promise<KnowledgeBaseSummary> {
 }
 
 export function sendChat(request: ChatRequest): Promise<AssistantPayload> {
+  const sessionId = request.session_id ?? getSessionId();
   return requestJson<AssistantPayload>("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
+    body: JSON.stringify({ ...request, session_id: sessionId }),
   });
 }
 
 export async function streamChat(request: ChatRequest, handlers: StreamHandlers): Promise<void> {
+  const sessionId = request.session_id ?? getSessionId();
   const response = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
+    headers: withSecurityHeaders({ headers: { "Content-Type": "application/json" } }).headers,
+    body: JSON.stringify({ ...request, session_id: sessionId }),
   });
   if (!response.ok || !response.body) {
     throw new Error(await response.text());
@@ -76,10 +80,44 @@ export async function buildKnowledgeBase(files: File[]): Promise<{
 }> {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
-  return requestJson("/api/knowledge-base/build", {
+  return requestJson("/api/knowledge-base/build", withSecurityHeaders({
     method: "POST",
     body: formData,
-  });
+  }, { includeOperator: true }));
+}
+
+function withSecurityHeaders(
+  init?: RequestInit,
+  options: { includeOperator?: boolean } = {},
+): RequestInit {
+  const headers = new Headers(init?.headers);
+  headers.set("X-DAC3D-Session-ID", getSessionId());
+  if (options.includeOperator) {
+    headers.set("X-DAC3D-Operator-ID", getOperatorId());
+    headers.set("X-DAC3D-Roles", "operator");
+  }
+  return { ...init, headers };
+}
+
+function getSessionId(): string {
+  return getOrCreateBrowserId(SESSION_STORAGE_KEY, "web-session");
+}
+
+function getOperatorId(): string {
+  return getOrCreateBrowserId(OPERATOR_STORAGE_KEY, "web-operator");
+}
+
+function getOrCreateBrowserId(storageKey: string, prefix: string): string {
+  const storage = window.localStorage;
+  const existing = storage.getItem(storageKey);
+  if (existing) return existing;
+  const randomId =
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const value = `${prefix}-${randomId}`;
+  storage.setItem(storageKey, value);
+  return value;
 }
 
 function processSseBuffer(buffer: string, handlers: StreamHandlers): string {

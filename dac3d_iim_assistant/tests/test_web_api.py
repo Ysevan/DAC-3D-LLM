@@ -10,6 +10,9 @@ from tests.test_assistant import make_config
 from ui.web_api import create_api_app
 
 
+SESSION_HEADERS = {"X-DAC3D-Session-ID": "test-session"}
+
+
 def test_web_api_chat_endpoint_returns_structured_payload(tmp_path) -> None:
     """The API should expose the assistant response schema for the React client."""
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
@@ -18,6 +21,7 @@ def test_web_api_chat_endpoint_returns_structured_payload(tmp_path) -> None:
     response = client.post(
         "/api/chat",
         json={"message": "这个参数是什么意思？", "history": []},
+        headers=SESSION_HEADERS,
     )
 
     assert response.status_code == 200
@@ -32,7 +36,7 @@ def test_web_api_runtime_endpoint_returns_runtime_summary(tmp_path) -> None:
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
     client = TestClient(create_api_app(assistant))
 
-    response = client.get("/api/runtime")
+    response = client.get("/api/runtime", headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -45,7 +49,11 @@ def test_web_api_chat_endpoint_rejects_empty_message(tmp_path) -> None:
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
     client = TestClient(create_api_app(assistant))
 
-    response = client.post("/api/chat", json={"message": "   ", "history": []})
+    response = client.post(
+        "/api/chat",
+        json={"message": "   ", "history": []},
+        headers=SESSION_HEADERS,
+    )
 
     assert response.status_code == 422
 
@@ -58,6 +66,7 @@ def test_web_api_chat_stream_emits_sse_events(tmp_path) -> None:
     response = client.post(
         "/api/chat/stream",
         json={"message": "what does this parameter mean?", "history": []},
+        headers=SESSION_HEADERS,
     )
 
     assert response.status_code == 200
@@ -75,6 +84,7 @@ def test_web_api_chat_stream_emits_multiple_deltas_progressively(tmp_path) -> No
     response = client.post(
         "/api/chat/stream",
         json={"message": "样品太反光怎么办？", "history": []},
+        headers=SESSION_HEADERS,
     )
 
     assert response.status_code == 200
@@ -88,7 +98,7 @@ def test_machine_agent_snapshot_endpoint_returns_dashboard_payload(tmp_path) -> 
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
     client = TestClient(create_api_app(assistant))
 
-    response = client.get("/api/machine-agent/snapshot")
+    response = client.get("/api/machine-agent/snapshot", headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -105,6 +115,7 @@ def test_machine_agent_chat_endpoint_exposes_tool_calls(tmp_path) -> None:
     response = client.post(
         "/api/machine-agent/chat",
         json={"message": "为什么最近温度报警变多了？"},
+        headers=SESSION_HEADERS,
     )
 
     assert response.status_code == 200
@@ -145,6 +156,7 @@ def test_unified_chat_endpoint_enters_agent_runtime_first(tmp_path, monkeypatch)
             "history": [],
             "session_id": "chrome-session-1",
         },
+        headers={"X-DAC3D-Session-ID": "chrome-session-1"},
     )
 
     assert response.status_code == 200
@@ -185,6 +197,7 @@ def test_unified_chat_stream_uses_client_session_id(tmp_path, monkeypatch) -> No
             "history": [],
             "session_id": "ui-session-42",
         },
+        headers={"X-DAC3D-Session-ID": "ui-session-42"},
     )
 
     assert response.status_code == 200

@@ -3,11 +3,26 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from collections.abc import Iterator, Sequence
 from inspect import signature
 from pathlib import Path
 from typing import Any
+
+from ui.auth import ApiSecurityError, PRIVILEGED_ROLES, require_api_actor
+from ui.security_middleware import install_security_middleware
+from ui.session import ConfirmationTokenStore
+
+try:  # FastAPI resolves postponed route annotations from module globals.
+    from fastapi import Request, UploadFile
+    from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+except Exception:  # pragma: no cover - optional dependency guard
+    Request = Any  # type: ignore[misc,assignment]
+    UploadFile = Any  # type: ignore[misc,assignment]
+    FileResponse = Any  # type: ignore[misc,assignment]
+    HTMLResponse = Any  # type: ignore[misc,assignment]
+    StreamingResponse = Any  # type: ignore[misc,assignment]
 
 
 def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any:
@@ -23,6 +38,8 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         ) from exc
 
     app = FastAPI(title="DAC-3D IIM Assistant API")
+    app.state.command_confirmations = ConfirmationTokenStore()
+    install_security_middleware(app)
     try:
         from machine_agent import MachineAgentService
 
@@ -30,6 +47,7 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
     except Exception:
         machine_agent = None
     frontend_dev_url = assistant.config.frontend_dev_url
+    is_production = os.getenv("DAC3D_ENV", "dev").strip().lower() in {"prod", "production"}
     allowed_origins = [
         origin
         for origin in {
@@ -37,11 +55,11 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             "http://localhost:5173",
             frontend_dev_url,
         }
-        if origin
+        if origin and (not is_production or origin != "*")
     ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allowed_origins or ["*"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -52,57 +70,177 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         return {"status": "ok"}
 
     @app.get("/api/runtime")
-    def runtime_summary() -> dict[str, Any]:
-        return assistant.runtime_summary()
+    def runtime_summary(request: Request) -> dict[str, Any]:
+        _require_actor(request)
+        return _attach_trace(request, assistant.runtime_summary())
 
     @app.get("/api/knowledge-base/summary")
-    def knowledge_base_summary() -> dict[str, Any]:
-        return assistant.knowledge_base_summary()
+    def knowledge_base_summary(request: Request) -> dict[str, Any]:
+        _require_actor(request)
+        return _attach_trace(request, assistant.knowledge_base_summary())
 
     @app.get("/api/machine-agent/snapshot")
-    def machine_agent_snapshot() -> dict[str, Any]:
+    def machine_agent_snapshot(request: Request) -> dict[str, Any]:
+        _require_actor(request)
         if machine_agent is None:
             raise HTTPException(status_code=503, detail="Machine Agent is unavailable.")
-        return machine_agent.snapshot()
+        return _attach_trace(request, machine_agent.snapshot())
 
     @app.post("/api/machine-agent/chat")
-    def machine_agent_chat(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    def machine_agent_chat(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        _require_actor(http_request, payload=request)
         if machine_agent is None:
             raise HTTPException(status_code=503, detail="Machine Agent is unavailable.")
         message = str(request.get("message", "")).strip()
         if not message:
             raise HTTPException(status_code=422, detail="The `message` field is required.")
-        return machine_agent.chat(message)
+        return _attach_trace(http_request, machine_agent.chat(message))
 
     @app.get("/api/machine-agent/status")
-    def machine_agent_status() -> dict[str, Any]:
+    def machine_agent_status(request: Request) -> dict[str, Any]:
+        _require_actor(request)
         if machine_agent is None:
             raise HTTPException(status_code=503, detail="Machine Agent is unavailable.")
-        return machine_agent.get_current_machine_status()
+        return _attach_trace(request, machine_agent.get_current_machine_status())
 
     @app.post("/api/chat")
-    def chat(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    def chat(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        actor = _require_actor(http_request, payload=request)
         try:
-            message, history, session_id = _parse_chat_request(request)
+            message, history, session_id = _parse_chat_request(request, default_session_id=actor.session_id)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if _message_requires_confirmation(message):
+            raise ApiSecurityError(
+                code="COMMAND_CONFIRMATION_REQUIRED",
+                message="Command execution requires preview and confirmation token validation.",
+                status_code=403,
+            )
         response = _call_assistant_message(assistant, message, history, session_id=session_id)
-        return response.to_ui_payload()
+        return _attach_trace(http_request, response.to_ui_payload())
 
     @app.post("/api/chat/stream")
-    def chat_stream(request: dict[str, Any] = Body(...)) -> StreamingResponse:
+    def chat_stream(http_request: Request, request: dict[str, Any] = Body(...)) -> StreamingResponse:
+        actor = _require_actor(http_request, payload=request)
         try:
-            message, history, session_id = _parse_chat_request(request)
+            message, history, session_id = _parse_chat_request(request, default_session_id=actor.session_id)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if _message_requires_confirmation(message):
+            raise ApiSecurityError(
+                code="COMMAND_CONFIRMATION_REQUIRED",
+                message="Command execution requires preview and confirmation token validation.",
+                status_code=403,
+            )
         return StreamingResponse(
-            _stream_chat_events(assistant, message, history, session_id=session_id),
+            _stream_chat_events(
+                assistant,
+                message,
+                history,
+                session_id=session_id,
+                request_id=getattr(http_request.state, "request_id", None),
+                trace_id=getattr(http_request.state, "trace_id", None),
+            ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.post("/api/commands/preview")
+    def command_preview(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        actor = _require_actor(http_request, payload=request, require_operator=True)
+        message = str(request.get("message", "")).strip()
+        if not message:
+            raise HTTPException(status_code=422, detail="The `message` field is required.")
+        history = _parse_history(request.get("history", []))
+        response = _call_assistant_preview(assistant, message, history, session_id=actor.session_id)
+        payload = _response_payload(response)
+        command_preview = payload.get("command_preview")
+        if isinstance(command_preview, dict) and not command_preview.get("missing_fields"):
+            safety = dict(command_preview.get("safety") or {})
+            if safety.get("needs_confirmation"):
+                token_store: ConfirmationTokenStore = http_request.app.state.command_confirmations
+                stored = token_store.create(
+                    session_id=actor.session_id,
+                    operator_id=str(actor.operator_id),
+                    command_preview=command_preview,
+                )
+                payload["confirmation"] = {
+                    "required": True,
+                    "preview_id": stored.preview_id,
+                    "preview_hash": stored.preview_hash,
+                    "confirmation_token": stored.confirmation_token,
+                    "expires_at": stored.expires_at,
+                }
+            else:
+                payload["confirmation"] = {"required": False}
+        return _attach_trace(http_request, payload)
+
+    @app.post("/api/commands/confirm")
+    def command_confirm(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        actor = _require_actor(http_request, payload=request, write=True, require_operator=True)
+        token_store: ConfirmationTokenStore = http_request.app.state.command_confirmations
+        stored = token_store.consume(
+            preview_id=str(request.get("preview_id") or ""),
+            confirmation_token=str(request.get("confirmation_token") or ""),
+            session_id=actor.session_id,
+            operator_id=str(actor.operator_id),
+            preview_hash=str(request.get("preview_hash") or ""),
+        )
+        response = _call_assistant_execute_prepared(
+            assistant,
+            stored.command_preview,
+            session_id=actor.session_id,
+        )
+        payload = _response_payload(response)
+        payload["confirmation"] = {
+            "preview_id": stored.preview_id,
+            "preview_hash": stored.preview_hash,
+            "used": True,
+        }
+        return _attach_trace(http_request, payload)
+
+    @app.post("/api/memory/approve")
+    def memory_approve(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        actor = _require_actor(
+            http_request,
+            payload=request,
+            write=True,
+            require_operator=True,
+            required_roles=PRIVILEGED_ROLES,
+        )
+        del actor
+        raise HTTPException(status_code=501, detail="Memory approval API is not implemented yet.")
+
+    @app.post("/api/memory/reject")
+    def memory_reject(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        actor = _require_actor(
+            http_request,
+            payload=request,
+            write=True,
+            require_operator=True,
+            required_roles=PRIVILEGED_ROLES,
+        )
+        del actor
+        raise HTTPException(status_code=501, detail="Memory rejection API is not implemented yet.")
+
+    @app.post("/api/skill-patches/apply")
+    def skill_patch_apply(http_request: Request, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        actor = _require_actor(
+            http_request,
+            payload=request,
+            write=True,
+            require_operator=True,
+            required_roles=PRIVILEGED_ROLES,
+        )
+        del actor
+        raise HTTPException(status_code=501, detail="Skill patch apply API is not implemented yet.")
+
     @app.post("/api/knowledge-base/build")
-    async def build_knowledge_base(files: list[UploadFile] | None = File(default=None)) -> dict[str, Any]:
+    async def build_knowledge_base(
+        request: Request,
+        files: list[UploadFile] | None = File(default=None),
+    ) -> dict[str, Any]:
+        _require_actor(request, write=True, require_operator=True)
         uploaded_paths: list[Path] = []
         temp_dir: Path | None = None
         if files:
@@ -124,10 +262,10 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
                     path.unlink(missing_ok=True)
                 temp_dir.rmdir()
 
-        return {
+        return _attach_trace(request, {
             "runtime": assistant.runtime_summary(),
             "knowledge_base": summary,
-        }
+        })
 
     selected_frontend_dist = frontend_dist_dir or assistant.config.frontend_dist_dir
 
@@ -136,19 +274,19 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="frontend-assets")
 
-        @app.get("/{static_path:path}")
+        @app.get("/{static_path:path}", include_in_schema=False)
         async def frontend_static(static_path: str) -> HTMLResponse | FileResponse:
             candidate = selected_frontend_dist / static_path
             if static_path and candidate.exists() and candidate.is_file():
                 return FileResponse(candidate)
             return HTMLResponse(selected_frontend_dist.joinpath("index.html").read_text(encoding="utf-8"))
 
-        @app.get("/", response_class=HTMLResponse)
+        @app.get("/", response_class=HTMLResponse, include_in_schema=False)
         async def frontend_index() -> HTMLResponse:
             return HTMLResponse(selected_frontend_dist.joinpath("index.html").read_text(encoding="utf-8"))
 
     else:
-        @app.get("/", response_class=HTMLResponse)
+        @app.get("/", response_class=HTMLResponse, include_in_schema=False)
         async def frontend_missing() -> HTMLResponse:
             return HTMLResponse(_frontend_hint_html())
 
@@ -161,6 +299,8 @@ def _stream_chat_events(
     history: Sequence[tuple[str, str]],
     *,
     session_id: str,
+    request_id: str | None = None,
+    trace_id: str | None = None,
 ) -> Iterator[str]:
     """Yield SSE events for a single chat request."""
     try:
@@ -170,20 +310,33 @@ def _stream_chat_events(
             history,
             session_id=session_id,
         ):
+            if event_name in {"meta", "done", "error"} and isinstance(payload, dict):
+                payload = dict(payload)
+                payload.setdefault("request_id", request_id)
+                payload.setdefault("trace_id", trace_id)
             yield _sse_event(event_name, payload)
     except Exception as exc:  # pragma: no cover - defensive streaming guard
-        yield _sse_event("error", {"message": str(exc)})
+        yield _sse_event("error", {"message": str(exc), "request_id": request_id, "trace_id": trace_id})
 
 
-def _parse_chat_request(payload: dict[str, Any]) -> tuple[str, list[tuple[str, str]], str]:
+def _parse_chat_request(
+    payload: dict[str, Any],
+    *,
+    default_session_id: str = "web",
+) -> tuple[str, list[tuple[str, str]], str]:
     """Normalize the chat request body into the assistant's internal schema."""
     message = str(payload.get("message", "")).strip()
     if not message:
         raise ValueError("The `message` field is required.")
-    session_id = str(payload.get("session_id") or "web").strip() or "web"
+    session_id = str(payload.get("session_id") or default_session_id).strip() or default_session_id
 
+    normalized_history = _parse_history(payload.get("history", []))
+    return message, normalized_history, session_id
+
+
+def _parse_history(raw_history: Any) -> list[tuple[str, str]]:
+    """Normalize chat history values into internal tuple pairs."""
     normalized_history: list[tuple[str, str]] = []
-    raw_history = payload.get("history", [])
     if raw_history is None:
         raw_history = []
     if not isinstance(raw_history, list):
@@ -195,8 +348,7 @@ def _parse_chat_request(payload: dict[str, Any]) -> tuple[str, list[tuple[str, s
         user_message = str(turn.get("user", ""))
         assistant_message = str(turn.get("assistant", ""))
         normalized_history.append((user_message, assistant_message))
-
-    return message, normalized_history, session_id
+    return normalized_history
 
 
 def _call_assistant_message(
@@ -224,6 +376,132 @@ def _call_assistant_stream(
         yield from assistant.stream_message(message, history, session_id=session_id)
         return
     yield from assistant.stream_message(message, history)
+
+
+def _call_assistant_preview(
+    assistant: Any,
+    message: str,
+    history: Sequence[tuple[str, str]],
+    *,
+    session_id: str,
+) -> Any:
+    """Call the deterministic command-preview backend under either chat wrapper."""
+    core = _core_assistant(assistant)
+    if hasattr(core, "preview_operation_command"):
+        return core.preview_operation_command(message, history)
+    runtime = getattr(assistant, "runtime", None)
+    if runtime is not None and hasattr(runtime, "preview_command"):
+        return runtime.preview_command(message, session_id=session_id)
+    raise ApiSecurityError(
+        code="COMMAND_PREVIEW_UNAVAILABLE",
+        message="Command preview is unavailable for this runtime.",
+        status_code=503,
+    )
+
+
+def _call_assistant_execute_prepared(
+    assistant: Any,
+    preview: dict[str, Any],
+    *,
+    session_id: str,
+) -> Any:
+    """Execute a stored preview through the backend safety path."""
+    del session_id
+    core = _core_assistant(assistant)
+    if hasattr(core, "execute_prepared_command"):
+        return core.execute_prepared_command(preview, confirmed_by_user=True)
+    raise ApiSecurityError(
+        code="COMMAND_CONFIRM_UNAVAILABLE",
+        message="Command confirmation is unavailable for this runtime.",
+        status_code=503,
+    )
+
+
+def _core_assistant(assistant: Any) -> Any:
+    """Return the underlying deterministic assistant from optional Agent adapters."""
+    runtime = getattr(assistant, "runtime", None)
+    if runtime is not None and hasattr(runtime, "assistant"):
+        return runtime.assistant
+    return assistant
+
+
+def _response_payload(response: Any) -> dict[str, Any]:
+    """Normalize assistant responses and dict payloads."""
+    if isinstance(response, dict):
+        return dict(response)
+    if hasattr(response, "to_ui_payload"):
+        return dict(response.to_ui_payload())
+    raise ApiSecurityError(
+        code="INVALID_ASSISTANT_RESPONSE",
+        message="Assistant returned an invalid response.",
+        status_code=500,
+    )
+
+
+def _require_actor(
+    request: Any,
+    *,
+    payload: dict[str, Any] | None = None,
+    write: bool = False,
+    require_operator: bool = False,
+    required_roles: set[str] | None = None,
+) -> Any:
+    """Validate API actor context from headers, query, and optional JSON body."""
+    return require_api_actor(
+        request.headers,
+        payload=payload,
+        query_params=request.query_params,
+        write=write,
+        require_operator=require_operator,
+        required_roles=required_roles,
+    )
+
+
+def _attach_trace(request: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Attach request and trace ids to successful API responses."""
+    result = dict(payload)
+    result.setdefault("request_id", getattr(request.state, "request_id", None))
+    result.setdefault("trace_id", getattr(request.state, "trace_id", None))
+    return result
+
+
+def _message_requires_confirmation(message: str) -> bool:
+    """Return whether generic chat is trying to submit a side-effect command."""
+    lowered = message.strip().lower()
+    preview_only_markers = (
+        "不要执行",
+        "不执行",
+        "不要下发",
+        "不下发",
+        "只预览",
+        "仅预览",
+        "preview only",
+        "do not execute",
+        "don't execute",
+    )
+    if any(marker in lowered for marker in preview_only_markers):
+        return False
+    submit_markers = (
+        "execute",
+        "submit",
+        "run now",
+        "start now",
+        "stop detection",
+        "abort detection",
+        "开始扫描",
+        "执行扫描",
+        "确认执行",
+        "立即开始",
+        "马上扫描",
+        "开始在线扫描",
+        "执行在线扫描",
+        "离线检测",
+        "离线测试",
+        "停止检测",
+        "中止检测",
+        "提交命令",
+    )
+    return any(marker in lowered for marker in submit_markers)
 
 
 def _supports_session_id(callable_obj: Any) -> bool:
