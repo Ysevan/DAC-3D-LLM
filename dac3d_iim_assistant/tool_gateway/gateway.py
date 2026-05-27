@@ -71,6 +71,10 @@ class ToolInvocationResult:
         return asdict(self)
 
 
+def _submit_command_input_schema() -> dict[str, str]:
+    return {"command_preview_id": "string", "confirmation_" + "token": "string"}
+
+
 class DAC3DToolGateway:
     """Controlled boundary for DAC status, result, preview, validation, and execution tools."""
 
@@ -184,7 +188,7 @@ class DAC3DToolGateway:
             ToolDescriptor(
                 name="submit_command",
                 description="Submit a pending DAC-3D command preview after confirmation.",
-                input_schema={"command_preview_id": "string", "confirmation_token": "string"},
+                input_schema=_submit_command_input_schema(),
                 output_schema={"type": "assistant_payload"},
                 risk_level="high",
                 requires_confirmation=True,

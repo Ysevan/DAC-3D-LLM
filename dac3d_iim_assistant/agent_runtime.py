@@ -982,9 +982,9 @@ class DAC3DAgentRuntime:
 
     def run_local_tool_plan(self, message: str, *, session_id: str = "default") -> dict[str, Any]:
         """Explicit local diagnostic planner; production chat enters the LLM first."""
+        sessions = self._require_sessions()
         tools = self.tool_controller(session_id)
-        assert self.sessions is not None
-        if self.sessions.should_use_pending_confirmation(message):
+        if sessions.should_use_pending_confirmation(message):
             payload = tools.execute_command(message, confirmed_by_user=True)
         else:
             payload = tools.handle_with_assistant(message)
@@ -1006,8 +1006,8 @@ class DAC3DAgentRuntime:
         confirmation_token: str | None = None,
     ) -> dict[str, Any]:
         """Submit the current pending DAC-3D command after a UI approval click."""
-        assert self.sessions is not None
-        pending = self.sessions.get_pending_command(session_id)
+        sessions = self._require_sessions()
+        pending = sessions.get_pending_command(session_id)
         if pending is not None:
             gateway = pending.command_preview.get("gateway") if isinstance(pending.command_preview, dict) else {}
             if not isinstance(gateway, dict):
@@ -1129,12 +1129,17 @@ class DAC3DAgentRuntime:
 
     def tool_controller(self, session_id: str = "default") -> DAC3DAgentToolController:
         """Return a DAC-3D tool controller bound to one Agent session."""
-        assert self.sessions is not None
         return DAC3DAgentToolController(
             assistant=self.assistant,
-            sessions=self.sessions,
+            sessions=self._require_sessions(),
             session_id=session_id,
         )
+
+    def _require_sessions(self) -> DAC3DAgentSessionStore:
+        """Return the session store or fail closed before a tool operation."""
+        if self.sessions is None:
+            raise RuntimeError("DAC-3D Agent sessions are not initialized.")
+        return self.sessions
 
     def _current_user_message(self, message: str) -> str:
         """Extract the user request from context-wrapped Agent input."""

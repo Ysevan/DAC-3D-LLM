@@ -31,7 +31,7 @@ except Exception:  # pragma: no cover - optional dependency guard
 def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any:
     """Create the FastAPI app that powers the React web client."""
     try:
-        from fastapi import Body, FastAPI, File, HTTPException, UploadFile
+        from fastapi import Body, FastAPI, File, HTTPException
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
         from fastapi.staticfiles import StaticFiles

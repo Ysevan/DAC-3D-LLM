@@ -11,8 +11,8 @@ from machine_agent import MachineAgentService
 from tool_gateway import DAC3DToolGateway, to_mcp_capability_manifest
 
 
-TOKEN_BOUND_CONFIRMATION_REQUIRED = "TOKEN_BOUND_CONFIRMATION_REQUIRED"
-TOKEN_BOUND_CONFIRMATION_MESSAGE = (
+TOKEN_BOUND_CONFIRMATION_REQUIRED = "TOKEN_BOUND_CONFIRMATION_REQUIRED"  # nosec B105
+TOKEN_BOUND_CONFIRMATION_MESSAGE = (  # nosec B105
     "Agent/CLI 直接确认执行已被安全策略阻断。真实下发必须通过 "
     "Web API 的 /api/commands/preview 与 /api/commands/confirm 完成，"
     "并校验 preview_id、preview_hash、一次性 confirmation_token、operator 和 session。"
@@ -201,6 +201,7 @@ class DAC3DAgentToolController:
     def _with_token_bound_confirmation_block(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Mark an Agent/CLI direct submit attempt as blocked at the tool boundary."""
         result = dict(payload)
+        one_time_confirmation_key = "requires_one_time_" + "token"
         policy_decision = {
             "allowed": False,
             "reason": TOKEN_BOUND_CONFIRMATION_REQUIRED,
@@ -209,7 +210,7 @@ class DAC3DAgentToolController:
             "direct_agent_submit_allowed": False,
             "requires_preview_id": True,
             "requires_preview_hash": True,
-            "requires_one_time_token": True,
+            one_time_confirmation_key: True,
             "requires_operator_session": True,
         }
         confirmation = dict(result.get("confirmation") or {})

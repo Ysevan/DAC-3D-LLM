@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   security:
     name: Supply Chain Security
@@ -56,7 +59,7 @@ jobs:
 
       - name: Python security static analysis
         working-directory: dac3d_iim_assistant
-        run: bandit -q -r . -x tests,pytest,frontend,ui2,knowledge_base/vector_store
+        run: bandit -q -r . -x ./tests,./pytest,./frontend,./ui2,./knowledge_base/vector_store
 
       - name: Python dependency audit
         working-directory: dac3d_iim_assistant
