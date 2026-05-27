@@ -28,7 +28,7 @@ from agent_core import (
 )
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
-from context_engineering import ContextBuilder, FileBackedContextTree
+from context_engineering import ContextBuilder, FileBackedContextTree, RepoContextMapStore
 from goals import (
     ArtifactStore,
     AutomationPlannerStore,
@@ -1202,6 +1202,7 @@ class DAC3DAgentRuntime:
                 "runtime_status_context",
                 "shared_workspace_artifacts",
                 "durable_event_queue",
+                "static_repo_context_map",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2156,6 +2157,7 @@ class DAC3DAgentChatAdapter:
     skill_patch_store: SkillPatchStore | None = None
     context_builder: ContextBuilder | None = None
     context_tree: FileBackedContextTree | None = None
+    repo_context_map: RepoContextMapStore | None = None
     goal_store: GoalStore | None = None
     task_board_store: TaskBoardStore | None = None
     automation_store: AutomationPlannerStore | None = None
@@ -2192,6 +2194,11 @@ class DAC3DAgentChatAdapter:
         if self.context_tree is None:
             self.context_tree = FileBackedContextTree(self.config.conversation_memory_dir / "context_tree")
             self.context_tree.ensure_defaults()
+        if self.repo_context_map is None:
+            self.repo_context_map = RepoContextMapStore.from_config_root(
+                self.config.base_dir,
+                self.config.conversation_memory_dir,
+            )
         if self.goal_store is None:
             self.goal_store = GoalStore.from_root(self.config.conversation_memory_dir)
         if self.task_board_store is None:
@@ -2305,6 +2312,11 @@ class DAC3DAgentChatAdapter:
             self.context_tree.describe()
             if self.context_tree is not None
             else {"enabled": False, "backend": "file_context_tree"}
+        )
+        summary["repo_context_map"] = (
+            self.repo_context_map.describe()
+            if self.repo_context_map is not None
+            else {"enabled": False, "backend": "static_repo_context_map"}
         )
         summary["goals"] = (
             self.goal_store.describe()
@@ -2455,6 +2467,11 @@ class DAC3DAgentChatAdapter:
             if self.context_tree is not None
             else {"enabled": False, "backend": "file_context_tree", "nodes": []}
         )
+        repo_context_map = (
+            self.repo_context_map.describe()
+            if self.repo_context_map is not None
+            else {"enabled": False, "backend": "static_repo_context_map"}
+        )
         skills = (
             self.skill_registry.describe()
             if self.skill_registry is not None
@@ -2510,6 +2527,7 @@ class DAC3DAgentChatAdapter:
             "skills": skills,
             "skill_patches": skill_patches,
             "context_tree": context_tree,
+            "repo_context_map": repo_context_map,
             "memory_os": memory,
             "goals": goals,
             "task_board": task_board,
@@ -2528,6 +2546,7 @@ class DAC3DAgentChatAdapter:
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
+                "repo_context_map",
                 "memory_prefetch",
                 "specialist_agent",
                 "tool_loop",
@@ -2968,6 +2987,24 @@ class DAC3DAgentChatAdapter:
                 result=result,
             ),
         }
+
+    def build_repo_context_map(self, *, max_files: int = 1200) -> dict[str, Any]:
+        """Build or refresh the local static repository context map."""
+        if self.repo_context_map is None:
+            raise ValueError("Repo context map is not enabled.")
+        return self.repo_context_map.build_map(max_files=max_files)
+
+    def read_repo_context_map(self) -> dict[str, Any]:
+        """Read the latest static repository context map."""
+        if self.repo_context_map is None:
+            raise ValueError("Repo context map is not enabled.")
+        return self.repo_context_map.read_map()
+
+    def search_repo_context_map(self, query: str, *, limit: int = 20) -> dict[str, Any]:
+        """Search files, roles, symbols, and API routes in the repo context map."""
+        if self.repo_context_map is None:
+            raise ValueError("Repo context map is not enabled.")
+        return self.repo_context_map.search(query, limit=limit)
 
     def preview_agent_workflow(
         self,

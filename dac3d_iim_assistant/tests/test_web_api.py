@@ -521,6 +521,34 @@ def test_web_api_agent_workspace_and_workflow_preview(tmp_path) -> None:
     )
 
 
+def test_web_api_repo_context_map_endpoints(tmp_path) -> None:
+    """The web UI should build, read, and search the static repo context map."""
+    config = make_config(tmp_path)
+    (config.base_dir / "ui" / "web_api.py").parent.mkdir(parents=True, exist_ok=True)
+    (config.base_dir / "ui" / "web_api.py").write_text(
+        'from fastapi import FastAPI\n\napp = FastAPI()\n\n@app.get("/api/repo-demo")\ndef demo():\n    return {}\n',
+        encoding="utf-8",
+    )
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    build_response = client.post("/api/agent/repo-map/build", json={"max_files": 200})
+    read_response = client.get("/api/agent/repo-map")
+    search_response = client.get("/api/agent/repo-map/search?q=repo-demo")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert build_response.status_code == 200
+    assert {"method": "GET", "path": "/api/repo-demo"} in build_response.json()["api_routes"]
+    assert read_response.status_code == 200
+    assert read_response.json()["file_count"] >= 2
+    assert search_response.status_code == 200
+    assert search_response.json()["count"] >= 1
+    assert workspace_response.json()["repo_context_map"]["file_count"] >= 2
+
+
 def test_web_api_agent_workflow_template_endpoints(tmp_path) -> None:
     """The web UI should persist workflow previews as reusable DAG templates."""
     config = make_config(tmp_path)

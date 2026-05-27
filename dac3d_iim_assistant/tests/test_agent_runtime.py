@@ -779,6 +779,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["memory"]["memory_os"]["workflow"] == "trace -> memory_patch -> approval -> long_term_memory"
     assert summary["context_builder"]["backend"] == "context_builder"
     assert summary["context_builder"]["actions"] == ["write", "select", "compress", "isolate"]
+    assert summary["repo_context_map"]["backend"] == "static_repo_context_map"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
     assert summary["automations"]["backend"] == "local_automation_planner"
     assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
@@ -1059,6 +1060,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "runtime_status_context" in description["network_capabilities"]
     assert "shared_workspace_artifacts" in description["network_capabilities"]
     assert "durable_event_queue" in description["network_capabilities"]
+    assert "static_repo_context_map" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1236,6 +1238,31 @@ def test_agent_chat_adapter_event_queue_roundtrip(tmp_path) -> None:
     assert listed["count"] == 1
     assert workspace["event_queue"]["event_count"] == 1
     assert "event_queue" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    (config.base_dir / "ui" / "web_api.py").parent.mkdir(parents=True, exist_ok=True)
+    (config.base_dir / "ui" / "web_api.py").write_text(
+        'from fastapi import FastAPI\n\napp = FastAPI()\n\n@app.post("/api/demo")\ndef demo():\n    return {}\n',
+        encoding="utf-8",
+    )
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    built = adapter.build_repo_context_map()
+    read = adapter.read_repo_context_map()
+    search = adapter.search_repo_context_map("web_api")
+    workspace = adapter.agent_workspace()
+
+    assert built["file_count"] >= 2
+    assert {"method": "POST", "path": "/api/demo"} in built["api_routes"]
+    assert read["path"].endswith("repo_context_map.json")
+    assert search["count"] >= 1
+    assert workspace["repo_context_map"]["file_count"] >= 2
+    assert "repo_context_map" in workspace["workflow"]
 
 
 def test_agent_runtime_parser_supports_agent_project_commands() -> None:

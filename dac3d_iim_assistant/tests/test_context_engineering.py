@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from config import AppConfig
-from context_engineering import ContextBuilder, FileBackedContextTree
+from context_engineering import ContextBuilder, FileBackedContextTree, RepoContextMapStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
 from skill_system import SkillRegistry
 
@@ -110,6 +110,34 @@ def test_context_tree_retrieves_human_readable_nodes(tmp_path: Path) -> None:
     assert any(match.node.kind == "procedure" for match in matches)
     assert "Context Tree" in context_text
     assert payload[0]["node"]["id"]
+
+
+def test_repo_context_map_builds_and_searches_static_project_map(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    assistant_dir = repo_root / "dac3d_iim_assistant"
+    (assistant_dir / "ui").mkdir(parents=True)
+    (assistant_dir / "tests").mkdir(parents=True)
+    (assistant_dir / "ui" / "web_api.py").write_text(
+        'from fastapi import FastAPI\n\napp = FastAPI()\n\n@app.get("/api/demo")\ndef demo():\n    return {}\n',
+        encoding="utf-8",
+    )
+    (assistant_dir / "tests" / "test_demo.py").write_text(
+        "def test_demo():\n    assert True\n",
+        encoding="utf-8",
+    )
+    store = RepoContextMapStore.from_config_root(assistant_dir, tmp_path / "memory")
+
+    built = store.build_map()
+    search = store.search("demo")
+    summary = store.describe()
+
+    assert built["repo_root"] == str(repo_root.resolve())
+    assert built["file_count"] == 2
+    assert built["api_routes"] == [{"method": "GET", "path": "/api/demo"}]
+    assert search["count"] >= 1
+    assert any(match["role"] == "api" for match in search["matches"])
+    assert summary["module_count"] == 1
+    assert summary["api_route_count"] == 1
 
 
 def test_context_builder_includes_context_tree_matches(tmp_path: Path) -> None:

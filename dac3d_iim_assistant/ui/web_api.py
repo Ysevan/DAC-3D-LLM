@@ -69,6 +69,41 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             raise HTTPException(status_code=503, detail="Agent workspace is unavailable.")
         return workspace()
 
+    @app.get("/api/agent/repo-map")
+    def read_repo_context_map() -> dict[str, Any]:
+        read_map = getattr(assistant, "read_repo_context_map", None)
+        if not callable(read_map):
+            raise HTTPException(status_code=503, detail="Repo context map is unavailable.")
+        try:
+            return read_map()
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post("/api/agent/repo-map/build")
+    def build_repo_context_map(request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+        build_map = getattr(assistant, "build_repo_context_map", None)
+        if not callable(build_map):
+            raise HTTPException(status_code=503, detail="Repo context map is unavailable.")
+        payload = dict(request or {})
+        try:
+            max_files = int(payload.get("max_files") or 1200)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="The `max_files` field must be an integer.") from exc
+        try:
+            return build_map(max_files=max_files)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/repo-map/search")
+    def search_repo_context_map(q: str, limit: int = 20) -> dict[str, Any]:
+        search_map = getattr(assistant, "search_repo_context_map", None)
+        if not callable(search_map):
+            raise HTTPException(status_code=503, detail="Repo context map is unavailable.")
+        try:
+            return search_map(q, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/artifacts")
     def list_agent_artifacts(
         session_id: str | None = None,
