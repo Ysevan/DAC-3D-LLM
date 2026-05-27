@@ -791,6 +791,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["verification_feedback"]["backend"] == "local_verification_runner"
     assert summary["review_handoffs"]["backend"] == "local_review_handoff_queue"
     assert summary["checkpoints"]["backend"] == "local_agent_checkpoint_store"
+    assert summary["shared_state"]["backend"] == "local_agent_shared_state"
     assert summary["observability"]["backend"] == "local_agent_observability"
 
 
@@ -1074,6 +1075,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "code_symbol_navigator" in description["network_capabilities"]
     assert "workflow_checkpoint_store" in description["network_capabilities"]
     assert "agent_observability_snapshot" in description["network_capabilities"]
+    assert "scoped_shared_state" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1368,6 +1370,43 @@ def test_agent_chat_adapter_observability_snapshot(tmp_path) -> None:
     assert snapshot["attention"]["active_checkpoints"] == 1
     assert workspace["observability"]["attention"]["queued_events"] == 1
     assert "observability_snapshot" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_shared_state_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    created = adapter.set_agent_shared_state(
+        "active_workflow",
+        {"workflow_id": "workflow-agent", "step": "preview"},
+        session_id="shared-agent",
+        scope="session",
+        namespace="runtime",
+        owner_agent="coordinator",
+        tags=["runtime"],
+    )
+    updated = adapter.set_agent_shared_state(
+        "active_workflow",
+        {"workflow_id": "workflow-agent", "step": "review"},
+        session_id="shared-agent",
+        scope="session",
+        namespace="runtime",
+        owner_agent="reviewer",
+        tags=["runtime", "review"],
+    )
+    listed = adapter.list_agent_shared_state(session_id="shared-agent", tag="review")
+    read = adapter.read_agent_shared_state(created["state"]["id"])
+    workspace = adapter.agent_workspace()
+
+    assert created["created"] is True
+    assert updated["created"] is False
+    assert updated["state"]["version"] == 2
+    assert listed["count"] == 1
+    assert read["state"]["value"]["step"] == "review"
+    assert workspace["shared_state"]["state_count"] == 1
+    assert "shared_state" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

@@ -37,6 +37,7 @@ from goals import (
     GoalStore,
     ObservabilityReporter,
     ReviewHandoffStore,
+    SharedStateStore,
     TaskBoardStore,
     VerificationRunnerStore,
     WorkflowTemplateStore,
@@ -1213,6 +1214,7 @@ class DAC3DAgentRuntime:
                 "code_symbol_navigator",
                 "workflow_checkpoint_store",
                 "agent_observability_snapshot",
+                "scoped_shared_state",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2178,6 +2180,7 @@ class DAC3DAgentChatAdapter:
     verification_store: VerificationRunnerStore | None = None
     review_handoff_store: ReviewHandoffStore | None = None
     checkpoint_store: CheckpointStore | None = None
+    shared_state_store: SharedStateStore | None = None
     trace_logger: TraceLogger | None = None
     observability_reporter: ObservabilityReporter | None = None
 
@@ -2237,6 +2240,8 @@ class DAC3DAgentChatAdapter:
             self.review_handoff_store = ReviewHandoffStore.from_root(self.config.conversation_memory_dir)
         if self.checkpoint_store is None:
             self.checkpoint_store = CheckpointStore.from_root(self.config.conversation_memory_dir)
+        if self.shared_state_store is None:
+            self.shared_state_store = SharedStateStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2406,6 +2411,11 @@ class DAC3DAgentChatAdapter:
             self.checkpoint_store.describe()
             if self.checkpoint_store is not None
             else {"enabled": False, "backend": "local_agent_checkpoint_store"}
+        )
+        summary["shared_state"] = (
+            self.shared_state_store.describe()
+            if self.shared_state_store is not None
+            else {"enabled": False, "backend": "local_agent_shared_state"}
         )
         summary["observability"] = (
             self.observability_reporter.describe()
@@ -2606,6 +2616,11 @@ class DAC3DAgentChatAdapter:
             if self.checkpoint_store is not None
             else {"enabled": False, "backend": "local_agent_checkpoint_store"}
         )
+        shared_state = (
+            self.shared_state_store.describe()
+            if self.shared_state_store is not None
+            else {"enabled": False, "backend": "local_agent_shared_state"}
+        )
         observability = (
             self.observability_reporter.describe()
             if self.observability_reporter is not None
@@ -2634,6 +2649,7 @@ class DAC3DAgentChatAdapter:
             "verification_feedback": verification_feedback,
             "review_handoffs": review_handoffs,
             "checkpoints": checkpoints,
+            "shared_state": shared_state,
             "observability": observability,
             "workflow": [
                 "user_task",
@@ -2646,6 +2662,7 @@ class DAC3DAgentChatAdapter:
                 "verification_feedback",
                 "review_handoff",
                 "workflow_checkpoint",
+                "shared_state",
                 "observability_snapshot",
                 "coordinator_route",
                 "skill_selection",
@@ -2682,6 +2699,86 @@ class DAC3DAgentChatAdapter:
         if self.observability_reporter is None:
             raise ValueError("Agent observability is not enabled.")
         return self.observability_reporter.snapshot(recent_trace_limit=recent_trace_limit)
+
+    def list_agent_shared_state(
+        self,
+        *,
+        session_id: str | None = None,
+        scope: str | None = None,
+        namespace: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List scoped shared state entries visible to Agent workflows."""
+        if self.shared_state_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_agent_shared_state",
+                "states": [],
+                "count": 0,
+            }
+        return self.shared_state_store.list_states(
+            session_id=session_id,
+            scope=scope,
+            namespace=namespace,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def read_agent_shared_state(
+        self,
+        state_id_or_key: str,
+        *,
+        session_id: str = "web",
+        scope: str = "session",
+        namespace: str = "default",
+    ) -> dict[str, Any]:
+        """Read one scoped shared state entry by id or key."""
+        if self.shared_state_store is None:
+            raise ValueError("Shared state store is not enabled.")
+        return self.shared_state_store.read_state(
+            state_id_or_key,
+            session_id=session_id,
+            scope=scope,
+            namespace=namespace,
+        )
+
+    def set_agent_shared_state(
+        self,
+        key: str,
+        value: Any,
+        *,
+        session_id: str = "web",
+        scope: str = "session",
+        namespace: str = "default",
+        owner_agent: str = "",
+        task_id: str = "",
+        workflow_id: str = "",
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        note: str = "",
+    ) -> dict[str, Any]:
+        """Create or update one scoped shared state entry."""
+        if self.shared_state_store is None:
+            raise ValueError("Shared state store is not enabled.")
+        return {
+            "enabled": True,
+            **self.shared_state_store.set_state(
+                key,
+                value,
+                session_id=session_id,
+                scope=scope,
+                namespace=namespace,
+                owner_agent=owner_agent,
+                task_id=task_id,
+                workflow_id=workflow_id,
+                tags=tags,
+                metadata=metadata,
+                note=note,
+            ),
+        }
 
     def list_agent_verification_presets(self) -> dict[str, Any]:
         """List runnable local verification feedback presets."""

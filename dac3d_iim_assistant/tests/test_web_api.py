@@ -851,6 +851,54 @@ def test_web_api_agent_observability_endpoint(tmp_path) -> None:
     assert workspace_response.json()["observability"]["recent_trace_count"] == 1
 
 
+def test_web_api_agent_shared_state_endpoints(tmp_path) -> None:
+    """The web UI should set, update, list, and read scoped shared state."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/shared-state",
+        json={
+            "key": "active_context",
+            "value": {"step": "planning"},
+            "session_id": "shared-ui-session",
+            "namespace": "runtime",
+            "tags": ["runtime"],
+            "owner_agent": "coordinator",
+        },
+    )
+    state_id = create_response.json()["state"]["id"]
+    update_response = client.post(
+        "/api/agent/shared-state",
+        json={
+            "key": "active_context",
+            "value": {"step": "handoff"},
+            "session_id": "shared-ui-session",
+            "namespace": "runtime",
+            "tags": ["runtime", "handoff"],
+            "owner_agent": "control-agent",
+        },
+    )
+    list_response = client.get("/api/agent/shared-state?session_id=shared-ui-session&tag=handoff")
+    read_response = client.get(f"/api/agent/shared-state/{state_id}")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert update_response.status_code == 200
+    assert update_response.json()["created"] is False
+    assert update_response.json()["state"]["version"] == 2
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert read_response.json()["state"]["value"]["step"] == "handoff"
+    assert workspace_response.json()["shared_state"]["state_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

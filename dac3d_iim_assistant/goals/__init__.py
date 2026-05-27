@@ -6,6 +6,7 @@ from goals.checkpoints import CheckpointStore
 from goals.event_queue import EventQueueStore
 from goals.observability import ObservabilityReporter
 from goals.review_handoff import ReviewHandoffStore
+from goals.shared_state import SharedStateStore
 from goals.store import GoalStore
 from goals.task_board import TaskBoardStore
 from goals.verification import VerificationRunnerStore
@@ -19,6 +20,7 @@ __all__ = [
     "GoalStore",
     "ObservabilityReporter",
     "ReviewHandoffStore",
+    "SharedStateStore",
     "TaskBoardStore",
     "VerificationRunnerStore",
     "WorkflowTemplateStore",

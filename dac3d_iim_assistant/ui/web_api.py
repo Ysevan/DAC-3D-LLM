@@ -79,6 +79,72 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/shared-state")
+    def list_agent_shared_state(
+        session_id: str | None = None,
+        scope: str | None = None,
+        namespace: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_state = getattr(assistant, "list_agent_shared_state", None)
+        if not callable(list_state):
+            raise HTTPException(status_code=503, detail="Shared state store is unavailable.")
+        try:
+            return list_state(
+                session_id=session_id,
+                scope=scope,
+                namespace=namespace,
+                tag=tag,
+                query=q,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/shared-state/{state_id_or_key}")
+    def read_agent_shared_state(
+        state_id_or_key: str,
+        session_id: str = "web",
+        scope: str = "session",
+        namespace: str = "default",
+    ) -> dict[str, Any]:
+        read_state = getattr(assistant, "read_agent_shared_state", None)
+        if not callable(read_state):
+            raise HTTPException(status_code=503, detail="Shared state store is unavailable.")
+        try:
+            return read_state(state_id_or_key, session_id=session_id, scope=scope, namespace=namespace)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/shared-state")
+    def set_agent_shared_state(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        set_state = getattr(assistant, "set_agent_shared_state", None)
+        if not callable(set_state):
+            raise HTTPException(status_code=503, detail="Shared state store is unavailable.")
+        key = str(request.get("key") or "").strip()
+        if not key:
+            raise HTTPException(status_code=422, detail="The `key` field is required.")
+        if "value" not in request:
+            raise HTTPException(status_code=422, detail="The `value` field is required.")
+        try:
+            return set_state(
+                key,
+                request.get("value"),
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                scope=str(request.get("scope") or "session"),
+                namespace=str(request.get("namespace") or "default"),
+                owner_agent=str(request.get("owner_agent") or ""),
+                task_id=str(request.get("task_id") or ""),
+                workflow_id=str(request.get("workflow_id") or ""),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                note=str(request.get("note") or ""),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/verifications")
     def list_agent_verification_runs(
         status: str | None = None,

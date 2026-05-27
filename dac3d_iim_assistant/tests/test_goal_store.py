@@ -12,6 +12,7 @@ from goals import (
     GoalStore,
     ObservabilityReporter,
     ReviewHandoffStore,
+    SharedStateStore,
     TaskBoardStore,
     VerificationRunnerStore,
     WorkflowTemplateStore,
@@ -376,3 +377,47 @@ def test_observability_reporter_summarizes_workspace_signals(tmp_path: Path) -> 
     assert snapshot["attention"]["pending_reviews"] == 1
     assert snapshot["attention"]["active_checkpoints"] == 1
     assert summary["recent_trace_count"] == 1
+
+
+def test_shared_state_store_upserts_scoped_json_state(tmp_path: Path) -> None:
+    store = SharedStateStore.from_root(tmp_path)
+
+    created = store.set_state(
+        "current_batch",
+        {"folder": "pre_fusion_images", "count": 3},
+        session_id="shared-session",
+        scope="workflow",
+        namespace="offline-inspection",
+        owner_agent="control-agent",
+        workflow_id="workflow-1",
+        tags=["offline"],
+    )
+    state_id = created["state"]["id"]
+    updated = store.set_state(
+        "current_batch",
+        {"folder": "pre_fusion_images", "count": 4},
+        session_id="shared-session",
+        scope="workflow",
+        namespace="offline-inspection",
+        owner_agent="result-agent",
+        workflow_id="workflow-1",
+        tags=["offline", "updated"],
+        note="结果 Agent 更新样品数量。",
+    )
+    listed = store.list_states(
+        session_id="shared-session",
+        scope="workflow",
+        namespace="offline-inspection",
+        tag="updated",
+    )
+    read = store.read_state(state_id)
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert updated["created"] is False
+    assert updated["state"]["version"] == 2
+    assert updated["state"]["value"]["count"] == 4
+    assert updated["history"]["actor"] == "result-agent"
+    assert listed["count"] == 1
+    assert read["state"]["key"] == "current_batch"
+    assert summary["by_scope"]["workflow"] == 1
