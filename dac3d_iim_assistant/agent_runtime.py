@@ -31,7 +31,7 @@ from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree
 from goals import GoalStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
-from skill_system import SkillRegistry
+from skill_system import SkillPatchStore, SkillRegistry
 from trace_eval import CodexHandoffGenerator, EvalDraftGenerator, EvalRunner, TraceLogger
 
 
@@ -509,6 +509,7 @@ class DAC3DAgentRuntime:
     memory_store: ConversationMemoryStore | None = None
     memory_provider: LocalMemoryProvider | None = None
     skill_registry: SkillRegistry | None = None
+    skill_patch_store: SkillPatchStore | None = None
     context_builder: ContextBuilder | None = None
 
     def __post_init__(self) -> None:
@@ -521,6 +522,11 @@ class DAC3DAgentRuntime:
             self.memory_provider = LocalMemoryProvider(self.memory_store)
         if self.skill_registry is None:
             self.skill_registry = SkillRegistry(self.config.agent_skills_dir)
+        if self.skill_patch_store is None:
+            self.skill_patch_store = SkillPatchStore.from_root(
+                self.config.conversation_memory_dir,
+                self.skill_registry,
+            )
 
     @classmethod
     def create(
@@ -771,6 +777,52 @@ class DAC3DAgentRuntime:
         if self.skill_registry is None:
             return {"enabled": False, "name": name}
         return {"enabled": True, **self.skill_registry.read(name, include_assets=include_assets)}
+
+    def propose_dac_skill_patch(
+        self,
+        *,
+        target_skill: str,
+        reason: str,
+        diff: str = "",
+        replacement_section: str = "",
+        evidence_trace_ids: list[str] | None = None,
+        risk_level: str = "medium",
+        proposed_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Create a reviewable skill patch proposal without editing SKILL.md."""
+        if self.skill_patch_store is None:
+            return {"enabled": False, "backend": "json_skill_patch_queue", "patch": None}
+        return {
+            "enabled": True,
+            **self.skill_patch_store.propose_patch(
+                target_skill=target_skill,
+                reason=reason,
+                diff=diff,
+                replacement_section=replacement_section,
+                evidence_trace_ids=evidence_trace_ids or [],
+                risk_level=risk_level,
+                proposed_by=proposed_by,
+            ),
+        }
+
+    def list_dac_skill_patches(self, status: str = "pending") -> dict[str, Any]:
+        """List reviewable skill patch proposals."""
+        if self.skill_patch_store is None:
+            return {"enabled": False, "backend": "json_skill_patch_queue", "patches": [], "count": 0}
+        normalized_status = str(status or "").strip() or None
+        return {"enabled": True, **self.skill_patch_store.list_patches(status=normalized_status)}
+
+    def approve_dac_skill_patch(self, patch_id: str) -> dict[str, Any]:
+        """Approve a pending skill patch proposal without auto-applying it."""
+        if self.skill_patch_store is None:
+            return {"enabled": False, "patch_id": patch_id, "message": "Skill patch store is disabled."}
+        return {"enabled": True, **self.skill_patch_store.approve_patch(patch_id)}
+
+    def reject_dac_skill_patch(self, patch_id: str, reason: str = "") -> dict[str, Any]:
+        """Reject a pending skill patch proposal."""
+        if self.skill_patch_store is None:
+            return {"enabled": False, "patch_id": patch_id, "message": "Skill patch store is disabled."}
+        return {"enabled": True, **self.skill_patch_store.reject_patch(patch_id, reason=reason)}
 
     def review_command_safety(
         self,
@@ -1060,6 +1112,7 @@ class DAC3DAgentRuntime:
                 "append_only_trace_logger",
                 "local_eval_runner",
                 "progressive_skill_selection",
+                "reviewable_skill_patch_queue",
                 "context_engineering",
                 "runtime_status_context",
                 "mcp_style_tool_gateway",
@@ -1121,6 +1174,10 @@ class DAC3DAgentRuntime:
                     "dac_skill_list",
                     "dac_skill_select",
                     "dac_skill_read",
+                    "dac_skill_propose_patch",
+                    "dac_skill_patches",
+                    "dac_skill_approve_patch",
+                    "dac_skill_reject_patch",
                 ],
                 "safety_agent": [
                     "dac3d_safety_review",
@@ -1162,6 +1219,11 @@ class DAC3DAgentRuntime:
                 self.skill_registry.describe()
                 if self.skill_registry is not None
                 else {"enabled": False, "backend": "local_agent_skills"}
+            ),
+            "skill_patches": (
+                self.skill_patch_store.describe()
+                if self.skill_patch_store is not None
+                else {"enabled": False, "backend": "json_skill_patch_queue"}
             ),
             "control": {
                 "preview_tool": "dac3d_preview_command",
@@ -1543,6 +1605,64 @@ class DAC3DAgentRuntime:
             return self.read_dac_skill(name, include_assets=include_assets)
 
         @function_tool(
+            name_override="dac_skill_propose_patch",
+            description_override=(
+                "Propose a reviewable change to a DAC-Agent skill. This records a "
+                "pending patch only; it never edits SKILL.md automatically."
+            ),
+        )
+        def dac_skill_propose_patch(
+            target_skill: str,
+            reason: str,
+            diff: str = "",
+            replacement_section: str = "",
+            evidence_trace_ids: str = "",
+            risk_level: str = "medium",
+        ) -> dict[str, Any]:
+            """Propose a skill patch without applying it."""
+            trace_ids = [
+                item.strip()
+                for item in str(evidence_trace_ids or "").split(",")
+                if item.strip()
+            ]
+            return self.propose_dac_skill_patch(
+                target_skill=target_skill,
+                reason=reason,
+                diff=diff,
+                replacement_section=replacement_section,
+                evidence_trace_ids=trace_ids,
+                risk_level=risk_level,
+                proposed_by="skill_agent",
+            )
+
+        @function_tool(
+            name_override="dac_skill_patches",
+            description_override="List pending/approved/rejected DAC-Agent skill patch proposals.",
+        )
+        def dac_skill_patches(status: str = "pending") -> dict[str, Any]:
+            """List reviewable skill patches."""
+            return self.list_dac_skill_patches(status=status)
+
+        @function_tool(
+            name_override="dac_skill_approve_patch",
+            description_override=(
+                "Mark a pending skill patch approved for human review records. "
+                "This does not edit SKILL.md automatically."
+            ),
+        )
+        def dac_skill_approve_patch(patch_id: str) -> dict[str, Any]:
+            """Approve one skill patch proposal."""
+            return self.approve_dac_skill_patch(patch_id)
+
+        @function_tool(
+            name_override="dac_skill_reject_patch",
+            description_override="Reject one DAC-Agent skill patch proposal by id.",
+        )
+        def dac_skill_reject_patch(patch_id: str, reason: str = "") -> dict[str, Any]:
+            """Reject one skill patch proposal."""
+            return self.reject_dac_skill_patch(patch_id, reason=reason)
+
+        @function_tool(
             name_override="dac3d_safety_review",
             description_override=(
                 "Review a DAC-3D control instruction before execution. It previews the "
@@ -1672,6 +1792,10 @@ class DAC3DAgentRuntime:
             dac_skill_list,
             dac_skill_select,
             dac_skill_read,
+            dac_skill_propose_patch,
+            dac_skill_patches,
+            dac_skill_approve_patch,
+            dac_skill_reject_patch,
         ]
         all_tools = [
             dac3d_answer,
@@ -1876,6 +2000,7 @@ class DAC3DAgentChatAdapter:
     memory_store: ConversationMemoryStore | None = None
     memory_provider: LocalMemoryProvider | None = None
     skill_registry: SkillRegistry | None = None
+    skill_patch_store: SkillPatchStore | None = None
     context_builder: ContextBuilder | None = None
     context_tree: FileBackedContextTree | None = None
     goal_store: GoalStore | None = None
@@ -1898,6 +2023,14 @@ class DAC3DAgentChatAdapter:
         if self.skill_registry is None:
             self.skill_registry = SkillRegistry(self.config.agent_skills_dir)
             self.runtime.skill_registry = self.skill_registry
+        if self.skill_patch_store is None and self.runtime.skill_patch_store is not None:
+            self.skill_patch_store = self.runtime.skill_patch_store
+        if self.skill_patch_store is None:
+            self.skill_patch_store = SkillPatchStore.from_root(
+                self.config.conversation_memory_dir,
+                self.skill_registry,
+            )
+            self.runtime.skill_patch_store = self.skill_patch_store
         if self.context_tree is None:
             self.context_tree = FileBackedContextTree(self.config.conversation_memory_dir / "context_tree")
             self.context_tree.ensure_defaults()
@@ -1989,6 +2122,11 @@ class DAC3DAgentChatAdapter:
             self.skill_registry.describe()
             if self.skill_registry is not None
             else {"enabled": False, "backend": "local_agent_skills"}
+        )
+        summary["skill_patches"] = (
+            self.skill_patch_store.describe()
+            if self.skill_patch_store is not None
+            else {"enabled": False, "backend": "json_skill_patch_queue"}
         )
         summary["context_builder"] = (
             self.context_builder.describe()
@@ -2125,6 +2263,11 @@ class DAC3DAgentChatAdapter:
             if self.skill_registry is not None
             else {"enabled": False, "backend": "local_agent_skills", "skills": []}
         )
+        skill_patches = (
+            self.skill_patch_store.describe()
+            if self.skill_patch_store is not None
+            else {"enabled": False, "backend": "json_skill_patch_queue", "patch_count": 0}
+        )
         memory = (
             self.memory_provider.describe()
             if self.memory_provider is not None
@@ -2143,6 +2286,7 @@ class DAC3DAgentChatAdapter:
             "tool_groups": agent.get("tool_groups", {}),
             "capabilities": agent.get("network_capabilities", []),
             "skills": skills,
+            "skill_patches": skill_patches,
             "context_tree": context_tree,
             "memory_os": memory,
             "goals": goals,
@@ -2335,6 +2479,39 @@ class DAC3DAgentChatAdapter:
         if not tools:
             tools.append("dac3d_answer")
         return tools
+
+    def propose_skill_patch(
+        self,
+        *,
+        target_skill: str,
+        reason: str,
+        diff: str = "",
+        replacement_section: str = "",
+        evidence_trace_ids: list[str] | None = None,
+        risk_level: str = "medium",
+    ) -> dict[str, Any]:
+        """Create a reviewable skill patch proposal from the UI/API path."""
+        return self.runtime.propose_dac_skill_patch(
+            target_skill=target_skill,
+            reason=reason,
+            diff=diff,
+            replacement_section=replacement_section,
+            evidence_trace_ids=evidence_trace_ids or [],
+            risk_level=risk_level,
+            proposed_by="ui",
+        )
+
+    def list_skill_patches(self, status: str = "pending") -> dict[str, Any]:
+        """List skill patch proposals for human review."""
+        return self.runtime.list_dac_skill_patches(status=status)
+
+    def approve_skill_patch(self, patch_id: str) -> dict[str, Any]:
+        """Approve one pending skill patch without auto-applying it."""
+        return self.runtime.approve_dac_skill_patch(patch_id)
+
+    def reject_skill_patch(self, patch_id: str, reason: str = "") -> dict[str, Any]:
+        """Reject one skill patch proposal."""
+        return self.runtime.reject_dac_skill_patch(patch_id, reason=reason)
 
     def list_memory_patches(self, status: str = "pending") -> dict[str, Any]:
         """List Memory OS patches for human review."""

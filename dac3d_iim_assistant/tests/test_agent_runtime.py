@@ -320,6 +320,7 @@ def test_agent_runtime_builds_dac3d_agent(tmp_path) -> None:
         "conversation_memory_recent",
         "dac_skill_select",
         "dac_skill_read",
+        "dac_skill_propose_patch",
         "dac3d_safety_review",
     }.issubset(specialist_tool_names)
     assert set(AGENT_TOOL_NAMES).issubset(specialist_tool_names)
@@ -1039,6 +1040,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "hermes_style_curated_memory" in description["network_capabilities"]
     assert "auditable_memory_patches" in description["network_capabilities"]
     assert "progressive_skill_selection" in description["network_capabilities"]
+    assert "reviewable_skill_patch_queue" in description["network_capabilities"]
     assert "context_engineering" in description["network_capabilities"]
     assert "runtime_status_context" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
@@ -1049,7 +1051,9 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "conversation_knowledge_write" in description["tool_groups"]["memory_agent"]
     assert "conversation_memory_approve_patch" in description["tool_groups"]["memory_agent"]
     assert "dac_skill_select" in description["tool_groups"]["skill_system"]
+    assert "dac_skill_propose_patch" in description["tool_groups"]["skill_system"]
     assert description["skill_system"]["backend"] == "local_agent_skills"
+    assert description["skill_patches"]["backend"] == "json_skill_patch_queue"
     assert "dac3d_safety_review" in description["tool_groups"]["safety_agent"]
     assert "core_markdown_memory" in description["conversation_memory"]["layers"]
     assert description["conversation_memory"]["backend"] == "json+markdown"

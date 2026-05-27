@@ -260,6 +260,68 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/skills/patches")
+    def list_skill_patches(status: str = "pending") -> dict[str, Any]:
+        list_patches = getattr(assistant, "list_skill_patches", None)
+        if not callable(list_patches):
+            raise HTTPException(status_code=503, detail="Skill patch review is unavailable.")
+        return list_patches(status=status)
+
+    @app.post("/api/skills/patches")
+    def propose_skill_patch(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        propose = getattr(assistant, "propose_skill_patch", None)
+        if not callable(propose):
+            raise HTTPException(status_code=503, detail="Skill patch review is unavailable.")
+        target_skill = str(request.get("target_skill") or "").strip()
+        reason = str(request.get("reason") or "").strip()
+        diff = str(request.get("diff") or "")
+        replacement_section = str(request.get("replacement_section") or "")
+        risk_level = str(request.get("risk_level") or "medium").strip() or "medium"
+        trace_ids = request.get("evidence_trace_ids") or []
+        if not isinstance(trace_ids, list):
+            raise HTTPException(status_code=422, detail="The `evidence_trace_ids` field must be a list.")
+        if not target_skill:
+            raise HTTPException(status_code=422, detail="The `target_skill` field is required.")
+        if not reason:
+            raise HTTPException(status_code=422, detail="The `reason` field is required.")
+        if not diff and not replacement_section:
+            raise HTTPException(status_code=422, detail="Provide `diff` or `replacement_section`.")
+        try:
+            return propose(
+                target_skill=target_skill,
+                reason=reason,
+                diff=diff,
+                replacement_section=replacement_section,
+                evidence_trace_ids=[str(item) for item in trace_ids],
+                risk_level=risk_level,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/skills/patches/{patch_id}/approve")
+    def approve_skill_patch(patch_id: str) -> dict[str, Any]:
+        approve = getattr(assistant, "approve_skill_patch", None)
+        if not callable(approve):
+            raise HTTPException(status_code=503, detail="Skill patch review is unavailable.")
+        try:
+            return approve(patch_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/skills/patches/{patch_id}/reject")
+    def reject_skill_patch(
+        patch_id: str,
+        request: dict[str, Any] | None = Body(default=None),
+    ) -> dict[str, Any]:
+        reject = getattr(assistant, "reject_skill_patch", None)
+        if not callable(reject):
+            raise HTTPException(status_code=503, detail="Skill patch review is unavailable.")
+        reason = str(dict(request or {}).get("reason") or "ui_rejected")
+        try:
+            return reject(patch_id, reason=reason)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/api/memory/patches")
     def list_memory_patches(status: str = "pending") -> dict[str, Any]:
         list_patches = getattr(assistant, "list_memory_patches", None)

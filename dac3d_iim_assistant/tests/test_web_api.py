@@ -365,6 +365,64 @@ def test_web_api_memory_patch_review_endpoints(tmp_path) -> None:
     assert pending_response.json()["count"] == 0
 
 
+def test_web_api_skill_patch_review_endpoints(tmp_path) -> None:
+    """The web UI should review skill patch proposals without editing SKILL.md."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+    skill_path = config.agent_skills_dir / "dac-command-preview" / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text(
+        """---
+name: dac-command-preview
+description: Preview DAC commands.
+triggers:
+  - 扫描
+tools:
+  - dac3d_preview_command
+---
+
+# DAC Command Preview
+
+Original preview flow.
+""",
+        encoding="utf-8",
+    )
+    original_skill = skill_path.read_text(encoding="utf-8")
+
+    propose_response = client.post(
+        "/api/skills/patches",
+        json={
+            "target_skill": "dac-command-preview",
+            "reason": "trace shows preview validation should be called out",
+            "diff": "+ Require validate_command in the preview checklist.",
+            "evidence_trace_ids": ["trace-skill-1"],
+            "risk_level": "medium",
+        },
+    )
+
+    assert propose_response.status_code == 200
+    patch = propose_response.json()["patch"]
+    assert patch["status"] == "pending"
+    assert patch["evidence_trace_ids"] == ["trace-skill-1"]
+
+    list_response = client.get("/api/skills/patches")
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+
+    approve_response = client.post(f"/api/skills/patches/{patch['id']}/approve")
+    assert approve_response.status_code == 200
+    assert approve_response.json()["approved"] is True
+    assert approve_response.json()["applied"] is False
+    assert skill_path.read_text(encoding="utf-8") == original_skill
+
+    approved_response = client.get("/api/skills/patches?status=approved")
+    assert approved_response.json()["count"] == 1
+
+
 def test_web_api_agent_workspace_and_workflow_preview(tmp_path) -> None:
     """The React client should be able to inspect the multi-agent workspace."""
     config = make_config(tmp_path)
