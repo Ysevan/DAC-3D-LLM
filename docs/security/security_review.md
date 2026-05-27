@@ -17,11 +17,17 @@
 - `dac3d_rebuild_knowledge_base` 已禁止 Agent 直接触发，因为它会产生文件系统写入；Web/API 授权路径后续仍可独立治理。
 - 运行时摘要现在暴露 `tool_gateway.enforced=true`、注册工具清单和每个工具的风险元数据，工具返回也会带 `tool_gateway` 与 `policy_decision`。
 
+## S15-3 已修复
+
+- 新增中心化 `PathPolicy`，统一处理 canonicalize、`../` 阻断、NUL 字节阻断、symlink escape 阻断、allowlist 外拒绝、secret-like 路径拒绝和 command bridge 任意覆盖拒绝。
+- 离线图片目录读取已接入 PathPolicy：`validate_offline_folder` 返回结构化 `path_policy` 拒绝结果；`start_offline_detection` 在真实提交前 fail closed。
+- command-file bridge 写入已接入 PathPolicy：只允许 `dac3d_assistant_command.json`，可通过 `DAC3D_ALLOWED_COMMAND_OUTPUT_DIR` 限定输出根目录，并拒绝危险临时文件和 symlink。
+- 状态文件读取会拒绝 secret-like 文件和不安全路径；知识库上传文件名会拒绝路径分隔符、`../` 和 secret-like 文件名。
+- 已补回归测试覆盖 canonical path、`../`、symlink escape、allowlist、secret-file-read、unsafe upload filename、command bridge 输出目录和任意文件名拒绝。
+
 ## P0 必须修复
 
-1. Path/File 策略不完整。知识库上传只做了 `Path(file.filename).name` 落到临时目录，离线目录校验和 command bridge 写入直接使用传入或配置路径；目前没有统一 canonicalize、`../` 阻断、symlink escape 阻断、allowlist 外拒绝、secret 文件读取拒绝、任意覆盖拒绝策略。上线前必须新增中心化 PathPolicy，并覆盖 `integration/dac3d_client.py` 的离线目录读取与 command 文件写入。参考：`dac3d_iim_assistant/ui/web_api.py:303`、`dac3d_iim_assistant/integration/dac3d_client.py:251`、`:436`、`:462`。
-
-2. 长期 memory 写入仍未经过 approval 生命周期。`ConversationMemoryStore.append_turn()` 已拒绝 secret-like 内容，但 `agent_runtime.py` 在每轮结束后会直接 `_remember_turn()`，并写入 session JSON 和全局 index；`/api/memory/approve`、`/api/memory/reject` 还是 501 占位。上线前必须把长期写入改成 pending patch，经授权 operator 审批后落库，rejected/deleted memory 不得进入上下文。参考：`dac3d_iim_assistant/agent_runtime.py:917`、`dac3d_iim_assistant/memory/conversation_store.py:142`、`dac3d_iim_assistant/ui/web_api.py:259`。
+1. 长期 memory 写入仍未经过 approval 生命周期。`ConversationMemoryStore.append_turn()` 已拒绝 secret-like 内容，但 `agent_runtime.py` 在每轮结束后会直接 `_remember_turn()`，并写入 session JSON 和全局 index；`/api/memory/approve`、`/api/memory/reject` 还是 501 占位。上线前必须把长期写入改成 pending patch，经授权 operator 审批后落库，rejected/deleted memory 不得进入上下文。参考：`dac3d_iim_assistant/agent_runtime.py:917`、`dac3d_iim_assistant/memory/conversation_store.py:142`、`dac3d_iim_assistant/ui/web_api.py:259`。
 
 ## P1 建议修复
 
@@ -58,19 +64,19 @@
 - red-team cases 已覆盖 prompt injection、indirect prompt injection、RAG poisoning、memory poisoning、confirmation bypass、path traversal、secret exfiltration、tool misuse、API auth bypass、trace tampering、XSS 输出注入、DoS oversized input 等类别。
 - Agent/CLI 直接执行命令已 fail closed；confirmed flag 只返回 token-bound confirmation 要求，不能直接提交到 mock runtime 或 command-file bridge。
 - Agent 工具已通过 `ToolGateway -> PolicyEngine` 强制注册和策略判定；未注册工具默认拒绝，禁用的写类工具不会触发底层 handler。
+- Path/File 边界已通过 `PathPolicy` 强制执行；离线目录、状态文件读取、command bridge 写入和知识库上传文件名都进入统一 canonical/allowlist/secret/symlink/traversal 检查。
 
 ## 缺失测试
 
-- PathPolicy 的 canonical path、`../`、symlink escape、allowlist、secret-file-read、任意覆盖测试。
 - memory approval/reject/delete/patch 生命周期测试，以及 rejected/deleted memory 不进入上下文的测试。
 - security eval runner 对真实 runtime/tool trace 的集成测试。
 - Chrome 插件 UI smoke 的自动化回归测试。
 
 ## 生产上线前阻塞项
 
-- 不能在生产设置 `DAC3D_ALLOW_COMMAND_SUBMIT=true`，直到 PathPolicy P0 完成并有回归测试。
+- 生产设置 `DAC3D_ALLOW_COMMAND_SUBMIT=true` 前必须明确配置 `DAC3D_ALLOWED_INPUT_DIRS`、`DAC3D_ALLOWED_COMMAND_OUTPUT_DIR`，并保留 preview/confirm/token-bound confirmation 链路。
 - 不能启用生产长期 memory 写入，直到 memory approval P0 完成；临时策略应设置 `DAC3D_ENABLE_MEMORY_WRITE=false` 或只保留短期会话上下文。
-- remote/open-world/file/skill patch 类能力必须保持关闭，直到 PathPolicy 完成并纳入 ToolGateway 风险策略。
+- remote/open-world/skill patch 类能力必须保持关闭，直到纳入 ToolGateway 风险策略并完成专项 review。
 - 生产必须使用明确 CORS origin、明确输入目录 allowlist、明确 command 输出目录、非 mock DAC-3D writer，并保留 rate limit 与 redaction。
 
 ## 修复计划
@@ -79,7 +85,7 @@
 
 2. S15-2：已完成。所有 Agent tools 进入最小 `ToolGateway`/`PolicyEngine` 注册表；未注册工具 fail closed；写类 KB rebuild 禁止 Agent 直用。
 
-3. S15-3：引入 `PathPolicy`。统一处理 canonicalize、allowlist、symlink、secret file、bridge output path，接入 uploads、offline folder validation、command bridge。
+3. S15-3：已完成。引入 `PathPolicy`，统一处理 canonicalize、allowlist、symlink、secret file、bridge output path，并接入 uploads、offline folder validation、status file read、command bridge。
 
 4. S15-4：改 memory 为 approval patch 生命周期。默认生成 pending memory patch，operator 审批后写入；reject/delete 不再进入 prompt context。
 

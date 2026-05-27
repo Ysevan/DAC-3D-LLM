@@ -9,6 +9,7 @@ from inspect import signature
 from pathlib import Path
 from typing import Any
 
+from security.path_policy import PathPolicy, PathPolicyError
 from security.production_config import ProductionSecurityConfig, SecurityConfigError
 from tracing.logger import AuditTraceLogger
 from tracing.redaction import redact_exception
@@ -50,6 +51,12 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
     except SecurityConfigError as exc:
         raise RuntimeError(f"Unsafe production security configuration: {exc}") from exc
     app.state.security_config = security_config
+    app.state.path_policy = PathPolicy.from_runtime_config(
+        allowed_input_dirs=security_config.allowed_input_dirs,
+        allowed_command_output_dir=security_config.allowed_command_output_dir,
+    )
+    if hasattr(getattr(assistant, "dac3d_client", None), "path_policy"):
+        assistant.dac3d_client.path_policy = app.state.path_policy
     app.state.command_confirmations = ConfirmationTokenStore()
     app.state.audit_logger = (
         AuditTraceLogger(assistant.config.audit_trace_path)
@@ -300,17 +307,25 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         _require_actor(request, write=True, require_operator=True)
         uploaded_paths: list[Path] = []
         temp_dir: Path | None = None
-        if files:
-            temp_dir = Path(tempfile.mkdtemp(prefix="dac3d-kb-", dir=assistant.config.upload_temp_dir))
-            for file in files:
-                if not file.filename:
-                    continue
-                destination = temp_dir / Path(file.filename).name
-                destination.write_bytes(await file.read())
-                uploaded_paths.append(destination)
-
         try:
+            if files:
+                temp_dir = Path(tempfile.mkdtemp(prefix="dac3d-kb-", dir=assistant.config.upload_temp_dir))
+                path_policy: PathPolicy = request.app.state.path_policy
+                for file in files:
+                    if not file.filename:
+                        continue
+                    try:
+                        destination = path_policy.safe_upload_destination(temp_dir, file.filename)
+                    except PathPolicyError as exc:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Unsafe upload filename rejected by PathPolicy: {exc.code}.",
+                        ) from exc
+                    destination.write_bytes(await file.read())
+                    uploaded_paths.append(destination)
             summary = assistant.build_knowledge_base_from_uploads(uploaded_paths)
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         finally:

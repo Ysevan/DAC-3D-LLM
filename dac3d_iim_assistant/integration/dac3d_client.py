@@ -17,6 +17,7 @@ from intent.structured_commands import (
     SUPPORTED_ACTIONS,
     CommandAction,
 )
+from security.path_policy import PathPolicy, PathPolicyError
 
 class DAC3DUnavailableError(RuntimeError):
     """Raised when a live DAC-3D adapter is requested but unavailable."""
@@ -35,10 +36,12 @@ class DAC3DClient:
         mock_mode: bool = True,
         endpoint: str = "mock://dac3d",
         runtime_bridge: Any | None = None,
+        path_policy: PathPolicy | None = None,
     ) -> None:
         self.mock_mode = mock_mode
         self.endpoint = endpoint
         self.runtime_bridge = runtime_bridge
+        self.path_policy = path_policy or PathPolicy.from_env()
         self._last_command: dict[str, Any] | None = None
         self._status = {
             "state": "idle",
@@ -248,11 +251,28 @@ class DAC3DClient:
             result["missing_requirements"].append("image_folder")
             return result
 
+        try:
+            self.path_policy.reject_unsafe_path_syntax(
+                str(image_folder),
+                purpose="offline_image_folder",
+            )
+        except PathPolicyError as exc:
+            result["missing_requirements"].append(f"path_policy:{exc.code}")
+            result["path_policy"] = _path_policy_payload(exc)
+            return result
+
         path = Path(str(image_folder))
         result["exists"] = path.exists()
         if not path.exists() or not path.is_dir():
             result["missing_requirements"].append("existing_directory")
             return result
+        try:
+            path = self.path_policy.validate_existing_input_dir(path)
+        except PathPolicyError as exc:
+            result["missing_requirements"].append(f"path_policy:{exc.code}")
+            result["path_policy"] = _path_policy_payload(exc)
+            return result
+        result["canonical_image_folder"] = str(path)
 
         image_files = [
             file
@@ -304,6 +324,13 @@ class DAC3DClient:
             payload = dict(command.get("payload") or {})
             if not payload.get("image_folder"):
                 raise DAC3DValidationError("Offline detection command must include payload.image_folder.")
+            if action == CommandAction.START_OFFLINE_DETECTION:
+                try:
+                    self.path_policy.validate_existing_input_dir(str(payload["image_folder"]))
+                except PathPolicyError as exc:
+                    raise DAC3DValidationError(
+                        f"Unsafe offline image folder rejected by PathPolicy: {exc.code}."
+                    ) from exc
         if action == CommandAction.START_ONLINE_SCAN:
             payload = dict(command.get("payload") or {})
             if payload.get("func") != "Scan":
@@ -321,6 +348,16 @@ class DAC3DClient:
                 "progress": 0,
                 "message": f"Invalid DAC-3D status file endpoint: {self.endpoint}",
                 "source": "status_file",
+            }
+        try:
+            path = self.path_policy.validate_status_file_read(path)
+        except PathPolicyError as exc:
+            return {
+                "state": "error",
+                "progress": 0,
+                "message": f"DAC-3D status file rejected by PathPolicy: {exc.code}.",
+                "source": "status_file",
+                "path_policy": _path_policy_payload(exc),
             }
         if not path.exists():
             return {
@@ -448,6 +485,12 @@ class DAC3DClient:
         command_path = self._command_file_path()
         if command_path is None:
             raise DAC3DUnavailableError("DAC-3D command bridge path is not configured.")
+        try:
+            command_path = self.path_policy.validate_command_output_path(command_path)
+        except PathPolicyError as exc:
+            raise DAC3DValidationError(
+                f"Unsafe DAC-3D command bridge path rejected by PathPolicy: {exc.code}."
+            ) from exc
 
         action = str(command["action"])
         command_id = uuid.uuid4().hex
@@ -529,3 +572,11 @@ class DAC3DClient:
             if key in bridge_result:
                 response[key] = bridge_result[key]
         return response
+
+
+def _path_policy_payload(exc: PathPolicyError) -> dict[str, Any]:
+    return {
+        "allowed": False,
+        "code": exc.code,
+        "message": str(exc),
+    }

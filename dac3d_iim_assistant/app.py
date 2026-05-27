@@ -33,6 +33,7 @@ from rag.prompts import (
     build_qa_prompt,
 )
 from rag.retriever import RetrievalItem, Retriever
+from security.path_policy import PathPolicy
 from ui.chat_widget import ChatWidget
 from ui.web_api import create_api_app
 
@@ -135,6 +136,7 @@ class DAC3DAssistant:
                 mock_mode=active_config.mock_mode,
                 endpoint=active_config.dac3d_endpoint,
                 runtime_bridge=runtime_bridge,
+                path_policy=PathPolicy.from_env(base_dir=active_config.base_dir),
             ),
         )
 

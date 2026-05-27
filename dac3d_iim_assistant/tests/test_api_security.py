@@ -159,6 +159,26 @@ def test_skill_patch_apply_requires_privileged_role(tmp_path) -> None:
     assert response.json()["error"]["code"] == "PRIVILEGED_ROLE_REQUIRED"
 
 
+def test_knowledge_base_upload_rejects_secret_filename(tmp_path) -> None:
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+
+    def fake_build(uploaded_paths: object) -> dict[str, object]:
+        del uploaded_paths
+        return {"uploaded": 0}
+
+    assistant.build_knowledge_base_from_uploads = fake_build
+    client = TestClient(create_api_app(assistant))
+
+    response = client.post(
+        "/api/knowledge-base/build",
+        files={"files": (".env", b"DAC3D_LLM_API_KEY=secret-value", "text/plain")},
+        headers=_headers(roles="operator"),
+    )
+
+    assert response.status_code == 400
+    assert "PathPolicy" in response.json()["error"]["message"]
+
+
 def test_stack_trace_not_leaked(tmp_path) -> None:
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
 
