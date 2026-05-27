@@ -262,6 +262,84 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/automations")
+    def list_agent_automations(
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_automations = getattr(assistant, "list_agent_automations", None)
+        if not callable(list_automations):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        return list_automations(session_id=session_id, status=status, limit=limit)
+
+    @app.get("/api/agent/automations/due")
+    def list_due_agent_automations(limit: int = 20) -> dict[str, Any]:
+        list_due = getattr(assistant, "list_due_agent_automations", None)
+        if not callable(list_due):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        return list_due(limit=limit)
+
+    @app.post("/api/agent/automations")
+    def create_agent_automation(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_automation = getattr(assistant, "create_agent_automation", None)
+        if not callable(create_automation):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        name = str(request.get("name") or "").strip()
+        prompt = str(request.get("prompt") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        if not prompt:
+            raise HTTPException(status_code=422, detail="The `prompt` field is required.")
+        try:
+            return create_automation(
+                name,
+                prompt,
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                schedule=request.get("schedule") if isinstance(request.get("schedule"), dict) else None,
+                status=str(request.get("status") or "active"),
+                task_id=str(request.get("task_id") or ""),
+                goal_id=str(request.get("goal_id") or ""),
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/automations/{automation_id}/status")
+    def update_agent_automation_status(
+        automation_id: str,
+        request: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_automation_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(automation_id, status, note=str(request.get("note") or ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/automations/{automation_id}/runs")
+    def record_agent_automation_run(
+        automation_id: str,
+        request: dict[str, Any] | None = Body(default=None),
+    ) -> dict[str, Any]:
+        record_run = getattr(assistant, "record_agent_automation_run", None)
+        if not callable(record_run):
+            raise HTTPException(status_code=503, detail="Agent automation planner is unavailable.")
+        payload = dict(request or {})
+        try:
+            return record_run(
+                automation_id,
+                result=str(payload.get("result") or ""),
+                status=str(payload.get("status") or "completed"),
+                trace_id=str(payload.get("trace_id") or ""),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.post("/api/evals/run")
     def run_evals(request: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
         request = dict(request or {})

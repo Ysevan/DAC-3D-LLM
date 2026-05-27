@@ -555,6 +555,50 @@ def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     assert workspace_response.json()["task_board"]["task_count"] == 1
 
 
+def test_web_api_agent_automation_planner_endpoints(tmp_path) -> None:
+    """The web UI should create, pause, record, and list automation plans."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/automations",
+        json={
+            "name": "每日 DAC 状态摘要",
+            "prompt": "每天生成一次 DAC-3D 状态摘要。",
+            "session_id": "automation-ui-session",
+            "schedule": {"type": "daily", "time": "08:30"},
+        },
+    )
+    automation_id = create_response.json()["automation"]["id"]
+    run_response = client.post(
+        f"/api/agent/automations/{automation_id}/runs",
+        json={"result": "已完成摘要。", "trace_id": "trace-web-auto"},
+    )
+    pause_response = client.post(
+        f"/api/agent/automations/{automation_id}/status",
+        json={"status": "paused", "note": "演示暂停。"},
+    )
+    list_response = client.get("/api/agent/automations?session_id=automation-ui-session")
+    due_response = client.get("/api/agent/automations/due")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["automation"]["schedule_summary"] == "daily at 08:30"
+    assert run_response.status_code == 200
+    assert run_response.json()["run"]["trace_id"] == "trace-web-auto"
+    assert pause_response.status_code == 200
+    assert pause_response.json()["automation"]["status"] == "paused"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert due_response.status_code == 200
+    assert due_response.json()["count"] == 0
+    assert workspace_response.json()["automations"]["automation_count"] == 1
+
+
 def test_web_api_goal_tracker_endpoints(tmp_path) -> None:
     """The web UI should create, update, complete, and list Agent goals."""
     config = make_config(tmp_path)

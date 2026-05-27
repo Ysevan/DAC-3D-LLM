@@ -780,6 +780,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["context_builder"]["backend"] == "context_builder"
     assert summary["context_builder"]["actions"] == ["write", "select", "compress", "isolate"]
     assert summary["task_board"]["backend"] == "local_agent_task_board"
+    assert summary["automations"]["backend"] == "local_automation_planner"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1104,6 +1105,40 @@ def test_agent_chat_adapter_task_board_roundtrip(tmp_path) -> None:
     assert listed["count"] == 1
     assert workspace["task_board"]["task_count"] == 1
     assert "task_board_card" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_automation_planner_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    adapter = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+
+    created = adapter.create_agent_automation(
+        "每班结束运行评测摘要",
+        "每班结束后运行本地 eval 并总结失败项。",
+        session_id="automation-agent",
+        schedule={"type": "interval", "interval_minutes": 120},
+    )
+    automation_id = created["automation"]["id"]
+    recorded = adapter.record_agent_automation_run(
+        automation_id,
+        result="本轮 eval 全部通过。",
+        trace_id="trace-auto-1",
+    )
+    paused = adapter.update_agent_automation_status(automation_id, "paused")
+    listed = adapter.list_agent_automations(session_id="automation-agent")
+    due = adapter.list_due_agent_automations()
+    workspace = adapter.agent_workspace()
+
+    assert created["automation"]["schedule_summary"] == "every 120 minutes"
+    assert recorded["automation"]["run_count"] == 1
+    assert recorded["run"]["trace_id"] == "trace-auto-1"
+    assert paused["automation"]["status"] == "paused"
+    assert listed["count"] == 1
+    assert due["count"] == 0
+    assert workspace["automations"]["automation_count"] == 1
+    assert "automation_planning" in workspace["workflow"]
 
 
 def test_agent_runtime_parser_supports_agent_project_commands() -> None:

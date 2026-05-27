@@ -29,7 +29,7 @@ from agent_core import (
 from app import AssistantResponse, DAC3DAssistant
 from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree
-from goals import GoalStore, TaskBoardStore
+from goals import AutomationPlannerStore, GoalStore, TaskBoardStore
 from memory import ConversationMemoryStore, LocalMemoryProvider
 from skill_system import SkillPatchStore, SkillRegistry
 from trace_eval import CodexHandoffGenerator, EvalDraftGenerator, EvalRunner, TraceLogger
@@ -2149,6 +2149,7 @@ class DAC3DAgentChatAdapter:
     context_tree: FileBackedContextTree | None = None
     goal_store: GoalStore | None = None
     task_board_store: TaskBoardStore | None = None
+    automation_store: AutomationPlannerStore | None = None
     trace_logger: TraceLogger | None = None
 
     def __post_init__(self) -> None:
@@ -2183,6 +2184,8 @@ class DAC3DAgentChatAdapter:
             self.goal_store = GoalStore.from_root(self.config.conversation_memory_dir)
         if self.task_board_store is None:
             self.task_board_store = TaskBoardStore.from_root(self.config.conversation_memory_dir)
+        if self.automation_store is None:
+            self.automation_store = AutomationPlannerStore.from_root(self.config.conversation_memory_dir)
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2294,6 +2297,11 @@ class DAC3DAgentChatAdapter:
             self.task_board_store.describe()
             if self.task_board_store is not None
             else {"enabled": False, "backend": "local_agent_task_board"}
+        )
+        summary["automations"] = (
+            self.automation_store.describe()
+            if self.automation_store is not None
+            else {"enabled": False, "backend": "local_automation_planner"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2439,6 +2447,11 @@ class DAC3DAgentChatAdapter:
             if self.task_board_store is not None
             else {"enabled": False, "backend": "local_agent_task_board"}
         )
+        automations = (
+            self.automation_store.describe()
+            if self.automation_store is not None
+            else {"enabled": False, "backend": "local_automation_planner"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2452,10 +2465,12 @@ class DAC3DAgentChatAdapter:
             "memory_os": memory,
             "goals": goals,
             "task_board": task_board,
+            "automations": automations,
             "workflow": [
                 "user_task",
                 "goal_tracking",
                 "task_board_card",
+                "automation_planning",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2583,6 +2598,90 @@ class DAC3DAgentChatAdapter:
             priority=priority,
         )
         return {"enabled": True, "preview": preview, **created}
+
+    def list_agent_automations(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent automation plans."""
+        if self.automation_store is None:
+            return {"enabled": False, "backend": "local_automation_planner", "automations": [], "count": 0}
+        return self.automation_store.list_automations(
+            session_id=session_id,
+            status=status,
+            limit=limit,
+        )
+
+    def list_due_agent_automations(self, *, limit: int = 20) -> dict[str, Any]:
+        """List active automation plans whose next_run_at is due."""
+        if self.automation_store is None:
+            return {"enabled": False, "backend": "local_automation_planner", "automations": [], "count": 0}
+        return self.automation_store.due_automations(limit=limit)
+
+    def create_agent_automation(
+        self,
+        name: str,
+        prompt: str,
+        *,
+        session_id: str = "web",
+        schedule: dict[str, Any] | None = None,
+        status: str = "active",
+        task_id: str = "",
+        goal_id: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a local scheduled automation definition."""
+        if self.automation_store is None:
+            raise ValueError("Automation planner is not enabled.")
+        return {
+            "enabled": True,
+            **self.automation_store.create_automation(
+                name,
+                prompt,
+                session_id=session_id,
+                schedule=schedule,
+                status=status,
+                task_id=task_id,
+                goal_id=goal_id,
+                metadata=metadata,
+            ),
+        }
+
+    def update_agent_automation_status(
+        self,
+        automation_id: str,
+        status: str,
+        *,
+        note: str = "",
+    ) -> dict[str, Any]:
+        """Pause, resume, or archive one local automation definition."""
+        if self.automation_store is None:
+            raise ValueError("Automation planner is not enabled.")
+        return {"enabled": True, **self.automation_store.update_status(automation_id, status, note=note)}
+
+    def record_agent_automation_run(
+        self,
+        automation_id: str,
+        *,
+        result: str = "",
+        status: str = "completed",
+        trace_id: str = "",
+    ) -> dict[str, Any]:
+        """Record one external/future-worker automation run result."""
+        if self.automation_store is None:
+            raise ValueError("Automation planner is not enabled.")
+        return {
+            "enabled": True,
+            **self.automation_store.record_run(
+                automation_id,
+                result=result,
+                status=status,
+                trace_id=trace_id,
+            ),
+        }
 
     def preview_agent_workflow(
         self,

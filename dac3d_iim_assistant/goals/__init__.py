@@ -1,6 +1,7 @@
 """Goal tracking for DAC-Agent Runtime."""
 
+from goals.automation_planner import AutomationPlannerStore
 from goals.store import GoalStore
 from goals.task_board import TaskBoardStore
 
-__all__ = ["GoalStore", "TaskBoardStore"]
+__all__ = ["AutomationPlannerStore", "GoalStore", "TaskBoardStore"]

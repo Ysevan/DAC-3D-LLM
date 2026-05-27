@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from goals import GoalStore, TaskBoardStore
+from goals import AutomationPlannerStore, GoalStore, TaskBoardStore
 
 
 def test_goal_store_tracks_progress_and_completion(tmp_path: Path) -> None:
@@ -79,3 +79,48 @@ def test_task_board_store_creates_card_from_workflow_preview(tmp_path: Path) -> 
     assert created["task"]["status"] == "ready"
     assert created["task"]["metadata"]["source"] == "workflow_preview"
     assert created["task"]["tool_candidates"] == ["dac3d_status"]
+
+
+def test_automation_planner_store_tracks_schedule_and_runs(tmp_path: Path) -> None:
+    store = AutomationPlannerStore.from_root(tmp_path)
+
+    created = store.create_automation(
+        "每日 DAC 状态摘要",
+        "每天生成一次 DAC-3D 运行状态摘要。",
+        session_id="automation-session",
+        schedule={"type": "daily", "time": "09:30"},
+    )
+    automation_id = created["automation"]["id"]
+    paused = store.update_status(automation_id, "paused", note="演示期间暂停。")
+    resumed = store.update_status(automation_id, "active")
+    run = store.record_run(
+        automation_id,
+        result="已生成状态摘要。",
+        trace_id="trace-123",
+    )
+    listed = store.list_automations(session_id="automation-session", status="active")
+
+    assert created["automation"]["schedule_summary"] == "daily at 09:30"
+    assert created["automation"]["next_run_at"]
+    assert paused["automation"]["status"] == "paused"
+    assert paused["automation"]["next_run_at"] == ""
+    assert resumed["automation"]["next_run_at"]
+    assert run["automation"]["run_count"] == 1
+    assert run["run"]["trace_id"] == "trace-123"
+    assert listed["count"] == 1
+    assert store.describe()["by_status"]["active"] == 1
+
+
+def test_automation_planner_store_validates_schedule(tmp_path: Path) -> None:
+    store = AutomationPlannerStore.from_root(tmp_path)
+
+    try:
+        store.create_automation(
+            "过短间隔",
+            "检查状态。",
+            schedule={"type": "interval", "interval_minutes": 1},
+        )
+    except ValueError as exc:
+        assert "interval_minutes" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected invalid interval to be rejected.")
