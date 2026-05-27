@@ -812,6 +812,45 @@ def test_web_api_agent_checkpoint_endpoints(tmp_path) -> None:
     assert workspace_response.json()["checkpoints"]["checkpoint_count"] == 1
 
 
+def test_web_api_agent_observability_endpoint(tmp_path) -> None:
+    """The web UI should read traces and workspace signal counts in one snapshot."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    assert agent_runtime.trace_logger is not None
+    agent_runtime.trace_logger.append(
+        {
+            "event_type": "agent_chat",
+            "session_id": "observability-ui-session",
+            "intent": "result_query",
+            "tool_calls": [{"name": "dac3d_latest_result"}],
+            "final_response": "ok",
+        }
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    client.post("/api/agent/events", json={"event_type": "workflow.resume"})
+    client.post("/api/agent/reviews", json={"title": "待评审输出"})
+    client.post(
+        "/api/agent/checkpoints",
+        json={"title": "恢复点", "state": {"step": "observe"}},
+    )
+    response = client.get("/api/agent/observability?recent_trace_limit=5")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["backend"] == "local_agent_observability"
+    assert payload["traces"]["by_intent"]["result_query"] == 1
+    assert payload["traces"]["tool_calls"]["dac3d_latest_result"] == 1
+    assert payload["attention"]["queued_events"] == 1
+    assert payload["attention"]["pending_reviews"] == 1
+    assert payload["attention"]["active_checkpoints"] == 1
+    assert workspace_response.json()["observability"]["recent_trace_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

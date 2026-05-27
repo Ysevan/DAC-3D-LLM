@@ -791,6 +791,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["verification_feedback"]["backend"] == "local_verification_runner"
     assert summary["review_handoffs"]["backend"] == "local_review_handoff_queue"
     assert summary["checkpoints"]["backend"] == "local_agent_checkpoint_store"
+    assert summary["observability"]["backend"] == "local_agent_observability"
 
 
 def test_agent_chat_adapter_persists_and_injects_json_memory(
@@ -1072,6 +1073,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "review_handoff_queue" in description["network_capabilities"]
     assert "code_symbol_navigator" in description["network_capabilities"]
     assert "workflow_checkpoint_store" in description["network_capabilities"]
+    assert "agent_observability_snapshot" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1331,6 +1333,41 @@ def test_agent_chat_adapter_checkpoint_roundtrip(tmp_path) -> None:
     assert workspace["checkpoints"]["checkpoint_count"] == 1
     assert workspace["checkpoints"]["last_restored_checkpoint_id"] == checkpoint_id
     assert "workflow_checkpoint" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_observability_snapshot(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+    assert adapter.trace_logger is not None
+    adapter.trace_logger.append(
+        {
+            "event_type": "agent_chat",
+            "session_id": "observe-agent",
+            "intent": "state_query",
+            "tool_calls": [{"name": "dac3d_status"}],
+            "final_response": "ok",
+        }
+    )
+    adapter.enqueue_agent_event("workflow.resume", session_id="observe-agent")
+    adapter.create_agent_review_handoff("待评审输出", session_id="observe-agent")
+    adapter.create_agent_checkpoint(
+        "恢复点",
+        state={"step": "observe"},
+        session_id="observe-agent",
+    )
+
+    snapshot = adapter.agent_observability(recent_trace_limit=5)
+    workspace = adapter.agent_workspace()
+
+    assert snapshot["traces"]["by_intent"]["state_query"] == 1
+    assert snapshot["traces"]["tool_calls"]["dac3d_status"] == 1
+    assert snapshot["attention"]["queued_events"] == 1
+    assert snapshot["attention"]["pending_reviews"] == 1
+    assert snapshot["attention"]["active_checkpoints"] == 1
+    assert workspace["observability"]["attention"]["queued_events"] == 1
+    assert "observability_snapshot" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

@@ -4,6 +4,7 @@ from goals.artifacts import ArtifactStore
 from goals.automation_planner import AutomationPlannerStore
 from goals.checkpoints import CheckpointStore
 from goals.event_queue import EventQueueStore
+from goals.observability import ObservabilityReporter
 from goals.review_handoff import ReviewHandoffStore
 from goals.store import GoalStore
 from goals.task_board import TaskBoardStore
@@ -16,6 +17,7 @@ __all__ = [
     "CheckpointStore",
     "EventQueueStore",
     "GoalStore",
+    "ObservabilityReporter",
     "ReviewHandoffStore",
     "TaskBoardStore",
     "VerificationRunnerStore",

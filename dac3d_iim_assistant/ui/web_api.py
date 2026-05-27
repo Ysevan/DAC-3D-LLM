@@ -69,6 +69,16 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             raise HTTPException(status_code=503, detail="Agent workspace is unavailable.")
         return workspace()
 
+    @app.get("/api/agent/observability")
+    def agent_observability(recent_trace_limit: int = 20) -> dict[str, Any]:
+        observability = getattr(assistant, "agent_observability", None)
+        if not callable(observability):
+            raise HTTPException(status_code=503, detail="Agent observability is unavailable.")
+        try:
+            return observability(recent_trace_limit=recent_trace_limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/verifications")
     def list_agent_verification_runs(
         status: str | None = None,

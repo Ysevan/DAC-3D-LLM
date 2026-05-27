@@ -35,6 +35,7 @@ from goals import (
     CheckpointStore,
     EventQueueStore,
     GoalStore,
+    ObservabilityReporter,
     ReviewHandoffStore,
     TaskBoardStore,
     VerificationRunnerStore,
@@ -1211,6 +1212,7 @@ class DAC3DAgentRuntime:
                 "review_handoff_queue",
                 "code_symbol_navigator",
                 "workflow_checkpoint_store",
+                "agent_observability_snapshot",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2177,6 +2179,7 @@ class DAC3DAgentChatAdapter:
     review_handoff_store: ReviewHandoffStore | None = None
     checkpoint_store: CheckpointStore | None = None
     trace_logger: TraceLogger | None = None
+    observability_reporter: ObservabilityReporter | None = None
 
     def __post_init__(self) -> None:
         if self.memory_store is None and self.runtime.memory_store is not None:
@@ -2246,6 +2249,14 @@ class DAC3DAgentChatAdapter:
             )
         if self.trace_logger is None:
             self.trace_logger = TraceLogger(self.config.conversation_memory_dir / "agent_traces.jsonl")
+        if self.observability_reporter is None:
+            self.observability_reporter = ObservabilityReporter(
+                trace_logger=self.trace_logger,
+                event_queue_store=self.event_queue_store,
+                verification_store=self.verification_store,
+                review_handoff_store=self.review_handoff_store,
+                checkpoint_store=self.checkpoint_store,
+            )
 
     @property
     def config(self) -> AppConfig:
@@ -2395,6 +2406,11 @@ class DAC3DAgentChatAdapter:
             self.checkpoint_store.describe()
             if self.checkpoint_store is not None
             else {"enabled": False, "backend": "local_agent_checkpoint_store"}
+        )
+        summary["observability"] = (
+            self.observability_reporter.describe()
+            if self.observability_reporter is not None
+            else {"enabled": False, "backend": "local_agent_observability"}
         )
         summary["trace_eval"] = {
             "trace_logger": self.trace_logger.describe()
@@ -2590,6 +2606,11 @@ class DAC3DAgentChatAdapter:
             if self.checkpoint_store is not None
             else {"enabled": False, "backend": "local_agent_checkpoint_store"}
         )
+        observability = (
+            self.observability_reporter.describe()
+            if self.observability_reporter is not None
+            else {"enabled": False, "backend": "local_agent_observability"}
+        )
         return {
             "enabled": True,
             "backend": "dac_agent_workspace",
@@ -2613,6 +2634,7 @@ class DAC3DAgentChatAdapter:
             "verification_feedback": verification_feedback,
             "review_handoffs": review_handoffs,
             "checkpoints": checkpoints,
+            "observability": observability,
             "workflow": [
                 "user_task",
                 "goal_tracking",
@@ -2624,6 +2646,7 @@ class DAC3DAgentChatAdapter:
                 "verification_feedback",
                 "review_handoff",
                 "workflow_checkpoint",
+                "observability_snapshot",
                 "coordinator_route",
                 "skill_selection",
                 "context_tree_search",
@@ -2653,6 +2676,12 @@ class DAC3DAgentChatAdapter:
                 "checkpoints": (workspace.get("checkpoints") or {}).get("checkpoint_count", 0),
             },
         }
+
+    def agent_observability(self, *, recent_trace_limit: int = 20) -> dict[str, Any]:
+        """Return a read-only observability snapshot across Agent workspace signals."""
+        if self.observability_reporter is None:
+            raise ValueError("Agent observability is not enabled.")
+        return self.observability_reporter.snapshot(recent_trace_limit=recent_trace_limit)
 
     def list_agent_verification_presets(self) -> dict[str, Any]:
         """List runnable local verification feedback presets."""

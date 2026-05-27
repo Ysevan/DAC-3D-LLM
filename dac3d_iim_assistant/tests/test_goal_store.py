@@ -10,11 +10,13 @@ from goals import (
     CheckpointStore,
     EventQueueStore,
     GoalStore,
+    ObservabilityReporter,
     ReviewHandoffStore,
     TaskBoardStore,
     VerificationRunnerStore,
     WorkflowTemplateStore,
 )
+from trace_eval import TraceLogger
 
 
 def test_goal_store_tracks_progress_and_completion(tmp_path: Path) -> None:
@@ -336,3 +338,41 @@ def test_checkpoint_store_captures_and_restores_resume_state(tmp_path: Path) -> 
     assert read["checkpoint"]["history"][-1]["actor"] == "agent-worker"
     assert summary["last_restored_checkpoint_id"] == checkpoint_id
     assert summary["by_status"]["restored"] == 1
+
+
+def test_observability_reporter_summarizes_workspace_signals(tmp_path: Path) -> None:
+    trace_logger = TraceLogger(tmp_path / "agent_traces.jsonl")
+    event_store = EventQueueStore.from_root(tmp_path)
+    verification_store = VerificationRunnerStore.from_root(tmp_path, tmp_path)
+    review_store = ReviewHandoffStore.from_root(tmp_path)
+    checkpoint_store = CheckpointStore.from_root(tmp_path)
+    trace_logger.append(
+        {
+            "event_type": "agent_chat",
+            "session_id": "observe-session",
+            "intent": "query",
+            "tool_calls": [{"name": "dac3d_answer"}],
+            "final_response": "ok",
+        }
+    )
+    event_store.enqueue_event("workflow.resume", session_id="observe-session")
+    review_store.create_review("待评审输出", session_id="observe-session")
+    checkpoint_store.create_checkpoint("恢复点", state={"step": "observe"}, session_id="observe-session")
+    reporter = ObservabilityReporter(
+        trace_logger=trace_logger,
+        event_queue_store=event_store,
+        verification_store=verification_store,
+        review_handoff_store=review_store,
+        checkpoint_store=checkpoint_store,
+    )
+
+    snapshot = reporter.snapshot()
+    summary = reporter.describe()
+
+    assert snapshot["backend"] == "local_agent_observability"
+    assert snapshot["traces"]["by_intent"]["query"] == 1
+    assert snapshot["traces"]["tool_calls"]["dac3d_answer"] == 1
+    assert snapshot["attention"]["queued_events"] == 1
+    assert snapshot["attention"]["pending_reviews"] == 1
+    assert snapshot["attention"]["active_checkpoints"] == 1
+    assert summary["recent_trace_count"] == 1
