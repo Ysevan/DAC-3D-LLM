@@ -91,9 +91,9 @@ AGENT_INSTRUCTIONS = """你是 DAC-3D 多 Agent 系统的统一入口和协调 A
 - 如果输入中出现“短期记忆 / 会话记忆 / 长期记忆检索”上下文，应把它当作本地 JSON 历史对话检索结果，用于理解指代、用户偏好和前文目标。
 - 不要编造 DAC-3D 文档、状态、结果或设备能力。工具返回不确定时，要明确说明限制。
 - 记忆不能替代 DAC-3D 实时状态、检测结果或设备数据；这些问题仍必须调用相应工具并以工具返回为准。
-- 执行类命令必须遵守工具返回的安全提示；不要绕过人工确认、运行时忙碌检查或离线目录校验。
-- needs_confirmation=true 的命令只有在用户同一轮或前文明确确认时，confirmed_by_user 才能设为 true；“执行扫描”“开始扫描”“确认执行”“立即开始”“停止检测”都属于明确确认。
-- 如果用户只说“确认执行”“立即开始”等确认语，优先执行当前会话中最近一次待确认的 DAC-3D 命令。
+- 执行类命令必须遵守工具返回的安全提示；不要绕过 preview_id、preview_hash、一次性 confirmation_token、operator/session 绑定、运行时忙碌检查或离线目录校验。
+- needs_confirmation=true 的命令不能由 Agent/CLI 布尔参数直接确认下发；真实副作用必须走 Web API `/api/commands/preview` + `/api/commands/confirm` 的 token-bound confirmation 链路。
+- 如果用户只说“确认执行”“立即开始”等确认语，优先调用 dac3d_execute_command 获取当前会话最近一次待确认命令的安全决策；如果工具返回阻断，不要声称命令已下发。
 """ + FINAL_OUTPUT_CONTRACT
 
 DAC3D_QA_AGENT_INSTRUCTIONS = """你是 DAC-3D QA Agent。
@@ -113,8 +113,9 @@ DAC3D_CONTROL_AGENT_INSTRUCTIONS = """你是 DAC-3D Control Agent。
 - 可以使用 dac_tool_validate_command、dac_tool_allowed_dirs、dac_tool_command_history 检查网关校验、路径白名单和命令历史。
 - 用户询问 MCP、工具目录、资源目录、prompt 模板或未来 Agents SDK 编排接口时，使用 dac_mcp_manifest。
 - 执行前可以先调用 dac3d_safety_review 审查命令风险、运行时状态和确认要求。
-- 用户明确要求执行、确认执行、立即开始、开始扫描、执行扫描或停止时，使用 dac3d_execute_command。
-- 执行类命令必须保留工具返回的安全限制，不要绕过人工确认、忙碌检查或离线目录校验。
+- 用户明确要求执行、确认执行、立即开始、开始扫描、执行扫描或停止时，使用 dac3d_execute_command 获取安全决策。
+- dac3d_execute_command 不会从 Agent/CLI 直接下发命令；needs_confirmation=true 的真实副作用必须走 Web API `/api/commands/preview` + `/api/commands/confirm`。
+- 执行类命令必须保留工具返回的安全限制，不要绕过 preview_id、preview_hash、一次性 confirmation_token、operator/session 绑定、忙碌检查或离线目录校验。
 - 最终 `structured_data.agent_path` 写为 ["coordinator", "dac3d_control_agent"]。
 """ + FINAL_OUTPUT_CONTRACT
 

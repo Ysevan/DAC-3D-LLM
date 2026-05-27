@@ -11,6 +11,14 @@ from machine_agent import MachineAgentService
 from tool_gateway import DAC3DToolGateway, to_mcp_capability_manifest
 
 
+TOKEN_BOUND_CONFIRMATION_REQUIRED = "TOKEN_BOUND_CONFIRMATION_REQUIRED"
+TOKEN_BOUND_CONFIRMATION_MESSAGE = (
+    "Agent/CLI 直接确认执行已被安全策略阻断。真实下发必须通过 "
+    "Web API 的 /api/commands/preview 与 /api/commands/confirm 完成，"
+    "并校验 preview_id、preview_hash、一次性 confirmation_token、operator 和 session。"
+)
+
+
 class DAC3DAgentToolController:
     """Bind DAC-3D assistant operations to Agent tools for one session."""
 
@@ -48,29 +56,24 @@ class DAC3DAgentToolController:
         *,
         confirmed_by_user: bool = False,
     ) -> dict[str, Any]:
-        """Execute a new command or the latest pending command in this session."""
+        """Preview command execution; block direct Agent/CLI confirmed submission."""
         if confirmed_by_user and self.sessions.should_use_pending_confirmation(instruction):
             pending = self.sessions.get_pending_command(self.session_id)
             if pending is not None:
-                preview = deepcopy(pending.command_preview)
-                gateway = dict(preview.get("gateway") or {})
-                return self.gateway.submit_command(
-                    str(gateway.get("preview_id") or ""),
-                    str(gateway.get("confirmation_token") or ""),
+                return self._with_token_bound_confirmation_block(
+                    self._pending_command_payload(pending.command_preview)
                 )
+
+        if confirmed_by_user:
+            payload = self.preview_command(instruction)
+            return self._with_token_bound_confirmation_block(payload)
 
         preview_payload = self.gateway.preview_command(instruction)
         preview = preview_payload.get("command_preview")
-        if confirmed_by_user and isinstance(preview, dict) and not preview.get("missing_fields"):
-            gateway = dict(preview.get("gateway") or {})
-            return self.gateway.submit_command(
-                str(gateway.get("preview_id") or ""),
-                str(gateway.get("confirmation_token") or ""),
-            )
         if isinstance(preview, dict) and dict(preview.get("safety") or {}).get("needs_confirmation"):
             preview_payload["answer"] = (
                 "已生成 DAC-3D 控制命令，但该命令需要用户明确确认后才会下发。"
-                "如果确认执行，请明确说明“确认执行”或“立即开始”。"
+                "真实下发必须通过 Web API 的 preview/confirm 一次性 token 确认链路。"
             )
         return preview_payload
 
@@ -179,6 +182,69 @@ class DAC3DAgentToolController:
 
     def _agent_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         result = dict(payload)
+        result["agent_session"] = self.sessions.describe_session(self.session_id)
+        return result
+
+    def _pending_command_payload(self, command_preview: dict[str, Any]) -> dict[str, Any]:
+        """Return a UI-shaped payload for an existing pending command preview."""
+        return {
+            "intent": "operation",
+            "answer": "已找到当前会话的待确认 DAC-3D 命令预览。",
+            "sources": [],
+            "source_items": [],
+            "command_preview": deepcopy(command_preview),
+            "status_summary": None,
+            "parsed_result": {},
+            "agent_session": self.sessions.describe_session(self.session_id),
+        }
+
+    def _with_token_bound_confirmation_block(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Mark an Agent/CLI direct submit attempt as blocked at the tool boundary."""
+        result = dict(payload)
+        policy_decision = {
+            "allowed": False,
+            "reason": TOKEN_BOUND_CONFIRMATION_REQUIRED,
+            "message": TOKEN_BOUND_CONFIRMATION_MESSAGE,
+            "confirmation_flow": "api_preview_confirm_token",
+            "direct_agent_submit_allowed": False,
+            "requires_preview_id": True,
+            "requires_preview_hash": True,
+            "requires_one_time_token": True,
+            "requires_operator_session": True,
+        }
+        confirmation = dict(result.get("confirmation") or {})
+        preview = result.get("command_preview")
+        gateway = preview.get("gateway") if isinstance(preview, dict) else {}
+        if isinstance(gateway, dict):
+            confirmation.setdefault("preview_id", gateway.get("preview_id"))
+            confirmation.setdefault("preview_hash", gateway.get("preview_hash"))
+            confirmation.setdefault("expires_at", gateway.get("confirmation_expires_at"))
+        confirmation.update(
+            {
+                "required": True,
+                "mode": "api_preview_confirm_token",
+                "blocked_direct_submit": True,
+                "reason": TOKEN_BOUND_CONFIRMATION_REQUIRED,
+            }
+        )
+        parsed_result = result.get("parsed_result")
+        if not isinstance(parsed_result, dict):
+            parsed_result = {}
+        parsed_result = dict(parsed_result)
+        parsed_result["policy_decision"] = policy_decision
+        parsed_result["confirmation"] = {
+            key: value
+            for key, value in confirmation.items()
+            if key != "confirmation_token"
+        }
+
+        result["answer"] = (
+            "已生成 DAC-3D 控制命令预览，但 Agent/CLI 的直接确认执行已被安全策略阻断。"
+            "真实下发必须走 Web API 的 preview/confirm 一次性 token 确认链路。"
+        )
+        result["policy_decision"] = policy_decision
+        result["confirmation"] = confirmation
+        result["parsed_result"] = parsed_result
         result["agent_session"] = self.sessions.describe_session(self.session_id)
         return result
 

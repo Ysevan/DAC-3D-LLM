@@ -153,12 +153,14 @@ def test_tool_controller_submits_only_pending_preview_with_gateway_confirmation(
     preview_payload = controller.preview_command("扫描 10mm x 10mm 区域")
     pending = sessions.get_pending_command("gateway-submit")
     invalid_submit = controller.gateway.submit_command("wrong-preview", "wrong-token")
-    submitted = controller.execute_command("确认执行", confirmed_by_user=True)
+    direct_submit = controller.execute_command("确认执行", confirmed_by_user=True)
+    assert pending is not None
+    submitted = controller.gateway.submit_command(pending.preview_id, pending.confirmation_token)
     history = controller.read_command_history(limit=10)
 
-    assert pending is not None
     assert preview_payload["command_preview"]["gateway"]["preview_id"]
     assert invalid_submit["parsed_result"]["tool_gateway"]["blocked"] is True
+    assert direct_submit["policy_decision"]["reason"] == "TOKEN_BOUND_CONFIRMATION_REQUIRED"
     assert submitted["status_summary"]["state"] == "queued"
     assert sessions.get_pending_command("gateway-submit") is None
     assert [event["event"] for event in history["result"]["events"]] == [

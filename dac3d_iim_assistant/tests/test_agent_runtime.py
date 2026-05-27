@@ -87,7 +87,7 @@ class FakeControlModel(Model):
                     content=[
                         ResponseOutputText(
                             annotations=[],
-                            text="已通过 Agent 下发在线扫描。",
+                            text="Agent 直接下发已被安全策略阻断，需要通过 Web API token 确认。",
                             type="output_text",
                         )
                     ],
@@ -664,7 +664,7 @@ def test_agent_runtime_requires_confirmation_for_control_command(tmp_path) -> No
     assert assistant.dac3d_client.runtime_snapshot()["last_command_action"] is None
 
 
-def test_agent_runtime_executes_confirmed_control_command(tmp_path) -> None:
+def test_agent_runtime_blocks_confirmed_control_command_without_api_token(tmp_path) -> None:
     config = make_agent_config(tmp_path)
     assistant = DAC3DAssistant.create(config=config)
     runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
@@ -673,11 +673,14 @@ def test_agent_runtime_executes_confirmed_control_command(tmp_path) -> None:
 
     assert payload["intent"] == "operation"
     assert payload["command_preview"]["action"] == "start_online_scan"
-    assert payload["status_summary"]["state"] == "queued"
-    assert assistant.dac3d_client.runtime_snapshot()["last_command_action"] == "start_online_scan"
+    assert payload["policy_decision"]["allowed"] is False
+    assert payload["policy_decision"]["reason"] == "TOKEN_BOUND_CONFIRMATION_REQUIRED"
+    assert payload["confirmation"]["blocked_direct_submit"] is True
+    assert payload["agent_session"]["has_pending_command"] is True
+    assert assistant.dac3d_client.runtime_snapshot()["last_command_action"] is None
 
 
-def test_agent_runtime_executes_chinese_direct_scan_command(tmp_path) -> None:
+def test_agent_runtime_blocks_chinese_direct_scan_command_without_api_token(tmp_path) -> None:
     config = make_agent_config(tmp_path)
     assistant = DAC3DAssistant.create(config=config)
     runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
@@ -687,10 +690,32 @@ def test_agent_runtime_executes_chinese_direct_scan_command(tmp_path) -> None:
     assert payload["intent"] == "operation"
     assert payload["command_preview"]["action"] == "start_online_scan"
     assert payload["command_preview"]["payload"]["func"] == "Scan"
-    assert payload["status_summary"]["state"] == "queued"
+    assert payload["policy_decision"]["reason"] == "TOKEN_BOUND_CONFIRMATION_REQUIRED"
+    assert payload["confirmation"]["mode"] == "api_preview_confirm_token"
+    assert assistant.dac3d_client.runtime_snapshot()["last_command_action"] is None
 
 
-def test_agent_runtime_writes_confirmed_command_to_file_bridge(tmp_path) -> None:
+def test_agent_runtime_blocks_pending_confirmation_without_api_token(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+
+    preview = runtime.preview_command("start online scan", session_id="operator-session")
+    payload = runtime.execute_command(
+        "确认执行",
+        confirmed_by_user=True,
+        session_id="operator-session",
+    )
+
+    assert preview["agent_session"]["has_pending_command"] is True
+    assert payload["command_preview"]["action"] == "start_online_scan"
+    assert payload["policy_decision"]["reason"] == "TOKEN_BOUND_CONFIRMATION_REQUIRED"
+    assert payload["policy_decision"]["requires_one_time_token"] is True
+    assert payload["agent_session"]["has_pending_command"] is True
+    assert assistant.dac3d_client.runtime_snapshot()["last_command_action"] is None
+
+
+def test_agent_runtime_blocks_confirmed_command_file_bridge_without_api_token(tmp_path) -> None:
     status_file = tmp_path / "dac3d_runtime_status.json"
     command_file = tmp_path / "dac3d_assistant_command.json"
     status_file.write_text(
@@ -712,14 +737,12 @@ def test_agent_runtime_writes_confirmed_command_to_file_bridge(tmp_path) -> None
         else:
             os.environ["DAC3D_COMMAND_PATH"] = old_command_path
 
-    command_payload = json.loads(command_file.read_text(encoding="utf-8"))
-    assert payload["status_summary"]["state"] == "command_sent"
-    assert payload["status_summary"]["source"] == "command_file_bridge"
-    assert command_payload["status"] == "pending"
-    assert command_payload["command"]["action"] == "start_online_scan"
+    assert payload["command_preview"]["action"] == "start_online_scan"
+    assert payload["policy_decision"]["reason"] == "TOKEN_BOUND_CONFIRMATION_REQUIRED"
+    assert not command_file.exists()
 
 
-def test_agent_runtime_writes_chinese_direct_scan_to_file_bridge(tmp_path) -> None:
+def test_agent_runtime_blocks_chinese_direct_scan_file_bridge_without_api_token(tmp_path) -> None:
     status_file = tmp_path / "dac3d_runtime_status.json"
     command_file = tmp_path / "dac3d_assistant_command.json"
     status_file.write_text(
@@ -741,10 +764,10 @@ def test_agent_runtime_writes_chinese_direct_scan_to_file_bridge(tmp_path) -> No
         else:
             os.environ["DAC3D_COMMAND_PATH"] = old_command_path
 
-    command_payload = json.loads(command_file.read_text(encoding="utf-8"))
-    assert payload["status_summary"]["source"] == "command_file_bridge"
-    assert command_payload["command"]["action"] == "start_online_scan"
-    assert command_payload["command"]["payload"]["func"] == "Scan"
+    assert payload["command_preview"]["action"] == "start_online_scan"
+    assert payload["command_preview"]["payload"]["func"] == "Scan"
+    assert payload["policy_decision"]["reason"] == "TOKEN_BOUND_CONFIRMATION_REQUIRED"
+    assert not command_file.exists()
 
 
 def test_agents_sdk_dialogue_tool_call_controls_runtime_without_network(tmp_path) -> None:
@@ -761,8 +784,8 @@ def test_agents_sdk_dialogue_tool_call_controls_runtime_without_network(tmp_path
         run_config=RunConfig(tracing_disabled=True),
     )
 
-    assert result.final_output == "已通过 Agent 下发在线扫描。"
-    assert assistant.dac3d_client.runtime_snapshot()["last_command_action"] == "start_online_scan"
+    assert result.final_output == "Agent 直接下发已被安全策略阻断，需要通过 Web API token 确认。"
+    assert assistant.dac3d_client.runtime_snapshot()["last_command_action"] is None
 
 
 def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
@@ -1082,6 +1105,8 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert description["conversation_memory"]["backend"] == "json+markdown"
     assert description["control"]["execute_tool"] == "dac3d_execute_command"
     assert description["control"]["safety_review_tool"] == "dac3d_safety_review"
+    assert description["control"]["direct_agent_submit_allowed"] is False
+    assert description["control"]["confirmation_flow"] == "api_preview_confirm_token"
     assert description["model_provider"]["resolved_api_type"] == "responses"
 
 

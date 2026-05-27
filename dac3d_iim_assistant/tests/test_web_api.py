@@ -482,7 +482,7 @@ def test_web_api_procedure_memory_uses_patch_approval_before_markdown_write(tmp_
     assert patch["status"] == "pending"
     assert not procedure_path.exists()
 
-    approve_response = client.post(f"/api/memory/patches/{patch['id']}/approve")
+    approve_response = client.post(f"/api/memory/patches/{patch['id']}/approve", headers=ADMIN_HEADERS)
     list_response = client.get("/api/memory/procedures")
     read_response = client.get("/api/memory/procedures/offline-inspection-flow")
 
@@ -616,7 +616,7 @@ def test_web_api_agent_workflow_template_endpoints(tmp_path) -> None:
         f"/api/agent/workflows/{workflow_id}/status",
         json={"status": "archived"},
     )
-    workspace_response = client.get("/api/agent/workspace")
+    workspace_response = client.get("/api/agent/workspace", headers=SESSION_HEADERS)
 
     assert create_response.status_code == 200
     assert create_response.json()["workflow"]["metadata"]["source"] == "workflow_preview"
@@ -655,7 +655,7 @@ def test_web_api_agent_artifact_store_endpoints(tmp_path) -> None:
         "/api/agent/artifacts?session_id=artifact-ui-session&artifact_type=json&q=queued"
     )
     read_response = client.get(f"/api/agent/artifacts/{artifact_id}")
-    workspace_response = client.get("/api/agent/workspace")
+    workspace_response = client.get("/api/agent/workspace", headers=SESSION_HEADERS)
 
     assert create_response.status_code == 200
     assert create_response.json()["artifact"]["artifact_type"] == "json"
@@ -689,7 +689,7 @@ def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
         json={"status": "in_progress", "note": "UI 已开始处理。"},
     )
     list_response = client.get("/api/agent/tasks?session_id=task-ui-session&status=in_progress")
-    workspace_response = client.get("/api/agent/workspace")
+    workspace_response = client.get("/api/agent/workspace", headers=SESSION_HEADERS)
 
     assert create_response.status_code == 200
     assert create_response.json()["task"]["metadata"]["source"] == "workflow_preview"
@@ -729,7 +729,7 @@ def test_web_api_agent_automation_planner_endpoints(tmp_path) -> None:
     )
     list_response = client.get("/api/agent/automations?session_id=automation-ui-session")
     due_response = client.get("/api/agent/automations/due")
-    workspace_response = client.get("/api/agent/workspace")
+    workspace_response = client.get("/api/agent/workspace", headers=SESSION_HEADERS)
 
     assert create_response.status_code == 200
     assert create_response.json()["automation"]["schedule_summary"] == "daily at 08:30"

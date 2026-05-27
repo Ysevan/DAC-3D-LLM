@@ -4,15 +4,19 @@
 
 审查范围：`dac3d_iim_assistant/` 的 Agent、Tool、Command、Path/File、Memory、API/UI、Trace/Logging、Supply Chain/CI 安全面。结论以生产启用 `DAC3D_ALLOW_COMMAND_SUBMIT=true`、真实 DAC-3D 桥接写入、长期 memory 写入为上线假设。
 
+## S15-1 已修复
+
+- Agent/CLI 的 `confirmed_by_user` 直通提交已被禁用。`dac3d_execute_command` 和 CLI `--execute-command --confirmed` 现在只返回命令预览与 `TOKEN_BOUND_CONFIRMATION_REQUIRED` 安全决策，不再写入 mock runtime 或 command-file bridge。
+- 真实命令下发仍只允许走 Web API `/api/commands/preview` + `/api/commands/confirm`，并绑定 `preview_id`、`preview_hash`、一次性 `confirmation_token`、operator 和 session。
+- 已补回归测试覆盖英文直通、中文“执行扫描”、pending preview 后“确认执行”、command-file bridge 不写出，以及 Agents SDK 工具调用不改变 runtime。
+
 ## P0 必须修复
 
-1. Agent/CLI 仍存在确认布尔值执行路径，未绑定 Web API 的 `preview_id`、`preview_hash`、一次性 token、operator/session。`agent_runtime.py` 的 `--execute-command --confirmed` 会直接进入 `runtime.execute_command(... confirmed_by_user=args.confirmed)`；OpenAI Agents SDK 工具 `dac3d_execute_command` 也把 `confirmed_by_user` 暴露给模型工具参数。Web API 已经有 token 链路，但 Agent/CLI 路径仍可绕过 S8 的确认生命周期。上线前必须把所有命令提交统一收口到同一确认服务，或在生产禁用 Agent/CLI 直接提交。参考：`dac3d_iim_assistant/agent_runtime.py:315`、`:560`、`:944`、`:1016`，`dac3d_iim_assistant/agent_core/tools.py:41`。
+1. Tool Gateway/PolicyEngine 还不是强制边界。当前工具是 `agent_runtime.py` 内直接注册的一组 `function_tool`，再调用 `DAC3DAgentToolController`；没有一个所有工具调用都必须经过的注册表、schema 校验、policy decision、risk classification 与 fail-closed 网关。高风险命令在 Web API 有确认，但 machine tools、KB rebuild、未来 remote/open-world/file tools 没有统一策略面。上线前必须先引入中心化 `ToolGateway`，所有 Agent 工具只调用网关，未注册工具默认拒绝。
 
-2. Tool Gateway/PolicyEngine 还不是强制边界。当前工具是 `agent_runtime.py` 内直接注册的一组 `function_tool`，再调用 `DAC3DAgentToolController`；没有一个所有工具调用都必须经过的注册表、schema 校验、policy decision、risk classification 与 fail-closed 网关。高风险命令在 Web API 有确认，但 machine tools、KB rebuild、未来 remote/open-world/file tools 没有统一策略面。上线前必须先引入中心化 `ToolGateway`，所有 Agent 工具只调用网关，未注册工具默认拒绝。
+2. Path/File 策略不完整。知识库上传只做了 `Path(file.filename).name` 落到临时目录，离线目录校验和 command bridge 写入直接使用传入或配置路径；目前没有统一 canonicalize、`../` 阻断、symlink escape 阻断、allowlist 外拒绝、secret 文件读取拒绝、任意覆盖拒绝策略。上线前必须新增中心化 PathPolicy，并覆盖 `integration/dac3d_client.py` 的离线目录读取与 command 文件写入。参考：`dac3d_iim_assistant/ui/web_api.py:303`、`dac3d_iim_assistant/integration/dac3d_client.py:251`、`:436`、`:462`。
 
-3. Path/File 策略不完整。知识库上传只做了 `Path(file.filename).name` 落到临时目录，离线目录校验和 command bridge 写入直接使用传入或配置路径；目前没有统一 canonicalize、`../` 阻断、symlink escape 阻断、allowlist 外拒绝、secret 文件读取拒绝、任意覆盖拒绝策略。上线前必须新增中心化 PathPolicy，并覆盖 `integration/dac3d_client.py` 的离线目录读取与 command 文件写入。参考：`dac3d_iim_assistant/ui/web_api.py:303`、`dac3d_iim_assistant/integration/dac3d_client.py:251`、`:436`、`:462`。
-
-4. 长期 memory 写入仍未经过 approval 生命周期。`ConversationMemoryStore.append_turn()` 已拒绝 secret-like 内容，但 `agent_runtime.py` 在每轮结束后会直接 `_remember_turn()`，并写入 session JSON 和全局 index；`/api/memory/approve`、`/api/memory/reject` 还是 501 占位。上线前必须把长期写入改成 pending patch，经授权 operator 审批后落库，rejected/deleted memory 不得进入上下文。参考：`dac3d_iim_assistant/agent_runtime.py:917`、`dac3d_iim_assistant/memory/conversation_store.py:142`、`dac3d_iim_assistant/ui/web_api.py:259`。
+3. 长期 memory 写入仍未经过 approval 生命周期。`ConversationMemoryStore.append_turn()` 已拒绝 secret-like 内容，但 `agent_runtime.py` 在每轮结束后会直接 `_remember_turn()`，并写入 session JSON 和全局 index；`/api/memory/approve`、`/api/memory/reject` 还是 501 占位。上线前必须把长期写入改成 pending patch，经授权 operator 审批后落库，rejected/deleted memory 不得进入上下文。参考：`dac3d_iim_assistant/agent_runtime.py:917`、`dac3d_iim_assistant/memory/conversation_store.py:142`、`dac3d_iim_assistant/ui/web_api.py:259`。
 
 ## P1 建议修复
 
@@ -47,10 +51,10 @@
 - 前端不使用 `dangerouslySetInnerHTML`、`.innerHTML`、`eval`、`new Function`，并显示高风险确认、preview hash、trace_id、错误 trace_id。
 - CI 安全工作流已覆盖 pytest、compileall、ruff、bandit、pip-audit、npm audit、frontend build、static scan、security eval smoke。
 - red-team cases 已覆盖 prompt injection、indirect prompt injection、RAG poisoning、memory poisoning、confirmation bypass、path traversal、secret exfiltration、tool misuse、API auth bypass、trace tampering、XSS 输出注入、DoS oversized input 等类别。
+- Agent/CLI 直接执行命令已 fail closed；confirmed flag 只返回 token-bound confirmation 要求，不能直接提交到 mock runtime 或 command-file bridge。
 
 ## 缺失测试
 
-- Agent/CLI 直接执行命令必须被禁用或强制 token-bound confirmation 的回归测试。
 - 所有 function tools 必须经过 `ToolGateway -> PolicyEngine` 的注册、schema、risk、confirmation、fail-closed 测试。
 - PathPolicy 的 canonical path、`../`、symlink escape、allowlist、secret-file-read、任意覆盖测试。
 - memory approval/reject/delete/patch 生命周期测试，以及 rejected/deleted memory 不进入上下文的测试。
@@ -59,14 +63,14 @@
 
 ## 生产上线前阻塞项
 
-- 不能在生产设置 `DAC3D_ALLOW_COMMAND_SUBMIT=true`，直到 P0-1 到 P0-3 完成并有回归测试。
-- 不能启用生产长期 memory 写入，直到 P0-4 完成；临时策略应设置 `DAC3D_ENABLE_MEMORY_WRITE=false` 或只保留短期会话上下文。
+- 不能在生产设置 `DAC3D_ALLOW_COMMAND_SUBMIT=true`，直到剩余 ToolGateway/PolicyEngine 与 PathPolicy P0 完成并有回归测试。
+- 不能启用生产长期 memory 写入，直到 memory approval P0 完成；临时策略应设置 `DAC3D_ENABLE_MEMORY_WRITE=false` 或只保留短期会话上下文。
 - remote/open-world/file/skill patch 类能力必须保持关闭，直到统一 ToolGateway/PolicyEngine 与 PathPolicy 完成。
 - 生产必须使用明确 CORS origin、明确输入目录 allowlist、明确 command 输出目录、非 mock DAC-3D writer，并保留 rate limit 与 redaction。
 
 ## 修复计划
 
-1. S15-1：先修命令执行 P0。把 Agent/CLI 的 `confirmed_by_user` 直通路径替换为 preview_id/token-bound confirmation，或在生产直接拒绝 Agent/CLI submit；补 replay、hash mismatch、session/operator mismatch、CLI bypass 测试。
+1. S15-1：已完成。Agent/CLI 的 `confirmed_by_user` 直通路径改为 fail-closed，不再直接 submit；真实下发保留 Web API token-bound confirmation。
 
 2. S15-2：引入最小 `ToolGateway`/`PolicyEngine`。所有 Agent tools 注册 schema/risk/context policy；未注册工具 fail closed；high-risk/destructive 工具必须返回 confirmation_required，不能直接 submit。
 
