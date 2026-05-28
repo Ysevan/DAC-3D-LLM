@@ -1040,6 +1040,47 @@ def test_web_api_agent_browser_context_endpoints(tmp_path) -> None:
     assert workspace_response.json()["browser_contexts"]["context_count"] == 1
 
 
+def test_web_api_agent_tool_marketplace_endpoints(tmp_path) -> None:
+    """The web UI should manage local tool marketplace catalog entries."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/tool-marketplace",
+        json={
+            "name": "Calibration Tools",
+            "slug": "calibration-tools",
+            "description": "标定建议和状态读取工具包。",
+            "category": "dac3d_operations",
+            "tools": ["dac3d_answer", "dac3d_status"],
+            "required_context": ["document_memory", "runtime_status"],
+            "prompt_examples": ["标定流程应该怎么做？"],
+            "tags": ["calibration"],
+        },
+    )
+    list_response = client.get("/api/agent/tool-marketplace?tag=calibration")
+    read_response = client.get("/api/agent/tool-marketplace/calibration-tools")
+    status_response = client.post(
+        "/api/agent/tool-marketplace/calibration-tools/status",
+        json={"status": "installed", "actor": "workflow-builder"},
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert read_response.json()["entry"]["tools"] == ["dac3d_answer", "dac3d_status"]
+    assert status_response.status_code == 200
+    assert status_response.json()["entry"]["status"] == "installed"
+    assert workspace_response.json()["tool_marketplace"]["entry_count"] >= 7
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

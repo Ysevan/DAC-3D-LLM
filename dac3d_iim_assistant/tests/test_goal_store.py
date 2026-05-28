@@ -17,6 +17,7 @@ from goals import (
     ReviewHandoffStore,
     SharedStateStore,
     TaskBoardStore,
+    ToolMarketplaceStore,
     VerificationRunnerStore,
     WorkflowTemplateStore,
 )
@@ -536,3 +537,36 @@ def test_browser_context_store_records_shared_observations(tmp_path: Path) -> No
     assert read["context"]["observations"][0]["title"] == "DAC Agent Workspace"
     assert summary["context_count"] == 1
     assert summary["observation_count"] == 1
+
+
+def test_tool_marketplace_store_registers_and_filters_tool_packs(tmp_path: Path) -> None:
+    store = ToolMarketplaceStore.from_root(tmp_path)
+
+    created = store.register_entry(
+        "Offline Inspection Tool Pack",
+        slug="offline-inspection",
+        description="离线检测命令预览工作流工具包。",
+        category="dac3d_operations",
+        status="available",
+        tools=["dac3d_preview_command", "dac3d_status"],
+        required_context=["runtime_status", "command_schema"],
+        prompt_examples=["选择图片做离线检测"],
+        tags=["offline", "workflow"],
+    )
+    updated = store.update_status(
+        "offline-inspection",
+        "installed",
+        actor="tool-marketplace-test",
+    )
+    listed = store.list_entries(category="dac3d_operations", tag="offline", query="预览")
+    read = store.read_entry(created["entry"]["id"])
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert created["entry"]["slug"] == "offline-inspection"
+    assert updated["entry"]["status"] == "installed"
+    assert updated["history"]["actor"] == "tool-marketplace-test"
+    assert listed["count"] == 1
+    assert read["entry"]["tools"] == ["dac3d_preview_command", "dac3d_status"]
+    assert summary["entry_count"] == 1
+    assert summary["tool_count"] == 2

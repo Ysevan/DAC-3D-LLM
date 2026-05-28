@@ -795,6 +795,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["review_handoffs"]["backend"] == "local_review_handoff_queue"
     assert summary["checkpoints"]["backend"] == "local_agent_checkpoint_store"
     assert summary["shared_state"]["backend"] == "local_agent_shared_state"
+    assert summary["tool_marketplace"]["backend"] == "local_tool_marketplace"
     assert summary["observability"]["backend"] == "local_agent_observability"
 
 
@@ -1082,6 +1083,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "agent_registry_discovery" in description["network_capabilities"]
     assert "threaded_agent_conversation" in description["network_capabilities"]
     assert "shared_browser_context" in description["network_capabilities"]
+    assert "local_tool_marketplace" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1515,6 +1517,35 @@ def test_agent_chat_adapter_browser_context_roundtrip(tmp_path) -> None:
     assert updated["context"]["status"] == "captured"
     assert workspace["browser_contexts"]["context_count"] == 1
     assert "shared_browser_context" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_tool_marketplace_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    registered = adapter.register_agent_tool_marketplace_entry(
+        "Calibration Tools",
+        slug="calibration-tools",
+        description="标定建议和状态读取工具包。",
+        category="dac3d_operations",
+        tools=["dac3d_answer", "dac3d_status"],
+        required_context=["document_memory", "runtime_status"],
+        prompt_examples=["标定流程应该怎么做？"],
+        tags=["calibration"],
+    )
+    listed = adapter.list_agent_tool_marketplace(tag="calibration")
+    read = adapter.read_agent_tool_marketplace_entry("calibration-tools")
+    updated = adapter.update_agent_tool_marketplace_status("calibration-tools", "installed")
+    workspace = adapter.agent_workspace()
+
+    assert registered["created"] is True
+    assert listed["count"] == 1
+    assert read["entry"]["tools"] == ["dac3d_answer", "dac3d_status"]
+    assert updated["entry"]["status"] == "installed"
+    assert workspace["tool_marketplace"]["entry_count"] >= 7
+    assert "tool_marketplace" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

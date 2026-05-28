@@ -42,6 +42,7 @@ from goals import (
     ReviewHandoffStore,
     SharedStateStore,
     TaskBoardStore,
+    ToolMarketplaceStore,
     VerificationRunnerStore,
     WorkflowTemplateStore,
 )
@@ -205,6 +206,135 @@ def _default_agent_registry_entries() -> list[dict[str, Any]]:
             ],
             "triggers": ["安全", "风险", "能不能执行", "执行前检查", "工具网关"],
             "tags": ["safety", "tool-gateway"],
+        },
+    ]
+
+
+def _default_tool_marketplace_entries() -> list[dict[str, Any]]:
+    """Return built-in tool packs for the local workflow marketplace."""
+    return [
+        {
+            "slug": "dac3d-control-pack",
+            "name": "DAC-3D Control Tools",
+            "description": "状态读取、命令预览、命令提交和停止检测相关的 DAC-3D 控制工具包。",
+            "category": "dac3d_operations",
+            "provider": "dac-agent",
+            "status": "installed",
+            "tools": [
+                "dac3d_operation",
+                "dac3d_preview_command",
+                "dac3d_execute_command",
+                "dac3d_status",
+                "dac_tool_command_history",
+            ],
+            "required_context": ["runtime_status", "tool_gateway_manifest", "command_schema"],
+            "prompt_examples": ["扫描 10mm x 10mm 区域", "停止当前检测", "当前检测状态是什么？"],
+            "tags": ["dac3d", "control", "workflow"],
+        },
+        {
+            "slug": "dac3d-qa-pack",
+            "name": "DAC-3D QA Tools",
+            "description": "面向 DAC-3D 文档、参数说明、操作建议和知识库重建的问答工具包。",
+            "category": "knowledge",
+            "provider": "dac-agent",
+            "status": "installed",
+            "tools": ["dac3d_answer", "dac3d_rebuild_knowledge_base"],
+            "required_context": ["document_memory", "skill_context"],
+            "prompt_examples": ["样品表面反光很强怎么办？", "这个参数是什么意思？"],
+            "tags": ["qa", "rag", "documents"],
+        },
+        {
+            "slug": "dac3d-result-pack",
+            "name": "DAC-3D Result Tools",
+            "description": "读取、归一化和解释 DAC-3D 最新检测结果与样品缺陷摘要。",
+            "category": "inspection_results",
+            "provider": "dac-agent",
+            "status": "installed",
+            "tools": ["dac3d_latest_result"],
+            "required_context": ["latest_result", "result_history"],
+            "prompt_examples": ["第三个样品检测结果怎么样？", "最近一次检测有什么缺陷？"],
+            "tags": ["result", "inspection"],
+        },
+        {
+            "slug": "machine-diagnostics-pack",
+            "name": "Machine Diagnostics Tools",
+            "description": "设备状态、历史采样、报警记录、维护文档和异常归因工具包。",
+            "category": "machine_ops",
+            "provider": "dac-agent",
+            "status": "installed",
+            "tools": [
+                "machine_agent_chat",
+                "machine_snapshot",
+                "machine_status",
+                "machine_history",
+                "machine_alarms",
+                "machine_docs",
+                "machine_condition_summary",
+                "machine_abnormal_analysis",
+            ],
+            "required_context": ["machine_status", "alarm_history"],
+            "prompt_examples": ["为什么最近温度报警变多了？", "现在设备状态怎么样？"],
+            "tags": ["machine", "diagnostics"],
+        },
+        {
+            "slug": "memory-os-pack",
+            "name": "Memory OS Tools",
+            "description": "会话检索、长期记忆、知识笔记、流程记忆和可审核记忆补丁工具包。",
+            "category": "memory",
+            "provider": "dac-agent",
+            "status": "installed",
+            "tools": [
+                "conversation_memory_search",
+                "conversation_memory_recent",
+                "conversation_memory_profile",
+                "conversation_memory_update",
+                "conversation_knowledge_notes",
+                "conversation_knowledge_read",
+                "conversation_knowledge_write",
+                "conversation_procedure_memories",
+                "conversation_procedure_read",
+                "conversation_procedure_write",
+            ],
+            "required_context": ["session_memory", "curated_memory", "procedure_memory"],
+            "prompt_examples": ["刚才讨论过什么？", "以后默认先展示命令预览。"],
+            "tags": ["memory-os", "context"],
+        },
+        {
+            "slug": "skill-system-pack",
+            "name": "Skill System Tools",
+            "description": "发现、选择、读取和提出 DAC-Agent skill 改进建议的工具包。",
+            "category": "skills",
+            "provider": "dac-agent",
+            "status": "installed",
+            "tools": [
+                "dac_skill_list",
+                "dac_skill_select",
+                "dac_skill_read",
+                "dac_skill_propose_patch",
+                "dac_skill_patches",
+            ],
+            "required_context": ["skill_registry", "active_task"],
+            "prompt_examples": ["这个任务应该加载什么技能？", "列出可用流程。"],
+            "tags": ["skills", "workflow"],
+        },
+        {
+            "slug": "workspace-collaboration-pack",
+            "name": "Workspace Collaboration Tools",
+            "description": "本地 Agent 工作台产物、事件、线程、浏览上下文、恢复点和可观测摘要工具目录。",
+            "category": "workspace",
+            "provider": "dac-agent",
+            "status": "available",
+            "tools": [
+                "agent_artifacts",
+                "agent_events",
+                "agent_threads",
+                "agent_browser_contexts",
+                "agent_checkpoints",
+                "agent_observability",
+            ],
+            "required_context": ["agent_workspace", "conversation_thread", "shared_state"],
+            "prompt_examples": ["把这次协作保存成 thread。", "记录当前页面观察。"],
+            "tags": ["workspace", "collaboration", "low-code"],
         },
     ]
 
@@ -1340,6 +1470,7 @@ class DAC3DAgentRuntime:
                 "agent_registry_discovery",
                 "threaded_agent_conversation",
                 "shared_browser_context",
+                "local_tool_marketplace",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2311,6 +2442,7 @@ class DAC3DAgentChatAdapter:
     shared_state_store: SharedStateStore | None = None
     trace_logger: TraceLogger | None = None
     observability_reporter: ObservabilityReporter | None = None
+    tool_marketplace_store: ToolMarketplaceStore | None = None
 
     def __post_init__(self) -> None:
         if self.memory_store is None and self.runtime.memory_store is not None:
@@ -2379,6 +2511,9 @@ class DAC3DAgentChatAdapter:
             self.checkpoint_store = CheckpointStore.from_root(self.config.conversation_memory_dir)
         if self.shared_state_store is None:
             self.shared_state_store = SharedStateStore.from_root(self.config.conversation_memory_dir)
+        if self.tool_marketplace_store is None:
+            self.tool_marketplace_store = ToolMarketplaceStore.from_root(self.config.conversation_memory_dir)
+            self.tool_marketplace_store.seed_defaults(_default_tool_marketplace_entries())
         if self.context_builder is None:
             self.context_builder = ContextBuilder(
                 memory_provider=self.memory_provider,
@@ -2568,6 +2703,11 @@ class DAC3DAgentChatAdapter:
             self.shared_state_store.describe()
             if self.shared_state_store is not None
             else {"enabled": False, "backend": "local_agent_shared_state"}
+        )
+        summary["tool_marketplace"] = (
+            self.tool_marketplace_store.describe()
+            if self.tool_marketplace_store is not None
+            else {"enabled": False, "backend": "local_tool_marketplace"}
         )
         summary["observability"] = (
             self.observability_reporter.describe()
@@ -2788,6 +2928,11 @@ class DAC3DAgentChatAdapter:
             if self.shared_state_store is not None
             else {"enabled": False, "backend": "local_agent_shared_state"}
         )
+        tool_marketplace = (
+            self.tool_marketplace_store.describe()
+            if self.tool_marketplace_store is not None
+            else {"enabled": False, "backend": "local_tool_marketplace"}
+        )
         observability = (
             self.observability_reporter.describe()
             if self.observability_reporter is not None
@@ -2820,6 +2965,7 @@ class DAC3DAgentChatAdapter:
             "review_handoffs": review_handoffs,
             "checkpoints": checkpoints,
             "shared_state": shared_state,
+            "tool_marketplace": tool_marketplace,
             "observability": observability,
             "workflow": [
                 "user_task",
@@ -2833,6 +2979,7 @@ class DAC3DAgentChatAdapter:
                 "review_handoff",
                 "workflow_checkpoint",
                 "shared_state",
+                "tool_marketplace",
                 "observability_snapshot",
                 "coordinator_route",
                 "skill_selection",
@@ -2867,6 +3014,7 @@ class DAC3DAgentChatAdapter:
                 "artifacts": (workspace.get("artifacts") or {}).get("artifact_count", 0),
                 "reviews": (workspace.get("review_handoffs") or {}).get("review_count", 0),
                 "checkpoints": (workspace.get("checkpoints") or {}).get("checkpoint_count", 0),
+                "tool_packs": (workspace.get("tool_marketplace") or {}).get("entry_count", 0),
             },
         }
 
@@ -3168,6 +3316,92 @@ class DAC3DAgentChatAdapter:
             "enabled": True,
             **self.browser_context_store.update_status(
                 context_id,
+                status,
+                note=note,
+                actor=actor,
+            ),
+        }
+
+    def list_agent_tool_marketplace(
+        self,
+        *,
+        status: str | None = None,
+        category: str | None = None,
+        provider: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local marketplace tool packs available to Agent workflows."""
+        if self.tool_marketplace_store is None:
+            return {"enabled": False, "backend": "local_tool_marketplace", "entries": [], "count": 0}
+        return self.tool_marketplace_store.list_entries(
+            status=status,
+            category=category,
+            provider=provider,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def read_agent_tool_marketplace_entry(self, entry_id_or_slug: str) -> dict[str, Any]:
+        """Read one local marketplace tool pack by id or slug."""
+        if self.tool_marketplace_store is None:
+            raise ValueError("Tool marketplace is not enabled.")
+        return self.tool_marketplace_store.read_entry(entry_id_or_slug)
+
+    def register_agent_tool_marketplace_entry(
+        self,
+        name: str,
+        *,
+        slug: str = "",
+        description: str = "",
+        category: str = "agent_tools",
+        provider: str = "dac-agent",
+        status: str = "available",
+        tools: list[Any] | None = None,
+        required_context: list[Any] | None = None,
+        prompt_examples: list[Any] | None = None,
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        owner_agent: str = "agent",
+    ) -> dict[str, Any]:
+        """Create or update one local marketplace tool pack."""
+        if self.tool_marketplace_store is None:
+            raise ValueError("Tool marketplace is not enabled.")
+        return {
+            "enabled": True,
+            **self.tool_marketplace_store.register_entry(
+                name,
+                slug=slug,
+                description=description,
+                category=category,
+                provider=provider,
+                status=status,
+                tools=tools,
+                required_context=required_context,
+                prompt_examples=prompt_examples,
+                tags=tags,
+                metadata=metadata,
+                owner_agent=owner_agent,
+            ),
+        }
+
+    def update_agent_tool_marketplace_status(
+        self,
+        entry_id_or_slug: str,
+        status: str,
+        *,
+        note: str = "",
+        actor: str = "agent",
+    ) -> dict[str, Any]:
+        """Move one local marketplace tool pack between catalog statuses."""
+        if self.tool_marketplace_store is None:
+            raise ValueError("Tool marketplace is not enabled.")
+        return {
+            "enabled": True,
+            **self.tool_marketplace_store.update_status(
+                entry_id_or_slug,
                 status,
                 note=note,
                 actor=actor,

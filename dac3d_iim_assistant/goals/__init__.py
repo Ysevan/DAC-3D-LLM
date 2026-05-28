@@ -12,6 +12,7 @@ from goals.review_handoff import ReviewHandoffStore
 from goals.shared_state import SharedStateStore
 from goals.store import GoalStore
 from goals.task_board import TaskBoardStore
+from goals.tool_marketplace import ToolMarketplaceStore
 from goals.verification import VerificationRunnerStore
 from goals.workflow_templates import WorkflowTemplateStore
 
@@ -28,6 +29,7 @@ __all__ = [
     "ReviewHandoffStore",
     "SharedStateStore",
     "TaskBoardStore",
+    "ToolMarketplaceStore",
     "VerificationRunnerStore",
     "WorkflowTemplateStore",
 ]

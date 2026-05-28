@@ -353,6 +353,91 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/tool-marketplace")
+    def list_agent_tool_marketplace(
+        status: str | None = None,
+        category: str | None = None,
+        provider: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_entries = getattr(assistant, "list_agent_tool_marketplace", None)
+        if not callable(list_entries):
+            raise HTTPException(status_code=503, detail="Tool marketplace is unavailable.")
+        try:
+            return list_entries(
+                status=status,
+                category=category,
+                provider=provider,
+                tag=tag,
+                query=q,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/tool-marketplace")
+    def register_agent_tool_marketplace_entry(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        register_entry = getattr(assistant, "register_agent_tool_marketplace_entry", None)
+        if not callable(register_entry):
+            raise HTTPException(status_code=503, detail="Tool marketplace is unavailable.")
+        name = str(request.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        try:
+            return register_entry(
+                name,
+                slug=str(request.get("slug") or ""),
+                description=str(request.get("description") or ""),
+                category=str(request.get("category") or "agent_tools"),
+                provider=str(request.get("provider") or "dac-agent"),
+                status=str(request.get("status") or "available"),
+                tools=request.get("tools") if isinstance(request.get("tools"), list) else None,
+                required_context=request.get("required_context")
+                if isinstance(request.get("required_context"), list)
+                else None,
+                prompt_examples=request.get("prompt_examples")
+                if isinstance(request.get("prompt_examples"), list)
+                else None,
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                owner_agent=str(request.get("owner_agent") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/tool-marketplace/{entry_id_or_slug}")
+    def read_agent_tool_marketplace_entry(entry_id_or_slug: str) -> dict[str, Any]:
+        read_entry = getattr(assistant, "read_agent_tool_marketplace_entry", None)
+        if not callable(read_entry):
+            raise HTTPException(status_code=503, detail="Tool marketplace is unavailable.")
+        try:
+            return read_entry(entry_id_or_slug)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/tool-marketplace/{entry_id_or_slug}/status")
+    def update_agent_tool_marketplace_status(
+        entry_id_or_slug: str,
+        request: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_tool_marketplace_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Tool marketplace is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(
+                entry_id_or_slug,
+                status,
+                note=str(request.get("note") or ""),
+                actor=str(request.get("actor") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/observability")
     def agent_observability(recent_trace_limit: int = 20) -> dict[str, Any]:
         observability = getattr(assistant, "agent_observability", None)
