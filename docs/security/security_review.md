@@ -33,21 +33,26 @@
 - rejected patch 不会写入 session/index；deleted turn 会同时从 session JSON 和 index 移除，并写入删除 tombstone，确保不会进入后续 prompt context。
 - 已补回归测试覆盖 pending-before-approval、approve commit、reject no-context、delete no-context、API approve/reject/delete 和 Agent adapter 注入前置审批。
 
+## S15-5 已修复
+
+- Security eval runner 已从 fail-closed stub 升级为本地 runtime harness。每个 red-team case 会进入真实 `DAC3DAgentRuntime`、`DAC3DAgentToolController`、`ToolGateway`、`PathPolicy`、memory approval、FastAPI auth 或 audit trace 边界。
+- Eval 报告会输出实际 `tool_calls`、被 ToolGateway fail-closed 的 forbidden tool attempts、policy decisions、command submission 状态、memory approval 状态、API status code 和 memory context 可见性。
+- CI 中的 `python -m evals.run_security_evals` 现在断言真实命令没有提交、未批准 memory 不进入上下文、未知/危险工具不触发 handler、API auth bypass 被拒绝。
+- 已补回归测试确认报告不再只是空 trace：prompt-injection case 记录 `dac3d_execute_command` 和 blocked `write_command`/`submit_command`，memory-poisoning case 只产生 pending patch，API auth bypass 返回 401。
+
 ## P0 必须修复
 
-当前审查范围内的 P0 项已完成。下一步应把 P1 的真实 runtime security eval 接入 CI，避免后续安全边界退化。
+当前审查范围内的 P0 项已完成。下一步应继续推进 P1/P2 的审计不可变性、OpenAPI 安全建模、前端确认体验、锁文件和可复现 E2E。
 
 ## P1 建议修复
 
-1. Security eval runner 当前是 fail-closed stub，能覆盖用例清单和阻断期望，但尚未驱动真实 Agent、真实 tool trace、真实 command lifecycle。需要把 `evals/security_cases` 接入 runtime harness，并断言真实工具调用列表。
+1. Audit trace 是 JSONL hash chain，可检测内容篡改，但还不是操作系统或外部存储层面的不可变审计。生产建议加只追加权限、轮转、签名或外部日志汇聚。
 
-2. Audit trace 是 JSONL hash chain，可检测内容篡改，但还不是操作系统或外部存储层面的不可变审计。生产建议加只追加权限、轮转、签名或外部日志汇聚。
+2. Swagger/OpenAPI 未把 `X-DAC3D-Session-ID`、`X-DAC3D-Operator-ID`、角色头建模为安全依赖。运行时会校验，但接口文档不够清晰，容易误用。
 
-3. Swagger/OpenAPI 未把 `X-DAC3D-Session-ID`、`X-DAC3D-Operator-ID`、角色头建模为安全依赖。运行时会校验，但接口文档不够清晰，容易误用。
+3. 前端高风险确认目前使用 `window.confirm`。安全语义已经明确，但生产 UI 建议换成可访问 modal，并要求 operator 核对 action、scope、preview hash 或短确认语。
 
-4. 前端高风险确认目前使用 `window.confirm`。安全语义已经明确，但生产 UI 建议换成可访问 modal，并要求 operator 核对 action、scope、preview hash 或短确认语。
-
-5. dependency audit、bandit、ruff、npm audit 已进入 CI，但本地无法在无网络/无 CI token 环境中确认完整执行结果。合并前应以 GitHub Actions 结果为准。
+4. dependency audit、bandit、ruff、npm audit 已进入 CI，但本地无法在无网络/无 CI token 环境中确认完整执行结果。合并前应以 GitHub Actions 结果为准。
 
 ## P2 后续优化
 
@@ -74,10 +79,10 @@
 - Agent 工具已通过 `ToolGateway -> PolicyEngine` 强制注册和策略判定；未注册工具默认拒绝，禁用的写类工具不会触发底层 handler。
 - Path/File 边界已通过 `PathPolicy` 强制执行；离线目录、状态文件读取、command bridge 写入和知识库上传文件名都进入统一 canonical/allowlist/secret/symlink/traversal 检查。
 - 长期 memory 已改为 pending patch 审批生命周期；未批准、已拒绝、已删除的 memory 都不会进入 prompt context。
+- Security eval runner 已接入真实本地 Agent runtime/tool harness；报告会记录实际 `tool_calls`、ToolGateway blocked attempts、policy decisions、command submission 状态、memory approval 状态和 API auth 结果。
 
 ## 缺失测试
 
-- security eval runner 对真实 runtime/tool trace 的集成测试。
 - Chrome 插件 UI smoke 的自动化回归测试。
 
 ## 生产上线前阻塞项
@@ -97,4 +102,4 @@
 
 4. S15-4：已完成。memory 改为 approval patch 生命周期；默认生成 pending memory patch，operator 审批后写入；reject/delete 不再进入 prompt context。
 
-5. S15-5：把 security eval runner 接入真实 runtime，把 P0 修复转为 CI 门禁。
+5. S15-5：已完成。security eval runner 已接入真实 runtime/tool trace，把 P0 安全边界转为 CI 门禁。

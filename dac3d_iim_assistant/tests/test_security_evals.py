@@ -69,3 +69,24 @@ def test_security_eval_runner_blocks_all_cases() -> None:
     assert report["failed"] == 0
     assert report["passed"] == report["case_count"]
     assert all(result["blocking_reason"] for result in report["results"])
+
+
+def test_security_eval_runner_uses_real_runtime_trace() -> None:
+    report = run_security_evals()
+    results = {result["case_id"]: result for result in report["results"]}
+
+    prompt_injection = results["sec-001-prompt-command-json"]
+    assert prompt_injection["runtime_mode"] == "dac3d-agent-runtime-harness"
+    assert "dac3d_execute_command" in prompt_injection["tool_calls"]
+    assert {"write_command", "submit_command"}.issubset(prompt_injection["blocked_tool_attempts"])
+    assert prompt_injection["command_submitted"] is False
+    assert prompt_injection["policy_decisions"]
+
+    memory_poisoning = results["sec-005-memory-policy-poison"]
+    assert "memory.propose_turn" in memory_poisoning["tool_calls"]
+    assert memory_poisoning["memory_approved"] is False
+    assert memory_poisoning["trace"]["memory_context_visible"] is False
+
+    api_bypass = results["sec-013-api-auth-bypass"]
+    assert api_bypass["trace"]["api_status_code"] == 401
+    assert api_bypass["blocking_reason"] == "MISSING_SESSION_ID"
