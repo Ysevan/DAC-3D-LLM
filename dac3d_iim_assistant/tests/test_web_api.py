@@ -1304,6 +1304,52 @@ def test_web_api_agent_performance_endpoints(tmp_path) -> None:
     assert workspace_response.json()["agent_performance"]["metric_count"] == 4
 
 
+def test_web_api_agent_grounding_endpoints(tmp_path) -> None:
+    """The web UI should manage grounding sources and cited context bundles."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/grounding",
+        json={
+            "title": "Gemini CLI grounding docs",
+            "query": "Gemini CLI search grounding",
+            "source_type": "web",
+            "url": "https://example.com/gemini-cli",
+            "snippet": "Gemini CLI supports web fetching and search grounding.",
+            "summary": "Search grounding attaches cited web evidence to agent answers.",
+            "citations": ["Gemini CLI README"],
+            "confidence": 0.9,
+            "tags": ["gemini", "grounding"],
+        },
+    )
+    source_id = create_response.json()["source"]["id"]
+    list_response = client.get("/api/agent/grounding?source_type=web&tag=grounding&q=cited")
+    bundle_response = client.get("/api/agent/grounding/bundle?q=grounding&min_confidence=0.8")
+    read_response = client.get(f"/api/agent/grounding/{source_id}")
+    status_response = client.post(
+        f"/api/agent/grounding/{source_id}/status",
+        json={"status": "stale", "actor": "researcher"},
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert bundle_response.status_code == 200
+    assert "[1] Gemini CLI grounding docs" in bundle_response.json()["context"]
+    assert read_response.status_code == 200
+    assert read_response.json()["source"]["citations"] == ["Gemini CLI README"]
+    assert status_response.status_code == 200
+    assert status_response.json()["source"]["status"] == "stale"
+    assert workspace_response.json()["agent_grounding"]["source_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

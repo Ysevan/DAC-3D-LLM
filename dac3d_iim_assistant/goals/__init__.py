@@ -9,6 +9,7 @@ from goals.browser_context import BrowserContextStore
 from goals.checkpoints import CheckpointStore
 from goals.conversation_threads import ConversationThreadStore
 from goals.event_queue import EventQueueStore
+from goals.grounding import AgentGroundingStore
 from goals.labeling_queue import AgentLabelingStore
 from goals.observability import ObservabilityReporter
 from goals.performance import AgentPerformanceStore
@@ -30,6 +31,7 @@ __all__ = [
     "CheckpointStore",
     "ConversationThreadStore",
     "EventQueueStore",
+    "AgentGroundingStore",
     "AgentLabelingStore",
     "GoalStore",
     "ObservabilityReporter",

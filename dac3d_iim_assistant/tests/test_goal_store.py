@@ -16,6 +16,7 @@ from goals import (
     ConversationThreadStore,
     EventQueueStore,
     GoalStore,
+    AgentGroundingStore,
     ObservabilityReporter,
     AgentPerformanceStore,
     ReviewHandoffStore,
@@ -746,3 +747,35 @@ def test_agent_performance_store_records_trace_metrics_and_summarizes(tmp_path: 
     assert summary["by_metric"]["agent_quality_score"]["count"] == 2
     assert archived["metric"]["status"] == "archived"
     assert description["metric_count"] == 5
+
+
+def test_agent_grounding_store_records_sources_and_builds_context_bundle(tmp_path: Path) -> None:
+    store = AgentGroundingStore.from_root(tmp_path)
+
+    created = store.record_source(
+        "Gemini CLI grounding docs",
+        query="Gemini CLI search grounding",
+        source_type="web",
+        url="https://example.com/gemini-cli",
+        snippet="Gemini CLI supports web fetching and search grounding.",
+        summary="Search grounding can attach cited web evidence to agent answers.",
+        citations=["Gemini CLI README"],
+        confidence=0.86,
+        trace_id="trace-grounding-1",
+        tags=["gemini", "grounding"],
+    )
+    source_id = created["source"]["id"]
+    listed = store.list_sources(source_type="web", tag="grounding", query="cited", min_confidence=0.8)
+    bundle = store.context_bundle(query="grounding", min_confidence=0.8)
+    stale = store.update_status(source_id, "stale", actor="grounding-test")
+    read = store.read_source(source_id)
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert listed["count"] == 1
+    assert bundle["count"] == 1
+    assert "[1] Gemini CLI grounding docs" in bundle["context"]
+    assert stale["source"]["status"] == "stale"
+    assert read["source"]["citations"] == ["Gemini CLI README"]
+    assert summary["source_count"] == 1
+    assert summary["by_source_type"]["web"] == 1

@@ -786,6 +786,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["agent_registry"]["backend"] == "local_agent_registry"
     assert summary["agent_fleet"]["backend"] == "local_agent_fleet"
     assert summary["agent_deployments"]["backend"] == "local_agent_deployment_catalog"
+    assert summary["agent_grounding"]["backend"] == "local_agent_grounding_store"
     assert summary["agent_labeling"]["backend"] == "local_agent_labeling_queue"
     assert summary["agent_performance"]["backend"] == "local_agent_performance_store"
     assert summary["conversation_threads"]["backend"] == "local_agent_threads"
@@ -1087,6 +1088,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "agent_registry_discovery" in description["network_capabilities"]
     assert "agent_fleet_control_plane" in description["network_capabilities"]
     assert "agent_deployment_catalog" in description["network_capabilities"]
+    assert "agent_grounding_store" in description["network_capabilities"]
     assert "agent_labeling_queue" in description["network_capabilities"]
     assert "agent_performance_analysis" in description["network_capabilities"]
     assert "threaded_agent_conversation" in description["network_capabilities"]
@@ -1722,6 +1724,39 @@ def test_agent_chat_adapter_agent_performance_roundtrip(tmp_path) -> None:
     assert archived["metric"]["status"] == "archived"
     assert workspace["agent_performance"]["metric_count"] == 4
     assert "agent_performance_analysis" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_agent_grounding_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    created = adapter.record_agent_grounding_source(
+        "Gemini CLI grounding docs",
+        query="Gemini CLI search grounding",
+        source_type="web",
+        url="https://example.com/gemini-cli",
+        snippet="Gemini CLI supports web fetching and search grounding.",
+        summary="Search grounding attaches cited web evidence to agent answers.",
+        citations=["Gemini CLI README"],
+        confidence=0.9,
+        tags=["gemini", "grounding"],
+    )
+    source_id = created["source"]["id"]
+    listed = adapter.list_agent_grounding_sources(source_type="web", tag="grounding", query="cited")
+    bundle = adapter.agent_grounding_context_bundle(query="grounding", min_confidence=0.8)
+    stale = adapter.update_agent_grounding_source_status(source_id, "stale")
+    read = adapter.read_agent_grounding_source(source_id)
+    workspace = adapter.agent_workspace()
+
+    assert created["created"] is True
+    assert listed["count"] == 1
+    assert bundle["count"] == 1
+    assert read["source"]["url"] == "https://example.com/gemini-cli"
+    assert stale["source"]["status"] == "stale"
+    assert workspace["agent_grounding"]["source_count"] == 1
+    assert "agent_grounding_store" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

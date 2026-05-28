@@ -41,6 +41,7 @@ from goals import (
     ConversationThreadStore,
     EventQueueStore,
     GoalStore,
+    AgentGroundingStore,
     ObservabilityReporter,
     AgentPerformanceStore,
     ReviewHandoffStore,
@@ -1474,6 +1475,7 @@ class DAC3DAgentRuntime:
                 "agent_registry_discovery",
                 "agent_fleet_control_plane",
                 "agent_deployment_catalog",
+                "agent_grounding_store",
                 "agent_labeling_queue",
                 "agent_performance_analysis",
                 "threaded_agent_conversation",
@@ -2438,6 +2440,7 @@ class DAC3DAgentChatAdapter:
     agent_registry_store: AgentRegistryStore | None = None
     agent_fleet_store: AgentFleetStore | None = None
     agent_deployment_store: AgentDeploymentStore | None = None
+    agent_grounding_store: AgentGroundingStore | None = None
     agent_labeling_store: AgentLabelingStore | None = None
     agent_performance_store: AgentPerformanceStore | None = None
     conversation_thread_store: ConversationThreadStore | None = None
@@ -2498,6 +2501,10 @@ class DAC3DAgentChatAdapter:
             self.agent_fleet_store = AgentFleetStore.from_root(self.config.conversation_memory_dir)
         if self.agent_deployment_store is None:
             self.agent_deployment_store = AgentDeploymentStore.from_root(
+                self.config.conversation_memory_dir
+            )
+        if self.agent_grounding_store is None:
+            self.agent_grounding_store = AgentGroundingStore.from_root(
                 self.config.conversation_memory_dir
             )
         if self.agent_labeling_store is None:
@@ -2677,6 +2684,11 @@ class DAC3DAgentChatAdapter:
             self.agent_deployment_store.describe()
             if self.agent_deployment_store is not None
             else {"enabled": False, "backend": "local_agent_deployment_catalog"}
+        )
+        summary["agent_grounding"] = (
+            self.agent_grounding_store.describe()
+            if self.agent_grounding_store is not None
+            else {"enabled": False, "backend": "local_agent_grounding_store"}
         )
         summary["agent_labeling"] = (
             self.agent_labeling_store.describe()
@@ -2907,6 +2919,11 @@ class DAC3DAgentChatAdapter:
             if self.agent_deployment_store is not None
             else {"enabled": False, "backend": "local_agent_deployment_catalog"}
         )
+        agent_grounding = (
+            self.agent_grounding_store.describe()
+            if self.agent_grounding_store is not None
+            else {"enabled": False, "backend": "local_agent_grounding_store"}
+        )
         agent_labeling = (
             self.agent_labeling_store.describe()
             if self.agent_labeling_store is not None
@@ -3018,6 +3035,7 @@ class DAC3DAgentChatAdapter:
             "agent_registry": agent_registry,
             "agent_fleet": agent_fleet,
             "agent_deployments": agent_deployments,
+            "agent_grounding": agent_grounding,
             "agent_labeling": agent_labeling,
             "agent_performance": agent_performance,
             "conversation_threads": conversation_threads,
@@ -3049,6 +3067,7 @@ class DAC3DAgentChatAdapter:
                 "shared_state",
                 "tool_marketplace",
                 "agent_deployment_catalog",
+                "agent_grounding_store",
                 "agent_labeling_queue",
                 "agent_performance_analysis",
                 "observability_snapshot",
@@ -3061,6 +3080,7 @@ class DAC3DAgentChatAdapter:
                 "agent_registry",
                 "agent_fleet",
                 "agent_deployments",
+                "agent_grounding",
                 "agent_labeling",
                 "agent_performance",
                 "conversation_thread",
@@ -3083,6 +3103,7 @@ class DAC3DAgentChatAdapter:
                 "agents": (workspace.get("agent_registry") or {}).get("agent_count", 0),
                 "fleet_instances": (workspace.get("agent_fleet") or {}).get("instance_count", 0),
                 "deployments": (workspace.get("agent_deployments") or {}).get("deployment_count", 0),
+                "grounding_sources": (workspace.get("agent_grounding") or {}).get("source_count", 0),
                 "labeling_items": (workspace.get("agent_labeling") or {}).get("item_count", 0),
                 "performance_metrics": (workspace.get("agent_performance") or {}).get("metric_count", 0),
                 "threads": (workspace.get("conversation_threads") or {}).get("thread_count", 0),
@@ -3431,6 +3452,115 @@ class DAC3DAgentChatAdapter:
                 released_by=released_by,
             ),
         }
+
+    def list_agent_grounding_sources(
+        self,
+        *,
+        status: str | None = None,
+        source_type: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        min_confidence: Any | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local grounding evidence for Agent research context."""
+        if self.agent_grounding_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_agent_grounding_store",
+                "sources": [],
+                "count": 0,
+            }
+        return self.agent_grounding_store.list_sources(
+            status=status,
+            source_type=source_type,
+            tag=tag,
+            query=query,
+            min_confidence=min_confidence,
+            limit=limit,
+        )
+
+    def read_agent_grounding_source(self, source_id: str) -> dict[str, Any]:
+        """Read one grounding source by id."""
+        if self.agent_grounding_store is None:
+            raise ValueError("Agent grounding store is not enabled.")
+        return self.agent_grounding_store.read_source(source_id)
+
+    def record_agent_grounding_source(
+        self,
+        title: str,
+        *,
+        query: str,
+        source_type: str = "manual",
+        url: str = "",
+        snippet: str = "",
+        summary: str = "",
+        citations: list[Any] | None = None,
+        confidence: Any = 0.5,
+        trace_id: str = "",
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        recorded_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Record one web/search/document grounding source."""
+        if self.agent_grounding_store is None:
+            raise ValueError("Agent grounding store is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_grounding_store.record_source(
+                title,
+                query=query,
+                source_type=source_type,
+                url=url,
+                snippet=snippet,
+                summary=summary,
+                citations=citations,
+                confidence=confidence,
+                trace_id=trace_id,
+                tags=tags,
+                metadata=metadata,
+                recorded_by=recorded_by,
+            ),
+        }
+
+    def update_agent_grounding_source_status(
+        self,
+        source_id: str,
+        status: str,
+        *,
+        note: str = "",
+        actor: str = "agent",
+    ) -> dict[str, Any]:
+        """Move one grounding source between local statuses."""
+        if self.agent_grounding_store is None:
+            raise ValueError("Agent grounding store is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_grounding_store.update_status(
+                source_id,
+                status,
+                note=note,
+                actor=actor,
+            ),
+        }
+
+    def agent_grounding_context_bundle(
+        self,
+        *,
+        query: str = "",
+        tag: str | None = None,
+        min_confidence: Any = 0,
+        limit: int = 8,
+    ) -> dict[str, Any]:
+        """Return a compact cited context bundle from grounding sources."""
+        if self.agent_grounding_store is None:
+            raise ValueError("Agent grounding store is not enabled.")
+        return self.agent_grounding_store.context_bundle(
+            query=query,
+            tag=tag,
+            min_confidence=min_confidence,
+            limit=limit,
+        )
 
     def list_agent_labeling_items(
         self,

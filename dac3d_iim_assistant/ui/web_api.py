@@ -687,6 +687,107 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/grounding")
+    def list_agent_grounding_sources(
+        status: str | None = None,
+        source_type: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        min_confidence: float | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_sources = getattr(assistant, "list_agent_grounding_sources", None)
+        if not callable(list_sources):
+            raise HTTPException(status_code=503, detail="Agent grounding store is unavailable.")
+        try:
+            return list_sources(
+                status=status,
+                source_type=source_type,
+                tag=tag,
+                query=q,
+                min_confidence=min_confidence,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/grounding")
+    def record_agent_grounding_source(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        record_source = getattr(assistant, "record_agent_grounding_source", None)
+        if not callable(record_source):
+            raise HTTPException(status_code=503, detail="Agent grounding store is unavailable.")
+        title = str(request.get("title") or "").strip()
+        query = str(request.get("query") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        if not query:
+            raise HTTPException(status_code=422, detail="The `query` field is required.")
+        try:
+            return record_source(
+                title,
+                query=query,
+                source_type=str(request.get("source_type") or "manual"),
+                url=str(request.get("url") or ""),
+                snippet=str(request.get("snippet") or ""),
+                summary=str(request.get("summary") or ""),
+                citations=request.get("citations") if isinstance(request.get("citations"), list) else None,
+                confidence=request.get("confidence", 0.5),
+                trace_id=str(request.get("trace_id") or ""),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                recorded_by=str(request.get("recorded_by") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/grounding/bundle")
+    def agent_grounding_context_bundle(
+        q: str | None = None,
+        tag: str | None = None,
+        min_confidence: float = 0,
+        limit: int = 8,
+    ) -> dict[str, Any]:
+        context_bundle = getattr(assistant, "agent_grounding_context_bundle", None)
+        if not callable(context_bundle):
+            raise HTTPException(status_code=503, detail="Agent grounding store is unavailable.")
+        try:
+            return context_bundle(
+                query=q or "",
+                tag=tag,
+                min_confidence=min_confidence,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/grounding/{source_id}")
+    def read_agent_grounding_source(source_id: str) -> dict[str, Any]:
+        read_source = getattr(assistant, "read_agent_grounding_source", None)
+        if not callable(read_source):
+            raise HTTPException(status_code=503, detail="Agent grounding store is unavailable.")
+        try:
+            return read_source(source_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/grounding/{source_id}/status")
+    def update_agent_grounding_source_status(source_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_grounding_source_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent grounding store is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(
+                source_id,
+                status,
+                note=str(request.get("note") or ""),
+                actor=str(request.get("actor") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/labeling")
     def list_agent_labeling_items(
         status: str | None = None,
