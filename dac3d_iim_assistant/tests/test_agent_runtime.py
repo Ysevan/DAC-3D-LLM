@@ -785,6 +785,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["git_workspace"]["backend"] == "git_workspace_context"
     assert summary["agent_registry"]["backend"] == "local_agent_registry"
     assert summary["agent_fleet"]["backend"] == "local_agent_fleet"
+    assert summary["agent_deployments"]["backend"] == "local_agent_deployment_catalog"
     assert summary["conversation_threads"]["backend"] == "local_agent_threads"
     assert summary["browser_contexts"]["backend"] == "local_browser_context_store"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
@@ -1083,6 +1084,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "scoped_shared_state" in description["network_capabilities"]
     assert "agent_registry_discovery" in description["network_capabilities"]
     assert "agent_fleet_control_plane" in description["network_capabilities"]
+    assert "agent_deployment_catalog" in description["network_capabilities"]
     assert "threaded_agent_conversation" in description["network_capabilities"]
     assert "shared_browser_context" in description["network_capabilities"]
     assert "local_tool_marketplace" in description["network_capabilities"]
@@ -1592,6 +1594,45 @@ def test_agent_chat_adapter_tool_marketplace_roundtrip(tmp_path) -> None:
     assert updated["entry"]["status"] == "installed"
     assert workspace["tool_marketplace"]["entry_count"] >= 7
     assert "tool_marketplace" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_agent_deployment_catalog_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    created = adapter.create_agent_deployment(
+        "Offline Workflow App",
+        slug="offline-workflow",
+        app_type="workflow_app",
+        entrypoint="workflow:offline-inspection",
+        route_path="/agent/offline",
+        status="ready",
+        workflow_ids=["workflow-offline"],
+        tool_pack_slugs=["dac3d-control-pack"],
+        agent_roles=["coordinator", "dac3d_control"],
+        tags=["offline"],
+    )
+    release = adapter.record_agent_deployment_release(
+        "offline-workflow",
+        version="0.2.0",
+        summary="接入离线检测 workflow 模板。",
+        artifact_ids=["artifact-release"],
+        verification_run_ids=["verification-1"],
+    )
+    deployed = adapter.update_agent_deployment_status("offline-workflow", "deployed")
+    listed = adapter.list_agent_deployments(environment="local", tag="offline", query="workflow")
+    read = adapter.read_agent_deployment(created["deployment"]["id"])
+    workspace = adapter.agent_workspace()
+
+    assert created["created"] is True
+    assert release["release"]["version"] == "0.2.0"
+    assert deployed["deployment"]["status"] == "deployed"
+    assert listed["count"] == 1
+    assert read["deployment"]["latest_release_id"] == release["release"]["id"]
+    assert workspace["agent_deployments"]["deployment_count"] == 1
+    assert "agent_deployment_catalog" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

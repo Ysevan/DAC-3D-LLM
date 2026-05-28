@@ -1133,6 +1133,60 @@ def test_web_api_agent_tool_marketplace_endpoints(tmp_path) -> None:
     assert workspace_response.json()["tool_marketplace"]["entry_count"] >= 7
 
 
+def test_web_api_agent_deployment_catalog_endpoints(tmp_path) -> None:
+    """The web UI should manage local Agent deployment entries and releases."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/deployments",
+        json={
+            "name": "Offline Workflow App",
+            "slug": "offline-workflow",
+            "app_type": "workflow_app",
+            "entrypoint": "workflow:offline-inspection",
+            "route_path": "/agent/offline",
+            "status": "ready",
+            "workflow_ids": ["workflow-offline"],
+            "tool_pack_slugs": ["dac3d-control-pack"],
+            "agent_roles": ["coordinator", "dac3d_control"],
+            "tags": ["offline"],
+        },
+    )
+    release_response = client.post(
+        "/api/agent/deployments/offline-workflow/releases",
+        json={
+            "version": "0.2.0",
+            "summary": "接入离线检测 workflow 模板。",
+            "artifact_ids": ["artifact-release"],
+            "verification_run_ids": ["verification-1"],
+        },
+    )
+    status_response = client.post(
+        "/api/agent/deployments/offline-workflow/status",
+        json={"status": "deployed", "actor": "workflow-builder"},
+    )
+    list_response = client.get("/api/agent/deployments?environment=local&tag=offline&q=workflow")
+    read_response = client.get("/api/agent/deployments/offline-workflow")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert release_response.status_code == 200
+    assert release_response.json()["release"]["version"] == "0.2.0"
+    assert status_response.status_code == 200
+    assert status_response.json()["deployment"]["status"] == "deployed"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert read_response.json()["deployment"]["latest_release_id"] == release_response.json()["release"]["id"]
+    assert workspace_response.json()["agent_deployments"]["deployment_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

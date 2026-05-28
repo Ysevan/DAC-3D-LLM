@@ -31,6 +31,7 @@ from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree, GitWorkspaceContext, RepoContextMapStore
 from goals import (
     ArtifactStore,
+    AgentDeploymentStore,
     AgentFleetStore,
     AgentRegistryStore,
     AutomationPlannerStore,
@@ -1470,6 +1471,7 @@ class DAC3DAgentRuntime:
                 "scoped_shared_state",
                 "agent_registry_discovery",
                 "agent_fleet_control_plane",
+                "agent_deployment_catalog",
                 "threaded_agent_conversation",
                 "shared_browser_context",
                 "local_tool_marketplace",
@@ -2431,6 +2433,7 @@ class DAC3DAgentChatAdapter:
     git_workspace_context: GitWorkspaceContext | None = None
     agent_registry_store: AgentRegistryStore | None = None
     agent_fleet_store: AgentFleetStore | None = None
+    agent_deployment_store: AgentDeploymentStore | None = None
     conversation_thread_store: ConversationThreadStore | None = None
     browser_context_store: BrowserContextStore | None = None
     goal_store: GoalStore | None = None
@@ -2487,6 +2490,10 @@ class DAC3DAgentChatAdapter:
             self.agent_registry_store.seed_defaults(_default_agent_registry_entries())
         if self.agent_fleet_store is None:
             self.agent_fleet_store = AgentFleetStore.from_root(self.config.conversation_memory_dir)
+        if self.agent_deployment_store is None:
+            self.agent_deployment_store = AgentDeploymentStore.from_root(
+                self.config.conversation_memory_dir
+            )
         if self.conversation_thread_store is None:
             self.conversation_thread_store = ConversationThreadStore.from_root(
                 self.config.conversation_memory_dir
@@ -2653,6 +2660,11 @@ class DAC3DAgentChatAdapter:
             self.agent_fleet_store.describe()
             if self.agent_fleet_store is not None
             else {"enabled": False, "backend": "local_agent_fleet"}
+        )
+        summary["agent_deployments"] = (
+            self.agent_deployment_store.describe()
+            if self.agent_deployment_store is not None
+            else {"enabled": False, "backend": "local_agent_deployment_catalog"}
         )
         summary["conversation_threads"] = (
             self.conversation_thread_store.describe()
@@ -2868,6 +2880,11 @@ class DAC3DAgentChatAdapter:
             if self.agent_fleet_store is not None
             else {"enabled": False, "backend": "local_agent_fleet"}
         )
+        agent_deployments = (
+            self.agent_deployment_store.describe()
+            if self.agent_deployment_store is not None
+            else {"enabled": False, "backend": "local_agent_deployment_catalog"}
+        )
         conversation_threads = (
             self.conversation_thread_store.describe()
             if self.conversation_thread_store is not None
@@ -2968,6 +2985,7 @@ class DAC3DAgentChatAdapter:
             "git_workspace": git_workspace,
             "agent_registry": agent_registry,
             "agent_fleet": agent_fleet,
+            "agent_deployments": agent_deployments,
             "conversation_threads": conversation_threads,
             "browser_contexts": browser_contexts,
             "memory_os": memory,
@@ -2996,6 +3014,7 @@ class DAC3DAgentChatAdapter:
                 "workflow_checkpoint",
                 "shared_state",
                 "tool_marketplace",
+                "agent_deployment_catalog",
                 "observability_snapshot",
                 "coordinator_route",
                 "skill_selection",
@@ -3005,6 +3024,7 @@ class DAC3DAgentChatAdapter:
                 "git_workspace_context",
                 "agent_registry",
                 "agent_fleet",
+                "agent_deployments",
                 "conversation_thread",
                 "shared_browser_context",
                 "memory_prefetch",
@@ -3024,6 +3044,7 @@ class DAC3DAgentChatAdapter:
             "counts": {
                 "agents": (workspace.get("agent_registry") or {}).get("agent_count", 0),
                 "fleet_instances": (workspace.get("agent_fleet") or {}).get("instance_count", 0),
+                "deployments": (workspace.get("agent_deployments") or {}).get("deployment_count", 0),
                 "threads": (workspace.get("conversation_threads") or {}).get("thread_count", 0),
                 "browser_contexts": (workspace.get("browser_contexts") or {}).get("context_count", 0),
                 "goals": (workspace.get("goals") or {}).get("goal_count", 0),
@@ -3246,6 +3267,128 @@ class DAC3DAgentChatAdapter:
                 status,
                 note=note,
                 actor=actor,
+            ),
+        }
+
+    def list_agent_deployments(
+        self,
+        *,
+        status: str | None = None,
+        environment: str | None = None,
+        app_type: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent deployment catalog entries."""
+        if self.agent_deployment_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_agent_deployment_catalog",
+                "deployments": [],
+                "count": 0,
+            }
+        return self.agent_deployment_store.list_deployments(
+            status=status,
+            environment=environment,
+            app_type=app_type,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def read_agent_deployment(self, deployment_id_or_slug: str) -> dict[str, Any]:
+        """Read one Agent deployment by id or slug."""
+        if self.agent_deployment_store is None:
+            raise ValueError("Agent deployment catalog is not enabled.")
+        return self.agent_deployment_store.read_deployment(deployment_id_or_slug)
+
+    def create_agent_deployment(
+        self,
+        name: str,
+        *,
+        entrypoint: str,
+        slug: str = "",
+        app_type: str = "agent_app",
+        version: str = "0.1.0",
+        environment: str = "local",
+        route_path: str = "",
+        status: str = "draft",
+        workflow_ids: list[Any] | None = None,
+        tool_pack_slugs: list[Any] | None = None,
+        agent_roles: list[Any] | None = None,
+        config_refs: list[Any] | None = None,
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        created_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Create or update one local deployable Agent app entry."""
+        if self.agent_deployment_store is None:
+            raise ValueError("Agent deployment catalog is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_deployment_store.create_deployment(
+                name,
+                slug=slug,
+                app_type=app_type,
+                entrypoint=entrypoint,
+                version=version,
+                environment=environment,
+                route_path=route_path,
+                status=status,
+                workflow_ids=workflow_ids,
+                tool_pack_slugs=tool_pack_slugs,
+                agent_roles=agent_roles,
+                config_refs=config_refs,
+                tags=tags,
+                metadata=metadata,
+                created_by=created_by,
+            ),
+        }
+
+    def update_agent_deployment_status(
+        self,
+        deployment_id_or_slug: str,
+        status: str,
+        *,
+        note: str = "",
+        actor: str = "agent",
+    ) -> dict[str, Any]:
+        """Move one Agent deployment between local lifecycle statuses."""
+        if self.agent_deployment_store is None:
+            raise ValueError("Agent deployment catalog is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_deployment_store.update_status(
+                deployment_id_or_slug,
+                status,
+                note=note,
+                actor=actor,
+            ),
+        }
+
+    def record_agent_deployment_release(
+        self,
+        deployment_id_or_slug: str,
+        *,
+        version: str,
+        summary: str = "",
+        artifact_ids: list[Any] | None = None,
+        verification_run_ids: list[Any] | None = None,
+        released_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Record a release snapshot for one Agent deployment entry."""
+        if self.agent_deployment_store is None:
+            raise ValueError("Agent deployment catalog is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_deployment_store.record_release(
+                deployment_id_or_slug,
+                version=version,
+                summary=summary,
+                artifact_ids=artifact_ids,
+                verification_run_ids=verification_run_ids,
+                released_by=released_by,
             ),
         }
 

@@ -569,6 +569,124 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/deployments")
+    def list_agent_deployments(
+        status: str | None = None,
+        environment: str | None = None,
+        app_type: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_deployments = getattr(assistant, "list_agent_deployments", None)
+        if not callable(list_deployments):
+            raise HTTPException(status_code=503, detail="Agent deployment catalog is unavailable.")
+        try:
+            return list_deployments(
+                status=status,
+                environment=environment,
+                app_type=app_type,
+                tag=tag,
+                query=q,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/deployments")
+    def create_agent_deployment(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_deployment = getattr(assistant, "create_agent_deployment", None)
+        if not callable(create_deployment):
+            raise HTTPException(status_code=503, detail="Agent deployment catalog is unavailable.")
+        name = str(request.get("name") or "").strip()
+        entrypoint = str(request.get("entrypoint") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        if not entrypoint:
+            raise HTTPException(status_code=422, detail="The `entrypoint` field is required.")
+        try:
+            return create_deployment(
+                name,
+                entrypoint=entrypoint,
+                slug=str(request.get("slug") or ""),
+                app_type=str(request.get("app_type") or "agent_app"),
+                version=str(request.get("version") or "0.1.0"),
+                environment=str(request.get("environment") or "local"),
+                route_path=str(request.get("route_path") or ""),
+                status=str(request.get("status") or "draft"),
+                workflow_ids=request.get("workflow_ids")
+                if isinstance(request.get("workflow_ids"), list)
+                else None,
+                tool_pack_slugs=request.get("tool_pack_slugs")
+                if isinstance(request.get("tool_pack_slugs"), list)
+                else None,
+                agent_roles=request.get("agent_roles") if isinstance(request.get("agent_roles"), list) else None,
+                config_refs=request.get("config_refs") if isinstance(request.get("config_refs"), list) else None,
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                created_by=str(request.get("created_by") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/deployments/{deployment_id_or_slug}")
+    def read_agent_deployment(deployment_id_or_slug: str) -> dict[str, Any]:
+        read_deployment = getattr(assistant, "read_agent_deployment", None)
+        if not callable(read_deployment):
+            raise HTTPException(status_code=503, detail="Agent deployment catalog is unavailable.")
+        try:
+            return read_deployment(deployment_id_or_slug)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/deployments/{deployment_id_or_slug}/status")
+    def update_agent_deployment_status(
+        deployment_id_or_slug: str,
+        request: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_deployment_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent deployment catalog is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(
+                deployment_id_or_slug,
+                status,
+                note=str(request.get("note") or ""),
+                actor=str(request.get("actor") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/deployments/{deployment_id_or_slug}/releases")
+    def record_agent_deployment_release(
+        deployment_id_or_slug: str,
+        request: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        record_release = getattr(assistant, "record_agent_deployment_release", None)
+        if not callable(record_release):
+            raise HTTPException(status_code=503, detail="Agent deployment catalog is unavailable.")
+        version = str(request.get("version") or "").strip()
+        if not version:
+            raise HTTPException(status_code=422, detail="The `version` field is required.")
+        try:
+            return record_release(
+                deployment_id_or_slug,
+                version=version,
+                summary=str(request.get("summary") or ""),
+                artifact_ids=request.get("artifact_ids")
+                if isinstance(request.get("artifact_ids"), list)
+                else None,
+                verification_run_ids=request.get("verification_run_ids")
+                if isinstance(request.get("verification_run_ids"), list)
+                else None,
+                released_by=str(request.get("released_by") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/observability")
     def agent_observability(recent_trace_limit: int = 20) -> dict[str, Any]:
         observability = getattr(assistant, "agent_observability", None)

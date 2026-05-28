@@ -6,6 +6,7 @@ from pathlib import Path
 
 from goals import (
     ArtifactStore,
+    AgentDeploymentStore,
     AgentFleetStore,
     AgentRegistryStore,
     AutomationPlannerStore,
@@ -618,3 +619,46 @@ def test_tool_marketplace_store_registers_and_filters_tool_packs(tmp_path: Path)
     assert read["entry"]["tools"] == ["dac3d_preview_command", "dac3d_status"]
     assert summary["entry_count"] == 1
     assert summary["tool_count"] == 2
+
+
+def test_agent_deployment_store_tracks_apps_status_and_releases(tmp_path: Path) -> None:
+    store = AgentDeploymentStore.from_root(tmp_path)
+
+    created = store.create_deployment(
+        "Offline Workflow App",
+        slug="offline-workflow",
+        app_type="workflow_app",
+        entrypoint="workflow:offline-inspection",
+        version="0.1.0",
+        environment="local",
+        route_path="/agent/offline",
+        status="ready",
+        workflow_ids=["workflow-offline"],
+        tool_pack_slugs=["dac3d-control-pack"],
+        agent_roles=["coordinator", "dac3d_control"],
+        config_refs=["local.env"],
+        tags=["offline", "demo"],
+    )
+    release = store.record_release(
+        "offline-workflow",
+        version="0.2.0",
+        summary="接入离线检测 workflow 模板。",
+        artifact_ids=["artifact-release"],
+        verification_run_ids=["verification-1"],
+        released_by="deployment-test",
+    )
+    deployed = store.update_status("offline-workflow", "deployed", actor="deployment-test")
+    listed = store.list_deployments(status="deployed", environment="local", query="离线检测")
+    read = store.read_deployment(created["deployment"]["id"])
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert created["deployment"]["slug"] == "offline-workflow"
+    assert release["release"]["version"] == "0.2.0"
+    assert release["deployment"]["latest_release_id"] == release["release"]["id"]
+    assert deployed["deployment"]["status"] == "deployed"
+    assert deployed["deployment"]["deployed_at"]
+    assert listed["count"] == 1
+    assert read["deployment"]["releases"][0]["artifact_ids"] == ["artifact-release"]
+    assert summary["deployment_count"] == 1
+    assert summary["release_count"] == 1
