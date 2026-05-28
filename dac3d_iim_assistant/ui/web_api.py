@@ -18,6 +18,77 @@ from ui.auth import ApiSecurityError, PRIVILEGED_ROLES, require_api_actor
 from ui.security_middleware import install_security_middleware
 from ui.session import ConfirmationTokenStore
 
+
+_OPENAPI_SECURITY_SCHEMES: dict[str, dict[str, str]] = {
+    "DAC3DSessionId": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-DAC3D-Session-ID",
+        "description": "DAC-3D session id. It is bound to body/query session_id when both are supplied.",
+    },
+    "DAC3DOperatorId": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-DAC3D-Operator-ID",
+        "description": "Human operator id required for command, memory, upload, and other operator-scoped actions.",
+    },
+    "DAC3DRoles": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-DAC3D-Roles",
+        "description": "Comma-separated actor roles. Use operator for writes; admin or security_admin for privileged memory APIs.",
+    },
+}
+
+_OPENAPI_SECURITY_POLICIES: dict[tuple[str, str], dict[str, Any]] = {
+    ("GET", "/api/runtime"): {"schemes": ("DAC3DSessionId",), "level": "read"},
+    ("GET", "/api/knowledge-base/summary"): {"schemes": ("DAC3DSessionId",), "level": "read"},
+    ("GET", "/api/machine-agent/snapshot"): {"schemes": ("DAC3DSessionId",), "level": "read"},
+    ("POST", "/api/machine-agent/chat"): {"schemes": ("DAC3DSessionId",), "level": "read"},
+    ("GET", "/api/machine-agent/status"): {"schemes": ("DAC3DSessionId",), "level": "read"},
+    ("POST", "/api/chat"): {"schemes": ("DAC3DSessionId",), "level": "read"},
+    ("POST", "/api/chat/stream"): {"schemes": ("DAC3DSessionId",), "level": "read"},
+    ("POST", "/api/commands/preview"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId"),
+        "level": "operator_preview",
+    },
+    ("POST", "/api/commands/confirm"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "write",
+        "required_roles": ("operator", "admin", "security_admin"),
+    },
+    ("GET", "/api/memory/pending"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "privileged",
+        "required_roles": ("admin", "security_admin"),
+    },
+    ("POST", "/api/memory/approve"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "privileged_write",
+        "required_roles": ("admin", "security_admin"),
+    },
+    ("POST", "/api/memory/reject"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "privileged_write",
+        "required_roles": ("admin", "security_admin"),
+    },
+    ("POST", "/api/memory/delete"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "privileged_write",
+        "required_roles": ("admin", "security_admin"),
+    },
+    ("POST", "/api/skill-patches/apply"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "privileged_write",
+        "required_roles": ("admin", "security_admin"),
+    },
+    ("POST", "/api/knowledge-base/build"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "write",
+        "required_roles": ("operator", "admin", "security_admin"),
+    },
+}
+
 try:  # FastAPI resolves postponed route annotations from module globals.
     from fastapi import Request, UploadFile
     from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -469,6 +540,7 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         async def frontend_missing() -> HTMLResponse:
             return HTMLResponse(_frontend_hint_html())
 
+    _install_openapi_security_schema(app)
     return app
 
 
@@ -658,6 +730,58 @@ def _require_actor(
         require_operator=require_operator,
         required_roles=required_roles,
     )
+
+
+def _install_openapi_security_schema(app: Any) -> None:
+    """Expose DAC-3D API actor headers in Swagger/OpenAPI."""
+    try:
+        from fastapi.openapi.utils import get_openapi
+    except Exception:  # pragma: no cover - optional FastAPI dependency guard
+        return
+
+    def custom_openapi() -> dict[str, Any]:
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        components = schema.setdefault("components", {})
+        security_schemes = components.setdefault("securitySchemes", {})
+        security_schemes.update(_OPENAPI_SECURITY_SCHEMES)
+        _apply_openapi_security_policies(schema)
+        app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = custom_openapi
+
+
+def _apply_openapi_security_policies(schema: dict[str, Any]) -> None:
+    paths = schema.get("paths")
+    if not isinstance(paths, dict):
+        return
+    for path, path_item in paths.items():
+        if not isinstance(path_item, dict):
+            continue
+        for method, operation in path_item.items():
+            if not isinstance(operation, dict):
+                continue
+            policy = _OPENAPI_SECURITY_POLICIES.get((method.upper(), path))
+            if not policy:
+                continue
+            schemes = tuple(str(scheme) for scheme in policy.get("schemes", ()))
+            operation["security"] = [{scheme: [] for scheme in schemes}]
+            operation["x-dac3d-security"] = {
+                "level": policy.get("level"),
+                "required_headers": [
+                    _OPENAPI_SECURITY_SCHEMES[scheme]["name"]
+                    for scheme in schemes
+                    if scheme in _OPENAPI_SECURITY_SCHEMES
+                ],
+                "required_roles": list(policy.get("required_roles", ())),
+            }
 
 
 def _attach_trace(request: Any, payload: dict[str, Any]) -> dict[str, Any]:

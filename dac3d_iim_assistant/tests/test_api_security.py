@@ -48,6 +48,41 @@ def test_missing_session_rejected_for_write(tmp_path) -> None:
     assert response.json()["error"]["code"] == "MISSING_SESSION_ID"
 
 
+def test_openapi_documents_dac3d_security_headers(tmp_path) -> None:
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    client = TestClient(create_api_app(assistant))
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    schema = response.json()
+    security_schemes = schema["components"]["securitySchemes"]
+    assert security_schemes["DAC3DSessionId"]["name"] == "X-DAC3D-Session-ID"
+    assert security_schemes["DAC3DOperatorId"]["name"] == "X-DAC3D-Operator-ID"
+    assert security_schemes["DAC3DRoles"]["name"] == "X-DAC3D-Roles"
+
+    runtime_op = schema["paths"]["/api/runtime"]["get"]
+    assert runtime_op["security"] == [{"DAC3DSessionId": []}]
+    assert runtime_op["x-dac3d-security"]["required_headers"] == ["X-DAC3D-Session-ID"]
+
+    confirm_op = schema["paths"]["/api/commands/confirm"]["post"]
+    assert confirm_op["security"] == [
+        {"DAC3DSessionId": [], "DAC3DOperatorId": [], "DAC3DRoles": []}
+    ]
+    assert confirm_op["x-dac3d-security"]["required_roles"] == [
+        "operator",
+        "admin",
+        "security_admin",
+    ]
+    assert confirm_op["x-dac3d-security"]["required_headers"] == [
+        "X-DAC3D-Session-ID",
+        "X-DAC3D-Operator-ID",
+        "X-DAC3D-Roles",
+    ]
+
+    assert "security" not in schema["paths"]["/api/health"]["get"]
+
+
 def test_wrong_operator_rejected_for_confirmation(tmp_path) -> None:
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
     client = TestClient(create_api_app(assistant))

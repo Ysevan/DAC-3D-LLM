@@ -40,19 +40,24 @@
 - CI 中的 `python -m evals.run_security_evals` 现在断言真实命令没有提交、未批准 memory 不进入上下文、未知/危险工具不触发 handler、API auth bypass 被拒绝。
 - 已补回归测试确认报告不再只是空 trace：prompt-injection case 记录 `dac3d_execute_command` 和 blocked `write_command`/`submit_command`，memory-poisoning case 只产生 pending patch，API auth bypass 返回 401。
 
+## S15-6 已修复
+
+- Swagger/OpenAPI 已显式建模 DAC-3D API actor 安全头：`X-DAC3D-Session-ID`、`X-DAC3D-Operator-ID` 和 `X-DAC3D-Roles` 都注册为 header apiKey security schemes。
+- OpenAPI 会按路径标注安全级别：只读接口要求 session，命令 preview 要求 session/operator，命令确认、知识库构建和 privileged memory/skill API 要求 session/operator/roles。
+- 每个受保护 operation 都附带 `x-dac3d-security` 扩展，标出 required headers 和 required roles，降低 Swagger 调试时漏带 operator/session/role 的误用风险。
+- 已补回归测试确认 `/openapi.json` 暴露三类安全头、`/api/commands/confirm` 标注 operator/admin/security_admin 写角色、`/api/health` 不被错误标为受保护。
+
 ## P0 必须修复
 
-当前审查范围内的 P0 项已完成。下一步应继续推进 P1/P2 的审计不可变性、OpenAPI 安全建模、前端确认体验、锁文件和可复现 E2E。
+当前审查范围内的 P0 项已完成。下一步应继续推进 P1/P2 的审计不可变性、前端确认体验、锁文件和可复现 E2E。
 
 ## P1 建议修复
 
 1. Audit trace 是 JSONL hash chain，可检测内容篡改，但还不是操作系统或外部存储层面的不可变审计。生产建议加只追加权限、轮转、签名或外部日志汇聚。
 
-2. Swagger/OpenAPI 未把 `X-DAC3D-Session-ID`、`X-DAC3D-Operator-ID`、角色头建模为安全依赖。运行时会校验，但接口文档不够清晰，容易误用。
+2. 前端高风险确认目前使用 `window.confirm`。安全语义已经明确，但生产 UI 建议换成可访问 modal，并要求 operator 核对 action、scope、preview hash 或短确认语。
 
-3. 前端高风险确认目前使用 `window.confirm`。安全语义已经明确，但生产 UI 建议换成可访问 modal，并要求 operator 核对 action、scope、preview hash 或短确认语。
-
-4. dependency audit、bandit、ruff、npm audit 已进入 CI，但本地无法在无网络/无 CI token 环境中确认完整执行结果。合并前应以 GitHub Actions 结果为准。
+3. dependency audit、bandit、ruff、npm audit 已进入 CI，但本地无法在无网络/无 CI token 环境中确认完整执行结果。合并前应以 GitHub Actions 结果为准。
 
 ## P2 后续优化
 
@@ -80,6 +85,7 @@
 - Path/File 边界已通过 `PathPolicy` 强制执行；离线目录、状态文件读取、command bridge 写入和知识库上传文件名都进入统一 canonical/allowlist/secret/symlink/traversal 检查。
 - 长期 memory 已改为 pending patch 审批生命周期；未批准、已拒绝、已删除的 memory 都不会进入 prompt context。
 - Security eval runner 已接入真实本地 Agent runtime/tool harness；报告会记录实际 `tool_calls`、ToolGateway blocked attempts、policy decisions、command submission 状态、memory approval 状态和 API auth 结果。
+- Swagger/OpenAPI 已把 DAC-3D session、operator 和 roles header 建模为安全 schemes，并按 operation 标注 required headers/roles。
 
 ## 缺失测试
 
@@ -103,3 +109,5 @@
 4. S15-4：已完成。memory 改为 approval patch 生命周期；默认生成 pending memory patch，operator 审批后写入；reject/delete 不再进入 prompt context。
 
 5. S15-5：已完成。security eval runner 已接入真实 runtime/tool trace，把 P0 安全边界转为 CI 门禁。
+
+6. S15-6：已完成。Swagger/OpenAPI 已建模 DAC-3D session/operator/roles 安全头，并为受保护 operation 标注安全级别和所需角色。
