@@ -1,6 +1,7 @@
 """Goal tracking for DAC-Agent Runtime."""
 
 from goals.artifacts import ArtifactStore
+from goals.agent_fleet import AgentFleetStore
 from goals.agent_registry import AgentRegistryStore
 from goals.automation_planner import AutomationPlannerStore
 from goals.browser_context import BrowserContextStore
@@ -18,6 +19,7 @@ from goals.workflow_templates import WorkflowTemplateStore
 
 __all__ = [
     "ArtifactStore",
+    "AgentFleetStore",
     "AgentRegistryStore",
     "AutomationPlannerStore",
     "BrowserContextStore",

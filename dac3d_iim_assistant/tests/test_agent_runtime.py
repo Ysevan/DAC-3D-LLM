@@ -784,6 +784,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["code_symbols"]["backend"] == "code_symbol_navigator"
     assert summary["git_workspace"]["backend"] == "git_workspace_context"
     assert summary["agent_registry"]["backend"] == "local_agent_registry"
+    assert summary["agent_fleet"]["backend"] == "local_agent_fleet"
     assert summary["conversation_threads"]["backend"] == "local_agent_threads"
     assert summary["browser_contexts"]["backend"] == "local_browser_context_store"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
@@ -1081,6 +1082,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "agent_observability_snapshot" in description["network_capabilities"]
     assert "scoped_shared_state" in description["network_capabilities"]
     assert "agent_registry_discovery" in description["network_capabilities"]
+    assert "agent_fleet_control_plane" in description["network_capabilities"]
     assert "threaded_agent_conversation" in description["network_capabilities"]
     assert "shared_browser_context" in description["network_capabilities"]
     assert "local_tool_marketplace" in description["network_capabilities"]
@@ -1443,6 +1445,50 @@ def test_agent_chat_adapter_agent_registry_routes_specialists(tmp_path) -> None:
     assert read["agent"]["id"] == registered["agent"]["id"]
     assert workspace["agent_registry"]["agent_count"] >= 8
     assert "agent_registry" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_agent_fleet_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    registered = adapter.register_agent_fleet_instance(
+        "local-result-1",
+        agent_role="dac3d_result",
+        capabilities=["result_lookup"],
+        max_concurrency=2,
+        tags=["result"],
+    )
+    instance_id = registered["instance"]["id"]
+    heartbeat = adapter.heartbeat_agent_fleet_instance(
+        instance_id,
+        status="ready",
+        metrics={"latency_ms": 20},
+    )
+    assigned = adapter.assign_agent_fleet_task(
+        instance_id,
+        task_id="task-result-1",
+        summary="读取最近检测结果。",
+        thread_id="thread-result",
+    )
+    completed = adapter.update_agent_fleet_assignment_status(
+        instance_id,
+        assigned["assignment"]["id"],
+        "completed",
+    )
+    listed = adapter.list_agent_fleet(agent_role="dac3d_result", query="最近检测")
+    read = adapter.read_agent_fleet_instance("local-result-1")
+    workspace = adapter.agent_workspace()
+
+    assert registered["created"] is True
+    assert heartbeat["instance"]["last_heartbeat_at"]
+    assert assigned["instance"]["status"] == "busy"
+    assert completed["instance"]["status"] == "ready"
+    assert listed["count"] == 1
+    assert read["instance"]["id"] == instance_id
+    assert workspace["agent_fleet"]["instance_count"] == 1
+    assert "agent_fleet" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_conversation_thread_roundtrip(tmp_path) -> None:

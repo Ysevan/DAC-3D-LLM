@@ -145,6 +145,137 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/agent/fleet")
+    def list_agent_fleet(
+        status: str | None = None,
+        agent_role: str | None = None,
+        environment: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_fleet = getattr(assistant, "list_agent_fleet", None)
+        if not callable(list_fleet):
+            raise HTTPException(status_code=503, detail="Agent fleet is unavailable.")
+        try:
+            return list_fleet(
+                status=status,
+                agent_role=agent_role,
+                environment=environment,
+                tag=tag,
+                query=q,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/fleet")
+    def register_agent_fleet_instance(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        register_instance = getattr(assistant, "register_agent_fleet_instance", None)
+        if not callable(register_instance):
+            raise HTTPException(status_code=503, detail="Agent fleet is unavailable.")
+        name = str(request.get("name") or "").strip()
+        agent_role = str(request.get("agent_role") or request.get("role") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="The `name` field is required.")
+        if not agent_role:
+            raise HTTPException(status_code=422, detail="The `agent_role` field is required.")
+        try:
+            return register_instance(
+                name,
+                agent_role=agent_role,
+                environment=str(request.get("environment") or "local"),
+                endpoint=str(request.get("endpoint") or ""),
+                status=str(request.get("status") or "ready"),
+                capabilities=request.get("capabilities")
+                if isinstance(request.get("capabilities"), list)
+                else None,
+                max_concurrency=int(request.get("max_concurrency") or 1),
+                current_load=int(request.get("current_load") or 0),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                owner_agent=str(request.get("owner_agent") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/fleet/{instance_id_or_name}")
+    def read_agent_fleet_instance(instance_id_or_name: str) -> dict[str, Any]:
+        read_instance = getattr(assistant, "read_agent_fleet_instance", None)
+        if not callable(read_instance):
+            raise HTTPException(status_code=503, detail="Agent fleet is unavailable.")
+        try:
+            return read_instance(instance_id_or_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/fleet/{instance_id_or_name}/heartbeat")
+    def heartbeat_agent_fleet_instance(
+        instance_id_or_name: str,
+        request: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        heartbeat = getattr(assistant, "heartbeat_agent_fleet_instance", None)
+        if not callable(heartbeat):
+            raise HTTPException(status_code=503, detail="Agent fleet is unavailable.")
+        try:
+            return heartbeat(
+                instance_id_or_name,
+                status=str(request.get("status") or "ready"),
+                current_load=int(request["current_load"]) if "current_load" in request else None,
+                metrics=request.get("metrics") if isinstance(request.get("metrics"), dict) else None,
+                note=str(request.get("note") or ""),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/fleet/{instance_id_or_name}/assignments")
+    def assign_agent_fleet_task(
+        instance_id_or_name: str,
+        request: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        assign_task = getattr(assistant, "assign_agent_fleet_task", None)
+        if not callable(assign_task):
+            raise HTTPException(status_code=503, detail="Agent fleet is unavailable.")
+        task_id = str(request.get("task_id") or "").strip()
+        if not task_id:
+            raise HTTPException(status_code=422, detail="The `task_id` field is required.")
+        try:
+            return assign_task(
+                instance_id_or_name,
+                task_id=task_id,
+                summary=str(request.get("summary") or ""),
+                thread_id=str(request.get("thread_id") or ""),
+                workflow_id=str(request.get("workflow_id") or ""),
+                priority=str(request.get("priority") or "normal"),
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                assigned_by=str(request.get("assigned_by") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/fleet/{instance_id_or_name}/assignments/{assignment_id}/status")
+    def update_agent_fleet_assignment_status(
+        instance_id_or_name: str,
+        assignment_id: str,
+        request: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_fleet_assignment_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent fleet is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(
+                instance_id_or_name,
+                assignment_id,
+                status,
+                note=str(request.get("note") or ""),
+                actor=str(request.get("actor") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/threads")
     def list_agent_threads(
         session_id: str | None = None,

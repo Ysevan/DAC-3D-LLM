@@ -939,6 +939,58 @@ def test_web_api_agent_registry_endpoints(tmp_path) -> None:
     assert workspace_response.json()["agent_registry"]["agent_count"] >= 8
 
 
+def test_web_api_agent_fleet_endpoints(tmp_path) -> None:
+    """The web UI should manage local Agent fleet instances and assignments."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/fleet",
+        json={
+            "name": "local-control-1",
+            "agent_role": "dac3d_control",
+            "capabilities": ["command_preview"],
+            "max_concurrency": 2,
+            "tags": ["control"],
+        },
+    )
+    instance_id = create_response.json()["instance"]["id"]
+    heartbeat_response = client.post(
+        f"/api/agent/fleet/{instance_id}/heartbeat",
+        json={"status": "ready", "current_load": 0, "metrics": {"latency_ms": 10}},
+    )
+    assignment_response = client.post(
+        f"/api/agent/fleet/{instance_id}/assignments",
+        json={"task_id": "task-control-1", "summary": "生成扫描命令预览。"},
+    )
+    assignment_id = assignment_response.json()["assignment"]["id"]
+    complete_response = client.post(
+        f"/api/agent/fleet/{instance_id}/assignments/{assignment_id}/status",
+        json={"status": "completed", "actor": "local-control-1"},
+    )
+    list_response = client.get("/api/agent/fleet?agent_role=dac3d_control&q=扫描")
+    read_response = client.get("/api/agent/fleet/local-control-1")
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert heartbeat_response.status_code == 200
+    assert heartbeat_response.json()["instance"]["last_heartbeat_at"]
+    assert assignment_response.status_code == 200
+    assert assignment_response.json()["instance"]["status"] == "busy"
+    assert complete_response.status_code == 200
+    assert complete_response.json()["assignment"]["status"] == "completed"
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert read_response.json()["instance"]["id"] == instance_id
+    assert workspace_response.json()["agent_fleet"]["instance_count"] == 1
+
+
 def test_web_api_agent_thread_endpoints(tmp_path) -> None:
     """The web UI should create, append, list, read, and resolve Agent threads."""
     config = make_config(tmp_path)

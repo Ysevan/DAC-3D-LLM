@@ -6,6 +6,7 @@ from pathlib import Path
 
 from goals import (
     ArtifactStore,
+    AgentFleetStore,
     AgentRegistryStore,
     AutomationPlannerStore,
     BrowserContextStore,
@@ -464,6 +465,53 @@ def test_agent_registry_store_registers_and_routes_agents(tmp_path: Path) -> Non
     assert read["agent"]["id"] == created["agent"]["id"]
     assert summary["agent_count"] == 1
     assert summary["by_status"]["active"] == 1
+
+
+def test_agent_fleet_store_tracks_instances_heartbeats_and_assignments(tmp_path: Path) -> None:
+    store = AgentFleetStore.from_root(tmp_path)
+
+    created = store.register_instance(
+        "local-control-1",
+        agent_role="dac3d_control",
+        environment="local",
+        capabilities=["command_preview", "status"],
+        max_concurrency=2,
+        tags=["control"],
+    )
+    instance_id = created["instance"]["id"]
+    heartbeat = store.heartbeat(
+        instance_id,
+        status="ready",
+        current_load=0,
+        metrics={"latency_ms": 12},
+    )
+    assigned = store.assign_task(
+        instance_id,
+        task_id="task-offline-1",
+        summary="生成离线检测命令预览。",
+        thread_id="thread-1",
+        assigned_by="coordinator",
+    )
+    completed = store.update_assignment_status(
+        instance_id,
+        assigned["assignment"]["id"],
+        "completed",
+        actor="local-control-1",
+    )
+    listed = store.list_instances(agent_role="dac3d_control", tag="control", query="离线检测")
+    read = store.read_instance("local-control-1")
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert heartbeat["instance"]["last_heartbeat_at"]
+    assert assigned["instance"]["status"] == "busy"
+    assert assigned["assignment"]["task_id"] == "task-offline-1"
+    assert completed["assignment"]["status"] == "completed"
+    assert completed["instance"]["current_load"] == 0
+    assert listed["count"] == 1
+    assert read["instance"]["id"] == instance_id
+    assert summary["instance_count"] == 1
+    assert summary["total_capacity"] == 2
 
 
 def test_conversation_thread_store_tracks_messages_and_context_refs(tmp_path: Path) -> None:

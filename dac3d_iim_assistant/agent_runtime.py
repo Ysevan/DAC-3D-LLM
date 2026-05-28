@@ -31,6 +31,7 @@ from config import AppConfig
 from context_engineering import ContextBuilder, FileBackedContextTree, GitWorkspaceContext, RepoContextMapStore
 from goals import (
     ArtifactStore,
+    AgentFleetStore,
     AgentRegistryStore,
     AutomationPlannerStore,
     BrowserContextStore,
@@ -1468,6 +1469,7 @@ class DAC3DAgentRuntime:
                 "agent_observability_snapshot",
                 "scoped_shared_state",
                 "agent_registry_discovery",
+                "agent_fleet_control_plane",
                 "threaded_agent_conversation",
                 "shared_browser_context",
                 "local_tool_marketplace",
@@ -2428,6 +2430,7 @@ class DAC3DAgentChatAdapter:
     repo_context_map: RepoContextMapStore | None = None
     git_workspace_context: GitWorkspaceContext | None = None
     agent_registry_store: AgentRegistryStore | None = None
+    agent_fleet_store: AgentFleetStore | None = None
     conversation_thread_store: ConversationThreadStore | None = None
     browser_context_store: BrowserContextStore | None = None
     goal_store: GoalStore | None = None
@@ -2482,6 +2485,8 @@ class DAC3DAgentChatAdapter:
         if self.agent_registry_store is None:
             self.agent_registry_store = AgentRegistryStore.from_root(self.config.conversation_memory_dir)
             self.agent_registry_store.seed_defaults(_default_agent_registry_entries())
+        if self.agent_fleet_store is None:
+            self.agent_fleet_store = AgentFleetStore.from_root(self.config.conversation_memory_dir)
         if self.conversation_thread_store is None:
             self.conversation_thread_store = ConversationThreadStore.from_root(
                 self.config.conversation_memory_dir
@@ -2643,6 +2648,11 @@ class DAC3DAgentChatAdapter:
             self.agent_registry_store.describe()
             if self.agent_registry_store is not None
             else {"enabled": False, "backend": "local_agent_registry"}
+        )
+        summary["agent_fleet"] = (
+            self.agent_fleet_store.describe()
+            if self.agent_fleet_store is not None
+            else {"enabled": False, "backend": "local_agent_fleet"}
         )
         summary["conversation_threads"] = (
             self.conversation_thread_store.describe()
@@ -2853,6 +2863,11 @@ class DAC3DAgentChatAdapter:
             if self.agent_registry_store is not None
             else {"enabled": False, "backend": "local_agent_registry"}
         )
+        agent_fleet = (
+            self.agent_fleet_store.describe()
+            if self.agent_fleet_store is not None
+            else {"enabled": False, "backend": "local_agent_fleet"}
+        )
         conversation_threads = (
             self.conversation_thread_store.describe()
             if self.conversation_thread_store is not None
@@ -2952,6 +2967,7 @@ class DAC3DAgentChatAdapter:
             "code_symbols": code_symbols,
             "git_workspace": git_workspace,
             "agent_registry": agent_registry,
+            "agent_fleet": agent_fleet,
             "conversation_threads": conversation_threads,
             "browser_contexts": browser_contexts,
             "memory_os": memory,
@@ -2988,6 +3004,7 @@ class DAC3DAgentChatAdapter:
                 "symbol_navigation",
                 "git_workspace_context",
                 "agent_registry",
+                "agent_fleet",
                 "conversation_thread",
                 "shared_browser_context",
                 "memory_prefetch",
@@ -3006,6 +3023,7 @@ class DAC3DAgentChatAdapter:
             "workflow": workspace.get("workflow", []),
             "counts": {
                 "agents": (workspace.get("agent_registry") or {}).get("agent_count", 0),
+                "fleet_instances": (workspace.get("agent_fleet") or {}).get("instance_count", 0),
                 "threads": (workspace.get("conversation_threads") or {}).get("thread_count", 0),
                 "browser_contexts": (workspace.get("browser_contexts") or {}).get("context_count", 0),
                 "goals": (workspace.get("goals") or {}).get("goal_count", 0),
@@ -3092,6 +3110,144 @@ class DAC3DAgentChatAdapter:
         if self.agent_registry_store is None:
             raise ValueError("Agent registry is not enabled.")
         return self.agent_registry_store.route_candidates(task, limit=limit)
+
+    def list_agent_fleet(
+        self,
+        *,
+        status: str | None = None,
+        agent_role: str | None = None,
+        environment: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local Agent fleet instances for workload coordination."""
+        if self.agent_fleet_store is None:
+            return {"enabled": False, "backend": "local_agent_fleet", "instances": [], "count": 0}
+        return self.agent_fleet_store.list_instances(
+            status=status,
+            agent_role=agent_role,
+            environment=environment,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def read_agent_fleet_instance(self, instance_id_or_name: str) -> dict[str, Any]:
+        """Read one local Agent fleet instance."""
+        if self.agent_fleet_store is None:
+            raise ValueError("Agent fleet is not enabled.")
+        return self.agent_fleet_store.read_instance(instance_id_or_name)
+
+    def register_agent_fleet_instance(
+        self,
+        name: str,
+        *,
+        agent_role: str,
+        environment: str = "local",
+        endpoint: str = "",
+        status: str = "ready",
+        capabilities: list[Any] | None = None,
+        max_concurrency: int = 1,
+        current_load: int = 0,
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        owner_agent: str = "agent",
+    ) -> dict[str, Any]:
+        """Create or update one local Agent fleet instance."""
+        if self.agent_fleet_store is None:
+            raise ValueError("Agent fleet is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_fleet_store.register_instance(
+                name,
+                agent_role=agent_role,
+                environment=environment,
+                endpoint=endpoint,
+                status=status,
+                capabilities=capabilities,
+                max_concurrency=max_concurrency,
+                current_load=current_load,
+                tags=tags,
+                metadata=metadata,
+                owner_agent=owner_agent,
+            ),
+        }
+
+    def heartbeat_agent_fleet_instance(
+        self,
+        instance_id_or_name: str,
+        *,
+        status: str = "ready",
+        current_load: int | None = None,
+        metrics: dict[str, Any] | None = None,
+        note: str = "",
+    ) -> dict[str, Any]:
+        """Record a heartbeat and load snapshot for one fleet instance."""
+        if self.agent_fleet_store is None:
+            raise ValueError("Agent fleet is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_fleet_store.heartbeat(
+                instance_id_or_name,
+                status=status,
+                current_load=current_load,
+                metrics=metrics,
+                note=note,
+            ),
+        }
+
+    def assign_agent_fleet_task(
+        self,
+        instance_id_or_name: str,
+        *,
+        task_id: str,
+        summary: str = "",
+        thread_id: str = "",
+        workflow_id: str = "",
+        priority: str = "normal",
+        metadata: dict[str, Any] | None = None,
+        assigned_by: str = "coordinator",
+    ) -> dict[str, Any]:
+        """Assign one task/workflow item to a local fleet instance."""
+        if self.agent_fleet_store is None:
+            raise ValueError("Agent fleet is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_fleet_store.assign_task(
+                instance_id_or_name,
+                task_id=task_id,
+                summary=summary,
+                thread_id=thread_id,
+                workflow_id=workflow_id,
+                priority=priority,
+                metadata=metadata,
+                assigned_by=assigned_by,
+            ),
+        }
+
+    def update_agent_fleet_assignment_status(
+        self,
+        instance_id_or_name: str,
+        assignment_id: str,
+        status: str,
+        *,
+        note: str = "",
+        actor: str = "agent",
+    ) -> dict[str, Any]:
+        """Update one fleet assignment status."""
+        if self.agent_fleet_store is None:
+            raise ValueError("Agent fleet is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_fleet_store.update_assignment_status(
+                instance_id_or_name,
+                assignment_id,
+                status,
+                note=note,
+                actor=actor,
+            ),
+        }
 
     def list_agent_threads(
         self,
