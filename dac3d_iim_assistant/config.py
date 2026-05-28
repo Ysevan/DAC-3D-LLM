@@ -91,6 +91,8 @@ class AppConfig:
     agent_max_turns: int = 8
     agent_tracing_disabled: bool = True
     audit_trace_enabled: bool = True
+    audit_trace_signing_key: str = ""
+    audit_trace_key_id: str = "local-audit-key"
     audit_log_sensitive_input: bool = False
     debug_logging_enabled: bool = False
     base_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent)
@@ -219,6 +221,9 @@ class AppConfig:
             agent_max_turns=int(os.getenv("DAC3D_AGENT_MAX_TURNS", "8")),
             agent_tracing_disabled=_read_bool("DAC3D_AGENT_TRACING_DISABLED", True),
             audit_trace_enabled=_read_bool("DAC3D_AUDIT_TRACE_ENABLED", True),
+            audit_trace_signing_key=os.getenv("DAC3D_AUDIT_TRACE_SIGNING_KEY", "").strip(),
+            audit_trace_key_id=os.getenv("DAC3D_AUDIT_TRACE_KEY_ID", "local-audit-key").strip()
+            or "local-audit-key",
             audit_log_sensitive_input=_read_bool("DAC3D_AUDIT_LOG_SENSITIVE_INPUT", False),
             debug_logging_enabled=_read_bool("DAC3D_DEBUG_LOGGING_ENABLED", False),
             base_dir=resolved_base_dir,

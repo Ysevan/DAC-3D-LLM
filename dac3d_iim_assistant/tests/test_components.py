@@ -542,6 +542,29 @@ def test_agent_settings_fall_back_to_openai_compatible_llm_config(tmp_path, monk
     assert config.agent_api_type == "chat_completions"
 
 
+def test_config_loads_audit_trace_signing_settings(tmp_path, monkeypatch) -> None:
+    """Audit trace signing keys should come from local env configuration."""
+    for key in (
+        "DAC3D_AUDIT_TRACE_SIGNING_KEY",
+        "DAC3D_AUDIT_TRACE_KEY_ID",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "DAC3D_AUDIT_TRACE_SIGNING_KEY=local-audit-signing-secret",
+                "DAC3D_AUDIT_TRACE_KEY_ID=ops-key-2026",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = AppConfig.from_env(tmp_path)
+
+    assert config.audit_trace_signing_key == "local-audit-signing-secret"
+    assert config.audit_trace_key_id == "ops-key-2026"
+
+
 def test_default_chunk_size_is_larger_for_richer_context() -> None:
     """The default chunk window should be large enough to preserve more document context."""
     config = AppConfig()

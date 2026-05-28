@@ -19,6 +19,8 @@ def _prod_config(**overrides: object) -> ProductionSecurityConfig:
         "enable_remote_tools": False,
         "enable_open_world_tools": False,
         "trace_redaction": True,
+        "audit_trace_enabled": True,
+        "audit_trace_signing_key_configured": True,
         "cors_allowed_origins": ("https://dac3d.example",),
         "rate_limit_enabled": True,
         "debug_mode": False,
@@ -70,6 +72,22 @@ def test_missing_allowlist_rejected() -> None:
 
     assert any("ALLOWED_INPUT_DIRS" in error for error in errors)
     assert any("ALLOWED_COMMAND_OUTPUT_DIR" in error for error in errors)
+
+
+def test_missing_audit_trace_signing_key_rejected_in_prod() -> None:
+    config = _prod_config(audit_trace_signing_key_configured=False)
+
+    errors = config.validate()
+
+    assert any("AUDIT_TRACE_SIGNING_KEY" in error for error in errors)
+
+
+def test_disabled_audit_trace_rejected_in_prod() -> None:
+    config = _prod_config(audit_trace_enabled=False)
+
+    errors = config.validate()
+
+    assert any("AUDIT_TRACE_ENABLED" in error for error in errors)
 
 
 def test_wildcard_cors_rejected_in_prod() -> None:

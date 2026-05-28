@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app import DAC3DAssistant
 from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime
 from tests.test_assistant import make_config
+from tracing.logger import AuditTraceLogger
 from ui.session import ConfirmationTokenStore
 from ui.web_api import create_api_app
 
@@ -323,6 +324,7 @@ def test_production_cors_not_wildcard(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("DAC3D_CORS_ALLOWED_ORIGINS", "https://dac3d.example")
     monkeypatch.setenv("DAC3D_ALLOWED_INPUT_DIRS", str(tmp_path))
     monkeypatch.setenv("DAC3D_ALLOWED_COMMAND_OUTPUT_DIR", str(tmp_path / "commands"))
+    monkeypatch.setenv("DAC3D_AUDIT_TRACE_SIGNING_KEY", "test-audit-signing-secret")
     config = make_config(tmp_path)
     config.frontend_dev_url = "*"
     assistant = DAC3DAssistant.create(config, rebuild_kb=True)
@@ -337,3 +339,16 @@ def test_production_cors_not_wildcard(tmp_path, monkeypatch) -> None:
     )
 
     assert response.headers.get("access-control-allow-origin") != "*"
+    runtime_response = client.get(
+        "/api/runtime",
+        headers={"X-DAC3D-Session-ID": "security-session"},
+    )
+    assert runtime_response.status_code == 200
+    audit_logger = AuditTraceLogger(
+        config.audit_trace_path,
+        signing_key="test-audit-signing-secret",
+        signing_key_id="local-audit-key",
+    )
+    audit_result = audit_logger.verify_hash_chain()
+    assert audit_result.valid
+    assert audit_result.signature_checked > 0

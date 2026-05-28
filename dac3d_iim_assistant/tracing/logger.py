@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -14,6 +15,13 @@ from tracing.redaction import redact_value, summarize_for_trace
 
 
 ZERO_HASH = "0" * 64
+SIGNATURE_ALGORITHM = "hmac-sha256"
+_INTEGRITY_FIELDS = {
+    "event_hash",
+    "event_signature",
+    "signature_algorithm",
+    "signature_key_id",
+}
 
 
 @dataclass(slots=True)
@@ -24,6 +32,8 @@ class TraceVerificationResult:
     checked: int
     error: str = ""
     line: int | None = None
+    signature_checked: int = 0
+    signature_required: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -31,15 +41,25 @@ class TraceVerificationResult:
             "checked": self.checked,
             "error": self.error,
             "line": self.line,
+            "signature_checked": self.signature_checked,
+            "signature_required": self.signature_required,
         }
 
 
 class AuditTraceLogger:
     """Write redacted audit events to append-only JSONL with a hash chain."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        signing_key: str | bytes = "",
+        signing_key_id: str = "local-audit-key",
+    ) -> None:
         self.path = path
         self._lock = RLock()
+        self._signing_key = _normalize_signing_key(signing_key)
+        self.signing_key_id = signing_key_id.strip() or "local-audit-key"
 
     def append_event(
         self,
@@ -72,6 +92,14 @@ class AuditTraceLogger:
                 "previous_hash": previous_hash,
             }
             event["event_hash"] = _event_hash(event)
+            if self._signing_key:
+                event["signature_algorithm"] = SIGNATURE_ALGORITHM
+                event["signature_key_id"] = self.signing_key_id
+                event["event_signature"] = _event_signature(
+                    event_hash=event["event_hash"],
+                    key=self._signing_key,
+                    key_id=self.signing_key_id,
+                )
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
@@ -90,6 +118,7 @@ class AuditTraceLogger:
         """Detect missing, reordered, or tampered JSONL trace events."""
         previous_hash = ZERO_HASH
         checked = 0
+        signature_checked = 0
         for line_number, event in self._iter_events_with_line_numbers():
             stored_previous = str(event.get("previous_hash") or "")
             if stored_previous != previous_hash:
@@ -98,6 +127,8 @@ class AuditTraceLogger:
                     checked=checked,
                     error="PREVIOUS_HASH_MISMATCH",
                     line=line_number,
+                    signature_checked=signature_checked,
+                    signature_required=bool(self._signing_key),
                 )
             stored_hash = str(event.get("event_hash") or "")
             expected_hash = _event_hash(event)
@@ -107,10 +138,29 @@ class AuditTraceLogger:
                     checked=checked,
                     error="EVENT_HASH_MISMATCH",
                     line=line_number,
+                    signature_checked=signature_checked,
+                    signature_required=bool(self._signing_key),
                 )
+            if self._signing_key:
+                signature_result = self._verify_event_signature(event, stored_hash)
+                if signature_result:
+                    return TraceVerificationResult(
+                        valid=False,
+                        checked=checked,
+                        error=signature_result,
+                        line=line_number,
+                        signature_checked=signature_checked,
+                        signature_required=True,
+                    )
+                signature_checked += 1
             previous_hash = stored_hash
             checked += 1
-        return TraceVerificationResult(valid=True, checked=checked)
+        return TraceVerificationResult(
+            valid=True,
+            checked=checked,
+            signature_checked=signature_checked,
+            signature_required=bool(self._signing_key),
+        )
 
     def iter_events(self) -> list[dict[str, Any]]:
         """Read all valid JSON objects from the JSONL file."""
@@ -123,6 +173,24 @@ class AuditTraceLogger:
             if event_hash:
                 previous_hash = event_hash
         return previous_hash
+
+    def _verify_event_signature(self, event: dict[str, Any], event_hash: str) -> str:
+        stored_signature = str(event.get("event_signature") or "")
+        if not stored_signature:
+            return "EVENT_SIGNATURE_MISSING"
+        if str(event.get("signature_algorithm") or "") != SIGNATURE_ALGORITHM:
+            return "EVENT_SIGNATURE_ALGORITHM_MISMATCH"
+        key_id = str(event.get("signature_key_id") or "")
+        if key_id != self.signing_key_id:
+            return "EVENT_SIGNATURE_KEY_ID_MISMATCH"
+        expected_signature = _event_signature(
+            event_hash=event_hash,
+            key=self._signing_key,
+            key_id=key_id,
+        )
+        if not hmac.compare_digest(stored_signature, expected_signature):
+            return "EVENT_SIGNATURE_MISMATCH"
+        return ""
 
     def _iter_events_with_line_numbers(self) -> list[tuple[int, dict[str, Any]]]:
         if not self.path.exists():
@@ -142,9 +210,29 @@ class AuditTraceLogger:
 
 
 def _event_hash(event: dict[str, Any]) -> str:
-    material = {key: value for key, value in event.items() if key != "event_hash"}
+    material = {key: value for key, value in event.items() if key not in _INTEGRITY_FIELDS}
     serialized = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _event_signature(*, event_hash: str, key: bytes, key_id: str) -> str:
+    material = json.dumps(
+        {
+            "algorithm": SIGNATURE_ALGORITHM,
+            "event_hash": event_hash,
+            "key_id": key_id,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hmac.new(key, material.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _normalize_signing_key(signing_key: str | bytes) -> bytes:
+    if isinstance(signing_key, bytes):
+        return signing_key
+    return signing_key.strip().encode("utf-8")
 
 
 def _utc_now_iso() -> str:

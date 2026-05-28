@@ -16,6 +16,9 @@ Production deployments must fail closed before accepting DAC-3D command submissi
 | `DAC3D_ENABLE_REMOTE_TOOLS` | Must be false unless separately reviewed. |
 | `DAC3D_ENABLE_OPEN_WORLD_TOOLS` | Must be false unless separately reviewed. |
 | `DAC3D_TRACE_REDACTION` | Must be true. |
+| `DAC3D_AUDIT_TRACE_ENABLED` | Must be true. |
+| `DAC3D_AUDIT_TRACE_SIGNING_KEY` | Must be set from a secret manager; signs every audit event hash. |
+| `DAC3D_AUDIT_TRACE_KEY_ID` | Should identify the active signing key for rotation and verification. |
 | `DAC3D_CORS_ALLOWED_ORIGINS` | Must be explicit and cannot include `*`. |
 | `DAC3D_RATE_LIMIT_ENABLED` | Must be true. |
 | `DAC3D_DEBUG_MODE` | Must be false. |
@@ -28,6 +31,9 @@ DAC3D_ENV=prod
 DAC3D_MOCK_MODE=false
 DAC3D_REQUIRE_CONFIRMATION=true
 DAC3D_TRACE_REDACTION=true
+DAC3D_AUDIT_TRACE_ENABLED=true
+DAC3D_AUDIT_TRACE_KEY_ID=ops-audit-2026-05
+# Set DAC3D_AUDIT_TRACE_SIGNING_KEY from a deployment secret, not from committed files.
 DAC3D_RATE_LIMIT_ENABLED=true
 DAC3D_ENABLE_REMOTE_TOOLS=false
 DAC3D_ENABLE_OPEN_WORLD_TOOLS=false
@@ -45,4 +51,4 @@ cd dac3d_iim_assistant
 python -m pytest tests/test_security_config.py -q
 ```
 
-The production validator lives in `security/production_config.py`. Non-production environments may be permissive, but `warnings()` reports risky choices such as wildcard CORS, disabled confirmation, remote tools, or debug mode.
+The production validator lives in `security/production_config.py`. Non-production environments may be permissive, but `warnings()` reports risky choices such as wildcard CORS, disabled confirmation, remote tools, unsigned audit traces, or debug mode.

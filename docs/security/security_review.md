@@ -54,13 +54,20 @@
 - operator 必须输入短确认语 `执行 <preview_hash 前 16 位>`，按钮才会启用；Escape/取消只关闭 dialog，不会触发 `/api/commands/confirm`。
 - 静态扫描器新增 `browser-window-confirm` 规则，CI 本地扫描会拒绝重新引入浏览器原生确认调用。
 
+## S15-8 已修复
+
+- Audit trace JSONL 仍保留 append-only hash chain，同时新增可选 HMAC-SHA256 事件签名。签名绑定 `event_hash`、`signature_key_id` 和算法，攻击者即使重算 hash chain，也无法在没有独立密钥的情况下伪造合法签名。
+- `AuditTraceLogger.verify_hash_chain()` 在配置签名密钥时会同时校验签名缺失、算法不匹配、key id 不匹配和签名不匹配，并在结果中报告 `signature_checked`。
+- FastAPI audit logger 会从 `DAC3D_AUDIT_TRACE_SIGNING_KEY` 和 `DAC3D_AUDIT_TRACE_KEY_ID` 读取签名配置；生产配置校验要求 `DAC3D_AUDIT_TRACE_ENABLED=true` 且必须提供签名密钥。
+- 已补回归测试覆盖签名 trace 的正常校验，以及“篡改事件并重算 hash chain、但没有签名密钥”会被拒绝。
+
 ## P0 必须修复
 
-当前审查范围内的 P0 项已完成。下一步应继续推进 P1/P2 的审计不可变性、锁文件和可复现 E2E。
+当前审查范围内的 P0 项已完成。下一步应继续推进 P1/P2 的锁文件、可复现 E2E 和外部审计汇聚。
 
 ## P1 建议修复
 
-1. Audit trace 是 JSONL hash chain，可检测内容篡改，但还不是操作系统或外部存储层面的不可变审计。生产建议加只追加权限、轮转、签名或外部日志汇聚。
+1. Audit trace 已加入签名 hash chain，可检测篡改和离线重算 hash chain，但还不是操作系统只追加权限或外部日志汇聚。生产建议继续加日志轮转、只追加权限或外部 SIEM/对象存储归档。
 
 2. dependency audit、bandit、ruff、npm audit 已进入 CI，但本地无法在无网络/无 CI token 环境中确认完整执行结果。合并前应以 GitHub Actions 结果为准。
 
@@ -82,6 +89,7 @@
 - `/api/chat` 与 streaming chat 对执行类文本 fail closed，强制走 preview/confirm 分离链路。
 - 生产配置校验禁止生产 wildcard CORS、禁用 debug、要求 redaction、要求 rate limit、禁止 mock writer 下开放命令提交。
 - trace 日志已脱敏、带 request_id/trace_id、支持 hash chain 校验、支持 redacted export。
+- audit trace 支持 HMAC-SHA256 事件签名；生产环境要求开启 trace 并配置签名密钥。
 - 前端不使用 `dangerouslySetInnerHTML`、`.innerHTML`、`eval`、`new Function` 或浏览器原生确认调用，并通过可访问 dialog 显示高风险确认、preview hash、trace_id、错误 trace_id。
 - CI 安全工作流已覆盖 pytest、compileall、ruff、bandit、pip-audit、npm audit、frontend build、static scan、security eval smoke。
 - red-team cases 已覆盖 prompt injection、indirect prompt injection、RAG poisoning、memory poisoning、confirmation bypass、path traversal、secret exfiltration、tool misuse、API auth bypass、trace tampering、XSS 输出注入、DoS oversized input 等类别。
@@ -119,3 +127,5 @@
 6. S15-6：已完成。Swagger/OpenAPI 已建模 DAC-3D session/operator/roles 安全头，并为受保护 operation 标注安全级别和所需角色。
 
 7. S15-7：已完成。前端高风险确认已从浏览器原生确认弹窗升级为可访问 dialog，并增加静态扫描规则防止回退。
+
+8. S15-8：已完成。Audit trace 加入 HMAC 签名校验和生产密钥要求，防止仅重算 JSONL hash chain 的离线篡改。

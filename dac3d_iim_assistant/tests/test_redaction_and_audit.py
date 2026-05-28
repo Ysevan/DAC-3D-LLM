@@ -10,7 +10,7 @@ import pytest
 from config import AppConfig
 from memory import ConversationMemoryStore
 from security.secrets import SecretDetectedError
-from tracing.logger import AuditTraceLogger, ZERO_HASH
+from tracing.logger import AuditTraceLogger, ZERO_HASH, _event_hash
 from tracing.redaction import REDACTION, redact_exception, redact_text, redact_value
 
 
@@ -86,6 +86,60 @@ def test_trace_append_only_hash_chain_valid(tmp_path: Path) -> None:
     assert second["previous_hash"] == first["event_hash"]
     assert logger.verify_hash_chain().valid
     assert logger.verify_hash_chain().checked == 2
+
+
+def test_signed_trace_hash_chain_validates_hmac(tmp_path: Path) -> None:
+    logger = AuditTraceLogger(
+        tmp_path / "audit.jsonl",
+        signing_key="local-audit-signing-secret",
+        signing_key_id="test-key-1",
+    )
+
+    stored = logger.append_event(
+        event_type="confirmation",
+        trace_id="trace-signed",
+        request_id="request-1",
+        session_id="session-1",
+        actor={"session_id": "session-1", "operator_id": "operator-1"},
+        confirmation={"preview_id": "p1", "used": True},
+    )
+    result = logger.verify_hash_chain()
+
+    assert stored["signature_algorithm"] == "hmac-sha256"
+    assert stored["signature_key_id"] == "test-key-1"
+    assert len(stored["event_signature"]) == 64
+    assert result.valid
+    assert result.signature_required
+    assert result.signature_checked == 1
+
+
+def test_signed_trace_detects_recomputed_hash_without_key(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    logger = AuditTraceLogger(
+        path,
+        signing_key="local-audit-signing-secret",
+        signing_key_id="test-key-1",
+    )
+    logger.append_event(event_type="api_request", trace_id="trace-1", request_id="request-1")
+    logger.append_event(event_type="api_request", trace_id="trace-1", request_id="request-2")
+
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    records[0]["payload"] = {"status": "tampered"}
+    previous_hash = ZERO_HASH
+    for record in records:
+        record["previous_hash"] = previous_hash
+        record["event_hash"] = _event_hash(record)
+        previous_hash = record["event_hash"]
+    path.write_text(
+        "\n".join(json.dumps(record, ensure_ascii=False, sort_keys=True) for record in records) + "\n",
+        encoding="utf-8",
+    )
+
+    result = logger.verify_hash_chain()
+
+    assert not result.valid
+    assert result.error == "EVENT_SIGNATURE_MISMATCH"
+    assert result.line == 1
 
 
 def test_query_and_redacted_export(tmp_path: Path) -> None:

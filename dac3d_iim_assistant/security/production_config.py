@@ -25,6 +25,8 @@ class ProductionSecurityConfig:
     enable_remote_tools: bool = False
     enable_open_world_tools: bool = False
     trace_redaction: bool = True
+    audit_trace_enabled: bool = True
+    audit_trace_signing_key_configured: bool = False
     cors_allowed_origins: tuple[str, ...] = field(default_factory=tuple)
     rate_limit_enabled: bool = True
     debug_mode: bool = False
@@ -53,6 +55,8 @@ class ProductionSecurityConfig:
             enable_remote_tools=_read_bool("DAC3D_ENABLE_REMOTE_TOOLS", False),
             enable_open_world_tools=_read_bool("DAC3D_ENABLE_OPEN_WORLD_TOOLS", False),
             trace_redaction=_read_bool("DAC3D_TRACE_REDACTION", True),
+            audit_trace_enabled=_read_bool("DAC3D_AUDIT_TRACE_ENABLED", True),
+            audit_trace_signing_key_configured=_has_env_value("DAC3D_AUDIT_TRACE_SIGNING_KEY"),
             cors_allowed_origins=_read_csv("DAC3D_CORS_ALLOWED_ORIGINS", ()),
             rate_limit_enabled=_read_bool("DAC3D_RATE_LIMIT_ENABLED", True),
             debug_mode=_read_bool("DAC3D_DEBUG_MODE", debug_mode),
@@ -73,6 +77,10 @@ class ProductionSecurityConfig:
             errors.append("REQUIRE_CONFIRMATION must be true in production.")
         if not self.trace_redaction:
             errors.append("TRACE_REDACTION must be true in production.")
+        if not self.audit_trace_enabled:
+            errors.append("AUDIT_TRACE_ENABLED must be true in production.")
+        if not self.audit_trace_signing_key_configured:
+            errors.append("AUDIT_TRACE_SIGNING_KEY must be set in production.")
         if "*" in self.cors_allowed_origins:
             errors.append("CORS wildcard is forbidden in production.")
         if not self.cors_allowed_origins:
@@ -114,6 +122,8 @@ class ProductionSecurityConfig:
             warnings.append("Remote/open-world tools are enabled outside production.")
         if self.debug_mode:
             warnings.append("Debug mode is enabled outside production.")
+        if self.audit_trace_enabled and not self.audit_trace_signing_key_configured:
+            warnings.append("Audit trace signing key is not configured outside production.")
         return warnings
 
 
@@ -130,3 +140,7 @@ def _read_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
         return default
     values = tuple(part.strip() for part in raw_value.split(",") if part.strip())
     return values or default
+
+
+def _has_env_value(name: str) -> bool:
+    return bool(os.getenv(name, "").strip())

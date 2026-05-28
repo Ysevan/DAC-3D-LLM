@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from collections.abc import Iterator, Sequence
 from inspect import signature
@@ -131,8 +132,21 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         assistant.dac3d_client.path_policy = app.state.path_policy
     app.state.memory_store = _ensure_memory_store(assistant)
     app.state.command_confirmations = ConfirmationTokenStore()
+    audit_trace_signing_key = getattr(assistant.config, "audit_trace_signing_key", "") or os.getenv(
+        "DAC3D_AUDIT_TRACE_SIGNING_KEY",
+        "",
+    ).strip()
+    audit_trace_key_id = (
+        getattr(assistant.config, "audit_trace_key_id", "")
+        or os.getenv("DAC3D_AUDIT_TRACE_KEY_ID", "local-audit-key").strip()
+        or "local-audit-key"
+    )
     app.state.audit_logger = (
-        AuditTraceLogger(assistant.config.audit_trace_path)
+        AuditTraceLogger(
+            assistant.config.audit_trace_path,
+            signing_key=audit_trace_signing_key,
+            signing_key_id=audit_trace_key_id,
+        )
         if getattr(assistant.config, "audit_trace_enabled", True)
         else None
     )
