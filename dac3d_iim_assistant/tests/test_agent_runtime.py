@@ -786,6 +786,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["agent_registry"]["backend"] == "local_agent_registry"
     assert summary["agent_fleet"]["backend"] == "local_agent_fleet"
     assert summary["agent_deployments"]["backend"] == "local_agent_deployment_catalog"
+    assert summary["agent_labeling"]["backend"] == "local_agent_labeling_queue"
     assert summary["conversation_threads"]["backend"] == "local_agent_threads"
     assert summary["browser_contexts"]["backend"] == "local_browser_context_store"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
@@ -1085,6 +1086,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "agent_registry_discovery" in description["network_capabilities"]
     assert "agent_fleet_control_plane" in description["network_capabilities"]
     assert "agent_deployment_catalog" in description["network_capabilities"]
+    assert "agent_labeling_queue" in description["network_capabilities"]
     assert "threaded_agent_conversation" in description["network_capabilities"]
     assert "shared_browser_context" in description["network_capabilities"]
     assert "local_tool_marketplace" in description["network_capabilities"]
@@ -1633,6 +1635,49 @@ def test_agent_chat_adapter_agent_deployment_catalog_roundtrip(tmp_path) -> None
     assert read["deployment"]["latest_release_id"] == release["release"]["id"]
     assert workspace["agent_deployments"]["deployment_count"] == 1
     assert "agent_deployment_catalog" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_agent_labeling_queue_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    assert adapter.trace_logger is not None
+    trace = adapter.trace_logger.append(
+        {
+            "trace_id": "trace-label-1",
+            "session_id": "label-session",
+            "intent": "status",
+            "user_message": "当前检测状态是什么？",
+            "final_response": "当前处于空闲状态。",
+            "tool_calls": [{"name": "dac3d_status"}],
+        }
+    )
+    created = adapter.create_agent_labeling_item_from_trace(
+        trace["trace_id"],
+        tags=["status"],
+    )
+    item_id = created["item"]["id"]
+    labeled = adapter.label_agent_labeling_item(
+        item_id,
+        labels={"answer_quality": "good", "intent_correct": True},
+        score=5,
+        comment="回答正确。",
+        labeler="qa",
+    )
+    listed = adapter.list_agent_labeling_items(status="labeled", query="空闲")
+    exported = adapter.export_agent_labeling_items(status="labeled")
+    read = adapter.read_agent_labeling_item(item_id)
+    workspace = adapter.agent_workspace()
+
+    assert created["created"] is True
+    assert labeled["item"]["status"] == "labeled"
+    assert listed["count"] == 1
+    assert exported["records"][0]["source_id"] == "trace-label-1"
+    assert read["item"]["annotations"][0]["labels"]["answer_quality"] == "good"
+    assert workspace["agent_labeling"]["item_count"] == 1
+    assert "agent_labeling_queue" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

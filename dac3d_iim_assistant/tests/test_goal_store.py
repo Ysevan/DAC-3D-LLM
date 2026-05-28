@@ -8,6 +8,7 @@ from goals import (
     ArtifactStore,
     AgentDeploymentStore,
     AgentFleetStore,
+    AgentLabelingStore,
     AgentRegistryStore,
     AutomationPlannerStore,
     BrowserContextStore,
@@ -662,3 +663,46 @@ def test_agent_deployment_store_tracks_apps_status_and_releases(tmp_path: Path) 
     assert read["deployment"]["releases"][0]["artifact_ids"] == ["artifact-release"]
     assert summary["deployment_count"] == 1
     assert summary["release_count"] == 1
+
+
+def test_agent_labeling_store_labels_trace_samples_and_exports_jsonl(tmp_path: Path) -> None:
+    store = AgentLabelingStore.from_root(tmp_path)
+
+    created = store.create_from_trace(
+        {
+            "trace_id": "trace-label-1",
+            "session_id": "label-session",
+            "intent": "status",
+            "user_message": "当前检测状态是什么？",
+            "final_response": "当前处于空闲状态。",
+            "tool_calls": [{"name": "dac3d_status"}],
+            "timestamp": "2026-05-29T00:00:00Z",
+        },
+        tags=["status"],
+        created_by="labeling-test",
+    )
+    item_id = created["item"]["id"]
+    labeled = store.label_item(
+        item_id,
+        labels={"answer_quality": "good", "intent_correct": True},
+        outcome="accepted",
+        score=5,
+        comment="回答和意图都正确。",
+        labeler="qa",
+    )
+    listed = store.list_items(status="labeled", source_type="trace", query="空闲")
+    exported = store.export_items(status="labeled", mark_exported=True)
+    read = store.read_item(item_id)
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert created["item"]["source_id"] == "trace-label-1"
+    assert created["item"]["tool_names"] == ["dac3d_status"]
+    assert labeled["item"]["status"] == "labeled"
+    assert labeled["annotation"]["score"] == 5
+    assert listed["count"] == 1
+    assert exported["count"] == 1
+    assert "trace-label-1" in exported["jsonl"]
+    assert read["item"]["status"] == "exported"
+    assert summary["item_count"] == 1
+    assert summary["annotation_count"] == 1

@@ -687,6 +687,134 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/labeling")
+    def list_agent_labeling_items(
+        status: str | None = None,
+        source_type: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_items = getattr(assistant, "list_agent_labeling_items", None)
+        if not callable(list_items):
+            raise HTTPException(status_code=503, detail="Agent labeling queue is unavailable.")
+        try:
+            return list_items(
+                status=status,
+                source_type=source_type,
+                tag=tag,
+                query=q,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/labeling")
+    def create_agent_labeling_item(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_item = getattr(assistant, "create_agent_labeling_item", None)
+        if not callable(create_item):
+            raise HTTPException(status_code=503, detail="Agent labeling queue is unavailable.")
+        title = str(request.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        try:
+            return create_item(
+                title,
+                source_type=str(request.get("source_type") or "manual"),
+                source_id=str(request.get("source_id") or ""),
+                session_id=str(request.get("session_id") or ""),
+                input_text=str(request.get("input_text") or ""),
+                agent_output=str(request.get("agent_output") or ""),
+                intent=str(request.get("intent") or ""),
+                tool_calls=request.get("tool_calls") if isinstance(request.get("tool_calls"), list) else None,
+                expected=request.get("expected") if isinstance(request.get("expected"), dict) else None,
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                created_by=str(request.get("created_by") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/labeling/export")
+    def export_agent_labeling_items(
+        status: str = "labeled",
+        limit: int = 200,
+        mark_exported: bool = False,
+    ) -> dict[str, Any]:
+        export_items = getattr(assistant, "export_agent_labeling_items", None)
+        if not callable(export_items):
+            raise HTTPException(status_code=503, detail="Agent labeling queue is unavailable.")
+        try:
+            return export_items(status=status, limit=limit, mark_exported=mark_exported)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/labeling/from-trace")
+    def create_agent_labeling_item_from_trace(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_from_trace = getattr(assistant, "create_agent_labeling_item_from_trace", None)
+        if not callable(create_from_trace):
+            raise HTTPException(status_code=503, detail="Agent labeling queue is unavailable.")
+        trace_id = str(request.get("trace_id") or "").strip()
+        if not trace_id:
+            raise HTTPException(status_code=422, detail="The `trace_id` field is required.")
+        try:
+            return create_from_trace(
+                trace_id,
+                title=str(request.get("title") or ""),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                created_by=str(request.get("created_by") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/labeling/{item_id}")
+    def read_agent_labeling_item(item_id: str) -> dict[str, Any]:
+        read_item = getattr(assistant, "read_agent_labeling_item", None)
+        if not callable(read_item):
+            raise HTTPException(status_code=503, detail="Agent labeling queue is unavailable.")
+        try:
+            return read_item(item_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/labeling/{item_id}/labels")
+    def label_agent_labeling_item(item_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        label_item = getattr(assistant, "label_agent_labeling_item", None)
+        if not callable(label_item):
+            raise HTTPException(status_code=503, detail="Agent labeling queue is unavailable.")
+        labels = request.get("labels") if isinstance(request.get("labels"), dict) else {}
+        if not labels:
+            raise HTTPException(status_code=422, detail="The `labels` field is required.")
+        try:
+            return label_item(
+                item_id,
+                labels=labels,
+                outcome=str(request.get("outcome") or "accepted"),
+                score=request.get("score"),
+                comment=str(request.get("comment") or ""),
+                labeler=str(request.get("labeler") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/labeling/{item_id}/status")
+    def update_agent_labeling_item_status(item_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_labeling_item_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent labeling queue is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(
+                item_id,
+                status,
+                note=str(request.get("note") or ""),
+                actor=str(request.get("actor") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/observability")
     def agent_observability(recent_trace_limit: int = 20) -> dict[str, Any]:
         observability = getattr(assistant, "agent_observability", None)

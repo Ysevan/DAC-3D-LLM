@@ -33,6 +33,7 @@ from goals import (
     ArtifactStore,
     AgentDeploymentStore,
     AgentFleetStore,
+    AgentLabelingStore,
     AgentRegistryStore,
     AutomationPlannerStore,
     BrowserContextStore,
@@ -1472,6 +1473,7 @@ class DAC3DAgentRuntime:
                 "agent_registry_discovery",
                 "agent_fleet_control_plane",
                 "agent_deployment_catalog",
+                "agent_labeling_queue",
                 "threaded_agent_conversation",
                 "shared_browser_context",
                 "local_tool_marketplace",
@@ -2434,6 +2436,7 @@ class DAC3DAgentChatAdapter:
     agent_registry_store: AgentRegistryStore | None = None
     agent_fleet_store: AgentFleetStore | None = None
     agent_deployment_store: AgentDeploymentStore | None = None
+    agent_labeling_store: AgentLabelingStore | None = None
     conversation_thread_store: ConversationThreadStore | None = None
     browser_context_store: BrowserContextStore | None = None
     goal_store: GoalStore | None = None
@@ -2494,6 +2497,8 @@ class DAC3DAgentChatAdapter:
             self.agent_deployment_store = AgentDeploymentStore.from_root(
                 self.config.conversation_memory_dir
             )
+        if self.agent_labeling_store is None:
+            self.agent_labeling_store = AgentLabelingStore.from_root(self.config.conversation_memory_dir)
         if self.conversation_thread_store is None:
             self.conversation_thread_store = ConversationThreadStore.from_root(
                 self.config.conversation_memory_dir
@@ -2665,6 +2670,11 @@ class DAC3DAgentChatAdapter:
             self.agent_deployment_store.describe()
             if self.agent_deployment_store is not None
             else {"enabled": False, "backend": "local_agent_deployment_catalog"}
+        )
+        summary["agent_labeling"] = (
+            self.agent_labeling_store.describe()
+            if self.agent_labeling_store is not None
+            else {"enabled": False, "backend": "local_agent_labeling_queue"}
         )
         summary["conversation_threads"] = (
             self.conversation_thread_store.describe()
@@ -2885,6 +2895,11 @@ class DAC3DAgentChatAdapter:
             if self.agent_deployment_store is not None
             else {"enabled": False, "backend": "local_agent_deployment_catalog"}
         )
+        agent_labeling = (
+            self.agent_labeling_store.describe()
+            if self.agent_labeling_store is not None
+            else {"enabled": False, "backend": "local_agent_labeling_queue"}
+        )
         conversation_threads = (
             self.conversation_thread_store.describe()
             if self.conversation_thread_store is not None
@@ -2986,6 +3001,7 @@ class DAC3DAgentChatAdapter:
             "agent_registry": agent_registry,
             "agent_fleet": agent_fleet,
             "agent_deployments": agent_deployments,
+            "agent_labeling": agent_labeling,
             "conversation_threads": conversation_threads,
             "browser_contexts": browser_contexts,
             "memory_os": memory,
@@ -3015,6 +3031,7 @@ class DAC3DAgentChatAdapter:
                 "shared_state",
                 "tool_marketplace",
                 "agent_deployment_catalog",
+                "agent_labeling_queue",
                 "observability_snapshot",
                 "coordinator_route",
                 "skill_selection",
@@ -3025,6 +3042,7 @@ class DAC3DAgentChatAdapter:
                 "agent_registry",
                 "agent_fleet",
                 "agent_deployments",
+                "agent_labeling",
                 "conversation_thread",
                 "shared_browser_context",
                 "memory_prefetch",
@@ -3045,6 +3063,7 @@ class DAC3DAgentChatAdapter:
                 "agents": (workspace.get("agent_registry") or {}).get("agent_count", 0),
                 "fleet_instances": (workspace.get("agent_fleet") or {}).get("instance_count", 0),
                 "deployments": (workspace.get("agent_deployments") or {}).get("deployment_count", 0),
+                "labeling_items": (workspace.get("agent_labeling") or {}).get("item_count", 0),
                 "threads": (workspace.get("conversation_threads") or {}).get("thread_count", 0),
                 "browser_contexts": (workspace.get("browser_contexts") or {}).get("context_count", 0),
                 "goals": (workspace.get("goals") or {}).get("goal_count", 0),
@@ -3391,6 +3410,162 @@ class DAC3DAgentChatAdapter:
                 released_by=released_by,
             ),
         }
+
+    def list_agent_labeling_items(
+        self,
+        *,
+        status: str | None = None,
+        source_type: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local LLMOps labeling queue items."""
+        if self.agent_labeling_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_agent_labeling_queue",
+                "items": [],
+                "count": 0,
+            }
+        return self.agent_labeling_store.list_items(
+            status=status,
+            source_type=source_type,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def read_agent_labeling_item(self, item_id: str) -> dict[str, Any]:
+        """Read one LLMOps labeling queue item."""
+        if self.agent_labeling_store is None:
+            raise ValueError("Agent labeling queue is not enabled.")
+        return self.agent_labeling_store.read_item(item_id)
+
+    def create_agent_labeling_item(
+        self,
+        title: str,
+        *,
+        source_type: str = "manual",
+        source_id: str = "",
+        session_id: str = "",
+        input_text: str = "",
+        agent_output: str = "",
+        intent: str = "",
+        tool_calls: list[Any] | None = None,
+        expected: dict[str, Any] | None = None,
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        created_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Create or update one local labeling sample."""
+        if self.agent_labeling_store is None:
+            raise ValueError("Agent labeling queue is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_labeling_store.create_item(
+                title,
+                source_type=source_type,
+                source_id=source_id,
+                session_id=session_id,
+                input_text=input_text,
+                agent_output=agent_output,
+                intent=intent,
+                tool_calls=tool_calls,
+                expected=expected,
+                tags=tags,
+                metadata=metadata,
+                created_by=created_by,
+            ),
+        }
+
+    def create_agent_labeling_item_from_trace(
+        self,
+        trace_id: str,
+        *,
+        title: str = "",
+        tags: list[Any] | None = None,
+        created_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Create or refresh a labeling item from a persisted Agent trace."""
+        if self.agent_labeling_store is None:
+            raise ValueError("Agent labeling queue is not enabled.")
+        if self.trace_logger is None:
+            raise ValueError("Trace logger is not enabled.")
+        trace = self.trace_logger.get(trace_id)
+        if trace is None:
+            raise ValueError(f"Unknown trace: {trace_id}")
+        return {
+            "enabled": True,
+            **self.agent_labeling_store.create_from_trace(
+                trace,
+                title=title,
+                tags=tags,
+                created_by=created_by,
+            ),
+        }
+
+    def label_agent_labeling_item(
+        self,
+        item_id: str,
+        *,
+        labels: dict[str, Any],
+        outcome: str = "accepted",
+        score: int | None = None,
+        comment: str = "",
+        labeler: str = "human",
+    ) -> dict[str, Any]:
+        """Attach one human label annotation to a queue item."""
+        if self.agent_labeling_store is None:
+            raise ValueError("Agent labeling queue is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_labeling_store.label_item(
+                item_id,
+                labels=labels,
+                outcome=outcome,
+                score=score,
+                comment=comment,
+                labeler=labeler,
+            ),
+        }
+
+    def update_agent_labeling_item_status(
+        self,
+        item_id: str,
+        status: str,
+        *,
+        note: str = "",
+        actor: str = "agent",
+    ) -> dict[str, Any]:
+        """Move one labeling item between queue statuses."""
+        if self.agent_labeling_store is None:
+            raise ValueError("Agent labeling queue is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_labeling_store.update_status(
+                item_id,
+                status,
+                note=note,
+                actor=actor,
+            ),
+        }
+
+    def export_agent_labeling_items(
+        self,
+        *,
+        status: str = "labeled",
+        limit: int = 200,
+        mark_exported: bool = False,
+    ) -> dict[str, Any]:
+        """Export labeled samples as JSONL-ready records."""
+        if self.agent_labeling_store is None:
+            raise ValueError("Agent labeling queue is not enabled.")
+        return self.agent_labeling_store.export_items(
+            status=status,
+            limit=limit,
+            mark_exported=mark_exported,
+        )
 
     def list_agent_threads(
         self,

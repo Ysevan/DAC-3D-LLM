@@ -1187,6 +1187,64 @@ def test_web_api_agent_deployment_catalog_endpoints(tmp_path) -> None:
     assert workspace_response.json()["agent_deployments"]["deployment_count"] == 1
 
 
+def test_web_api_agent_labeling_queue_endpoints(tmp_path) -> None:
+    """The web UI should create, label, list, read, and export LLMOps samples."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    assert agent_runtime.trace_logger is not None
+    agent_runtime.trace_logger.append(
+        {
+            "trace_id": "trace-label-web",
+            "session_id": "label-web",
+            "intent": "status",
+            "user_message": "当前检测状态是什么？",
+            "final_response": "当前处于空闲状态。",
+            "tool_calls": [{"name": "dac3d_status"}],
+        }
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/labeling/from-trace",
+        json={"trace_id": "trace-label-web", "tags": ["status"]},
+    )
+    item_id = create_response.json()["item"]["id"]
+    label_response = client.post(
+        f"/api/agent/labeling/{item_id}/labels",
+        json={
+            "labels": {"answer_quality": "good", "intent_correct": True},
+            "score": 5,
+            "comment": "回答正确。",
+            "labeler": "qa",
+        },
+    )
+    list_response = client.get("/api/agent/labeling?status=labeled&q=空闲")
+    read_response = client.get(f"/api/agent/labeling/{item_id}")
+    export_response = client.get("/api/agent/labeling/export?status=labeled")
+    status_response = client.post(
+        f"/api/agent/labeling/{item_id}/status",
+        json={"status": "exported", "actor": "qa"},
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert label_response.status_code == 200
+    assert label_response.json()["annotation"]["score"] == 5
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert read_response.json()["item"]["source_id"] == "trace-label-web"
+    assert export_response.status_code == 200
+    assert "trace-label-web" in export_response.json()["jsonl"]
+    assert status_response.status_code == 200
+    assert status_response.json()["item"]["status"] == "exported"
+    assert workspace_response.json()["agent_labeling"]["item_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)
