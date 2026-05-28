@@ -785,6 +785,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["git_workspace"]["backend"] == "git_workspace_context"
     assert summary["agent_registry"]["backend"] == "local_agent_registry"
     assert summary["conversation_threads"]["backend"] == "local_agent_threads"
+    assert summary["browser_contexts"]["backend"] == "local_browser_context_store"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
     assert summary["automations"]["backend"] == "local_automation_planner"
     assert summary["workflow_templates"]["backend"] == "local_workflow_templates"
@@ -1080,6 +1081,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "scoped_shared_state" in description["network_capabilities"]
     assert "agent_registry_discovery" in description["network_capabilities"]
     assert "threaded_agent_conversation" in description["network_capabilities"]
+    assert "shared_browser_context" in description["network_capabilities"]
     assert description["underlying_runtime"] == "DAC3DAssistant"
     assert "MachineAgentService" in description["capability_runtimes"]
     assert description["tools"] == list(AGENT_TOOL_NAMES)
@@ -1474,6 +1476,45 @@ def test_agent_chat_adapter_conversation_thread_roundtrip(tmp_path) -> None:
     assert updated["thread"]["status"] == "resolved"
     assert workspace["conversation_threads"]["thread_count"] == 1
     assert "conversation_thread" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_browser_context_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    created = adapter.create_agent_browser_context(
+        "Agent 工作台页面",
+        url="http://localhost:7890",
+        session_id="browser-agent-session",
+        thread_id="thread-agent",
+        owner_agent="researcher",
+        tags=["workspace"],
+    )
+    context_id = created["context"]["id"]
+    observation = adapter.append_agent_browser_observation(
+        context_id,
+        title="工作台",
+        text="页面展示多 Agent workspace 摘要。",
+        agent_role="researcher",
+        artifact_ids=["artifact-browser"],
+    )
+    listed = adapter.list_agent_browser_contexts(
+        session_id="browser-agent-session",
+        thread_id="thread-agent",
+    )
+    read = adapter.read_agent_browser_context(context_id)
+    updated = adapter.update_agent_browser_context_status(context_id, "captured")
+    workspace = adapter.agent_workspace()
+
+    assert created["created"] is True
+    assert observation["context"]["observation_count"] == 1
+    assert listed["count"] == 1
+    assert read["context"]["observations"][0]["title"] == "工作台"
+    assert updated["context"]["status"] == "captured"
+    assert workspace["browser_contexts"]["context_count"] == 1
+    assert "shared_browser_context" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:

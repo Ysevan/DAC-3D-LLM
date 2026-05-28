@@ -989,6 +989,57 @@ def test_web_api_agent_thread_endpoints(tmp_path) -> None:
     assert workspace_response.json()["conversation_threads"]["thread_count"] == 1
 
 
+def test_web_api_agent_browser_context_endpoints(tmp_path) -> None:
+    """The web UI should manage shared browser context records without opening Chrome."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    create_response = client.post(
+        "/api/agent/browser-contexts",
+        json={
+            "title": "Agent 工作台页面",
+            "url": "http://localhost:7890",
+            "session_id": "browser-ui-session",
+            "thread_id": "thread-ui",
+            "owner_agent": "researcher",
+            "tags": ["workspace"],
+        },
+    )
+    context_id = create_response.json()["context"]["id"]
+    observation_response = client.post(
+        f"/api/agent/browser-contexts/{context_id}/observations",
+        json={
+            "title": "工作台",
+            "text": "页面展示 Agent workspace 摘要。",
+            "agent_role": "researcher",
+            "artifact_ids": ["artifact-browser"],
+        },
+    )
+    list_response = client.get("/api/agent/browser-contexts?session_id=browser-ui-session&tag=workspace")
+    read_response = client.get(f"/api/agent/browser-contexts/{context_id}")
+    status_response = client.post(
+        f"/api/agent/browser-contexts/{context_id}/status",
+        json={"status": "captured", "actor": "researcher"},
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["created"] is True
+    assert observation_response.status_code == 200
+    assert observation_response.json()["context"]["observation_count"] == 1
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+    assert read_response.status_code == 200
+    assert read_response.json()["context"]["observations"][0]["title"] == "工作台"
+    assert status_response.status_code == 200
+    assert status_response.json()["context"]["status"] == "captured"
+    assert workspace_response.json()["browser_contexts"]["context_count"] == 1
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

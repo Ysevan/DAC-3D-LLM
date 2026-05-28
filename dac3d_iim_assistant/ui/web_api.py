@@ -253,6 +253,106 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/browser-contexts")
+    def list_agent_browser_contexts(
+        session_id: str | None = None,
+        status: str | None = None,
+        thread_id: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_contexts = getattr(assistant, "list_agent_browser_contexts", None)
+        if not callable(list_contexts):
+            raise HTTPException(status_code=503, detail="Browser context store is unavailable.")
+        try:
+            return list_contexts(
+                session_id=session_id,
+                status=status,
+                thread_id=thread_id,
+                tag=tag,
+                query=q,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/browser-contexts")
+    def create_agent_browser_context(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        create_context = getattr(assistant, "create_agent_browser_context", None)
+        if not callable(create_context):
+            raise HTTPException(status_code=503, detail="Browser context store is unavailable.")
+        title = str(request.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="The `title` field is required.")
+        try:
+            return create_context(
+                title,
+                url=str(request.get("url") or ""),
+                session_id=str(request.get("session_id") or "web").strip() or "web",
+                thread_id=str(request.get("thread_id") or ""),
+                owner_agent=str(request.get("owner_agent") or "web"),
+                summary=str(request.get("summary") or ""),
+                status=str(request.get("status") or "active"),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                artifact_ids=request.get("artifact_ids")
+                if isinstance(request.get("artifact_ids"), list)
+                else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/browser-contexts/{context_id}")
+    def read_agent_browser_context(context_id: str) -> dict[str, Any]:
+        read_context = getattr(assistant, "read_agent_browser_context", None)
+        if not callable(read_context):
+            raise HTTPException(status_code=503, detail="Browser context store is unavailable.")
+        try:
+            return read_context(context_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/agent/browser-contexts/{context_id}/observations")
+    def append_agent_browser_observation(context_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        append_observation = getattr(assistant, "append_agent_browser_observation", None)
+        if not callable(append_observation):
+            raise HTTPException(status_code=503, detail="Browser context store is unavailable.")
+        try:
+            return append_observation(
+                context_id,
+                url=str(request.get("url") or ""),
+                title=str(request.get("title") or ""),
+                text=str(request.get("text") or ""),
+                agent_role=str(request.get("agent_role") or "web"),
+                selector=str(request.get("selector") or ""),
+                screenshot_path=str(request.get("screenshot_path") or ""),
+                artifact_ids=request.get("artifact_ids")
+                if isinstance(request.get("artifact_ids"), list)
+                else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/browser-contexts/{context_id}/status")
+    def update_agent_browser_context_status(context_id: str, request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_browser_context_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Browser context store is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(
+                context_id,
+                status,
+                note=str(request.get("note") or ""),
+                actor=str(request.get("actor") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/observability")
     def agent_observability(recent_trace_limit: int = 20) -> dict[str, Any]:
         observability = getattr(assistant, "agent_observability", None)

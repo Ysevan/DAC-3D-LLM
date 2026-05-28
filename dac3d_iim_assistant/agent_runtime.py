@@ -33,6 +33,7 @@ from goals import (
     ArtifactStore,
     AgentRegistryStore,
     AutomationPlannerStore,
+    BrowserContextStore,
     CheckpointStore,
     ConversationThreadStore,
     EventQueueStore,
@@ -1338,6 +1339,7 @@ class DAC3DAgentRuntime:
                 "scoped_shared_state",
                 "agent_registry_discovery",
                 "threaded_agent_conversation",
+                "shared_browser_context",
                 "mcp_style_tool_gateway",
                 "mcp_capability_manifest",
                 "path_allowlist_validation",
@@ -2296,6 +2298,7 @@ class DAC3DAgentChatAdapter:
     git_workspace_context: GitWorkspaceContext | None = None
     agent_registry_store: AgentRegistryStore | None = None
     conversation_thread_store: ConversationThreadStore | None = None
+    browser_context_store: BrowserContextStore | None = None
     goal_store: GoalStore | None = None
     task_board_store: TaskBoardStore | None = None
     automation_store: AutomationPlannerStore | None = None
@@ -2351,6 +2354,8 @@ class DAC3DAgentChatAdapter:
             self.conversation_thread_store = ConversationThreadStore.from_root(
                 self.config.conversation_memory_dir
             )
+        if self.browser_context_store is None:
+            self.browser_context_store = BrowserContextStore.from_root(self.config.conversation_memory_dir)
         if self.goal_store is None:
             self.goal_store = GoalStore.from_root(self.config.conversation_memory_dir)
         if self.task_board_store is None:
@@ -2508,6 +2513,11 @@ class DAC3DAgentChatAdapter:
             self.conversation_thread_store.describe()
             if self.conversation_thread_store is not None
             else {"enabled": False, "backend": "local_agent_threads"}
+        )
+        summary["browser_contexts"] = (
+            self.browser_context_store.describe()
+            if self.browser_context_store is not None
+            else {"enabled": False, "backend": "local_browser_context_store"}
         )
         summary["goals"] = (
             self.goal_store.describe()
@@ -2708,6 +2718,11 @@ class DAC3DAgentChatAdapter:
             if self.conversation_thread_store is not None
             else {"enabled": False, "backend": "local_agent_threads"}
         )
+        browser_contexts = (
+            self.browser_context_store.describe()
+            if self.browser_context_store is not None
+            else {"enabled": False, "backend": "local_browser_context_store"}
+        )
         skills = (
             self.skill_registry.describe()
             if self.skill_registry is not None
@@ -2793,6 +2808,7 @@ class DAC3DAgentChatAdapter:
             "git_workspace": git_workspace,
             "agent_registry": agent_registry,
             "conversation_threads": conversation_threads,
+            "browser_contexts": browser_contexts,
             "memory_os": memory,
             "goals": goals,
             "task_board": task_board,
@@ -2826,6 +2842,7 @@ class DAC3DAgentChatAdapter:
                 "git_workspace_context",
                 "agent_registry",
                 "conversation_thread",
+                "shared_browser_context",
                 "memory_prefetch",
                 "specialist_agent",
                 "tool_loop",
@@ -2843,6 +2860,7 @@ class DAC3DAgentChatAdapter:
             "counts": {
                 "agents": (workspace.get("agent_registry") or {}).get("agent_count", 0),
                 "threads": (workspace.get("conversation_threads") or {}).get("thread_count", 0),
+                "browser_contexts": (workspace.get("browser_contexts") or {}).get("context_count", 0),
                 "goals": (workspace.get("goals") or {}).get("goal_count", 0),
                 "tasks": (workspace.get("task_board") or {}).get("task_count", 0),
                 "events": (workspace.get("event_queue") or {}).get("event_count", 0),
@@ -3032,6 +3050,124 @@ class DAC3DAgentChatAdapter:
             "enabled": True,
             **self.conversation_thread_store.update_status(
                 thread_id,
+                status,
+                note=note,
+                actor=actor,
+            ),
+        }
+
+    def list_agent_browser_contexts(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        thread_id: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List shared browser context records for Agent collaboration."""
+        if self.browser_context_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_browser_context_store",
+                "contexts": [],
+                "count": 0,
+            }
+        return self.browser_context_store.list_contexts(
+            session_id=session_id,
+            status=status,
+            thread_id=thread_id,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def read_agent_browser_context(self, context_id: str) -> dict[str, Any]:
+        """Read one shared browser context record."""
+        if self.browser_context_store is None:
+            raise ValueError("Browser context store is not enabled.")
+        return self.browser_context_store.read_context(context_id)
+
+    def create_agent_browser_context(
+        self,
+        title: str,
+        *,
+        url: str = "",
+        session_id: str = "web",
+        thread_id: str = "",
+        owner_agent: str = "agent",
+        summary: str = "",
+        status: str = "active",
+        tags: list[Any] | None = None,
+        artifact_ids: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a shared browser context record without launching a browser."""
+        if self.browser_context_store is None:
+            raise ValueError("Browser context store is not enabled.")
+        return {
+            "enabled": True,
+            **self.browser_context_store.create_context(
+                title,
+                url=url,
+                session_id=session_id,
+                thread_id=thread_id,
+                owner_agent=owner_agent,
+                summary=summary,
+                status=status,
+                tags=tags,
+                artifact_ids=artifact_ids,
+                metadata=metadata,
+            ),
+        }
+
+    def append_agent_browser_observation(
+        self,
+        context_id: str,
+        *,
+        url: str = "",
+        title: str = "",
+        text: str = "",
+        agent_role: str = "agent",
+        selector: str = "",
+        screenshot_path: str = "",
+        artifact_ids: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Append one observation to a shared browser context record."""
+        if self.browser_context_store is None:
+            raise ValueError("Browser context store is not enabled.")
+        return {
+            "enabled": True,
+            **self.browser_context_store.append_observation(
+                context_id,
+                url=url,
+                title=title,
+                text=text,
+                agent_role=agent_role,
+                selector=selector,
+                screenshot_path=screenshot_path,
+                artifact_ids=artifact_ids,
+                metadata=metadata,
+            ),
+        }
+
+    def update_agent_browser_context_status(
+        self,
+        context_id: str,
+        status: str,
+        *,
+        note: str = "",
+        actor: str = "agent",
+    ) -> dict[str, Any]:
+        """Move one shared browser context between local statuses."""
+        if self.browser_context_store is None:
+            raise ValueError("Browser context store is not enabled.")
+        return {
+            "enabled": True,
+            **self.browser_context_store.update_status(
+                context_id,
                 status,
                 note=note,
                 actor=actor,

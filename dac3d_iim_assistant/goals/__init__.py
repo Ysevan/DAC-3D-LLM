@@ -3,6 +3,7 @@
 from goals.artifacts import ArtifactStore
 from goals.agent_registry import AgentRegistryStore
 from goals.automation_planner import AutomationPlannerStore
+from goals.browser_context import BrowserContextStore
 from goals.checkpoints import CheckpointStore
 from goals.conversation_threads import ConversationThreadStore
 from goals.event_queue import EventQueueStore
@@ -18,6 +19,7 @@ __all__ = [
     "ArtifactStore",
     "AgentRegistryStore",
     "AutomationPlannerStore",
+    "BrowserContextStore",
     "CheckpointStore",
     "ConversationThreadStore",
     "EventQueueStore",

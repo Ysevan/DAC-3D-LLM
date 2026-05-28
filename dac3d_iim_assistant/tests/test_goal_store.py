@@ -8,6 +8,7 @@ from goals import (
     ArtifactStore,
     AgentRegistryStore,
     AutomationPlannerStore,
+    BrowserContextStore,
     CheckpointStore,
     ConversationThreadStore,
     EventQueueStore,
@@ -499,3 +500,39 @@ def test_conversation_thread_store_tracks_messages_and_context_refs(tmp_path: Pa
     assert read["thread"]["messages"][0]["content"] == "已生成离线检测命令预览。"
     assert summary["thread_count"] == 1
     assert summary["message_count"] == 1
+
+
+def test_browser_context_store_records_shared_observations(tmp_path: Path) -> None:
+    store = BrowserContextStore.from_root(tmp_path)
+
+    created = store.create_context(
+        "参考页面",
+        url="http://localhost:7890",
+        session_id="browser-session",
+        thread_id="thread-1",
+        owner_agent="researcher",
+        tags=["ui"],
+    )
+    context_id = created["context"]["id"]
+    observed = store.append_observation(
+        context_id,
+        title="DAC Agent Workspace",
+        text="页面包含 Agent workspace 和状态面板。",
+        agent_role="researcher",
+        screenshot_path="/tmp/workspace.png",
+        artifact_ids=["artifact-browser"],
+    )
+    captured = store.update_status(context_id, "captured", actor="researcher")
+    listed = store.list_contexts(session_id="browser-session", tag="ui", query="workspace")
+    read = store.read_context(context_id)
+    summary = store.describe()
+
+    assert created["created"] is True
+    assert observed["context"]["observation_count"] == 1
+    assert observed["observation"]["screenshot_path"] == "/tmp/workspace.png"
+    assert "artifact-browser" in observed["context"]["artifact_ids"]
+    assert captured["history"]["to"] == "captured"
+    assert listed["count"] == 1
+    assert read["context"]["observations"][0]["title"] == "DAC Agent Workspace"
+    assert summary["context_count"] == 1
+    assert summary["observation_count"] == 1
