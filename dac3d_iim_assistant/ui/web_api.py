@@ -815,6 +815,117 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/agent/performance")
+    def list_agent_performance_metrics(
+        status: str | None = None,
+        category: str | None = None,
+        metric_name: str | None = None,
+        source_type: str | None = None,
+        tag: str | None = None,
+        q: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        list_metrics = getattr(assistant, "list_agent_performance_metrics", None)
+        if not callable(list_metrics):
+            raise HTTPException(status_code=503, detail="Agent performance store is unavailable.")
+        try:
+            return list_metrics(
+                status=status,
+                category=category,
+                metric_name=metric_name,
+                source_type=source_type,
+                tag=tag,
+                query=q,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/performance/metrics")
+    def record_agent_performance_metric(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        record_metric = getattr(assistant, "record_agent_performance_metric", None)
+        if not callable(record_metric):
+            raise HTTPException(status_code=503, detail="Agent performance store is unavailable.")
+        metric_name = str(request.get("metric_name") or "").strip()
+        if not metric_name:
+            raise HTTPException(status_code=422, detail="The `metric_name` field is required.")
+        if "metric_value" not in request:
+            raise HTTPException(status_code=422, detail="The `metric_value` field is required.")
+        try:
+            return record_metric(
+                metric_name,
+                request.get("metric_value"),
+                unit=str(request.get("unit") or ""),
+                category=str(request.get("category") or "custom"),
+                target=str(request.get("target") or ""),
+                source_type=str(request.get("source_type") or "manual"),
+                source_id=str(request.get("source_id") or ""),
+                session_id=str(request.get("session_id") or ""),
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else None,
+                recorded_by=str(request.get("recorded_by") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/performance/from-trace")
+    def record_agent_performance_from_trace(request: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        record_from_trace = getattr(assistant, "record_agent_performance_from_trace", None)
+        if not callable(record_from_trace):
+            raise HTTPException(status_code=503, detail="Agent performance store is unavailable.")
+        trace_id = str(request.get("trace_id") or "").strip()
+        if not trace_id:
+            raise HTTPException(status_code=422, detail="The `trace_id` field is required.")
+        try:
+            return record_from_trace(
+                trace_id,
+                tags=request.get("tags") if isinstance(request.get("tags"), list) else None,
+                recorded_by=str(request.get("recorded_by") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/agent/performance/summary")
+    def agent_performance_summary(
+        status: str = "active",
+        category: str | None = None,
+        metric_name: str | None = None,
+        source_type: str | None = None,
+    ) -> dict[str, Any]:
+        summarize = getattr(assistant, "agent_performance_summary", None)
+        if not callable(summarize):
+            raise HTTPException(status_code=503, detail="Agent performance store is unavailable.")
+        try:
+            return summarize(
+                status=status,
+                category=category,
+                metric_name=metric_name,
+                source_type=source_type,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/agent/performance/{metric_id}/status")
+    def update_agent_performance_metric_status(
+        metric_id: str,
+        request: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        update_status = getattr(assistant, "update_agent_performance_metric_status", None)
+        if not callable(update_status):
+            raise HTTPException(status_code=503, detail="Agent performance store is unavailable.")
+        status = str(request.get("status") or "").strip()
+        if not status:
+            raise HTTPException(status_code=422, detail="The `status` field is required.")
+        try:
+            return update_status(
+                metric_id,
+                status,
+                note=str(request.get("note") or ""),
+                actor=str(request.get("actor") or "web"),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/agent/observability")
     def agent_observability(recent_trace_limit: int = 20) -> dict[str, Any]:
         observability = getattr(assistant, "agent_observability", None)

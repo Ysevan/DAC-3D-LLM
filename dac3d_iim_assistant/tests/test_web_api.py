@@ -1245,6 +1245,65 @@ def test_web_api_agent_labeling_queue_endpoints(tmp_path) -> None:
     assert workspace_response.json()["agent_labeling"]["item_count"] == 1
 
 
+def test_web_api_agent_performance_endpoints(tmp_path) -> None:
+    """The web UI should record, aggregate, list, and archive performance metrics."""
+    config = make_config(tmp_path)
+    assistant = DAC3DAssistant.create(config, rebuild_kb=True)
+    agent_runtime = DAC3DAgentChatAdapter(
+        DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    )
+    assert agent_runtime.trace_logger is not None
+    agent_runtime.trace_logger.append(
+        {
+            "trace_id": "trace-perf-web",
+            "session_id": "perf-web",
+            "intent": "status",
+            "user_message": "当前检测状态是什么？",
+            "final_response": "当前处于空闲状态。",
+            "duration_ms": 900,
+            "usage": {"total": 350},
+            "tool_calls": [{"name": "dac3d_status"}],
+        }
+    )
+    client = TestClient(create_api_app(agent_runtime))
+
+    manual_response = client.post(
+        "/api/agent/performance/metrics",
+        json={
+            "metric_name": "agent_quality_score",
+            "metric_value": 4,
+            "unit": "score",
+            "category": "quality",
+            "target": "status",
+            "tags": ["llmops"],
+        },
+    )
+    metric_id = manual_response.json()["metric"]["id"]
+    trace_response = client.post(
+        "/api/agent/performance/from-trace",
+        json={"trace_id": "trace-perf-web", "tags": ["status"]},
+    )
+    list_response = client.get("/api/agent/performance?category=latency&source_type=trace")
+    summary_response = client.get("/api/agent/performance/summary?metric_name=agent_total_tokens")
+    status_response = client.post(
+        f"/api/agent/performance/{metric_id}/status",
+        json={"status": "archived", "actor": "qa"},
+    )
+    workspace_response = client.get("/api/agent/workspace")
+
+    assert manual_response.status_code == 200
+    assert manual_response.json()["created"] is True
+    assert trace_response.status_code == 200
+    assert trace_response.json()["count"] == 3
+    assert list_response.status_code == 200
+    assert list_response.json()["metrics"][0]["metric_name"] == "agent_latency_ms"
+    assert summary_response.status_code == 200
+    assert summary_response.json()["by_metric"]["agent_total_tokens"]["avg"] == 350
+    assert status_response.status_code == 200
+    assert status_response.json()["metric"]["status"] == "archived"
+    assert workspace_response.json()["agent_performance"]["metric_count"] == 4
+
+
 def test_web_api_agent_task_board_endpoints(tmp_path) -> None:
     """The web UI should create, move, and list Agent task-board cards."""
     config = make_config(tmp_path)

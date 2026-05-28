@@ -11,6 +11,7 @@ from goals.conversation_threads import ConversationThreadStore
 from goals.event_queue import EventQueueStore
 from goals.labeling_queue import AgentLabelingStore
 from goals.observability import ObservabilityReporter
+from goals.performance import AgentPerformanceStore
 from goals.review_handoff import ReviewHandoffStore
 from goals.shared_state import SharedStateStore
 from goals.store import GoalStore
@@ -32,6 +33,7 @@ __all__ = [
     "AgentLabelingStore",
     "GoalStore",
     "ObservabilityReporter",
+    "AgentPerformanceStore",
     "ReviewHandoffStore",
     "SharedStateStore",
     "TaskBoardStore",

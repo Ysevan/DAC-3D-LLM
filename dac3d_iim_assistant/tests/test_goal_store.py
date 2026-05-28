@@ -17,6 +17,7 @@ from goals import (
     EventQueueStore,
     GoalStore,
     ObservabilityReporter,
+    AgentPerformanceStore,
     ReviewHandoffStore,
     SharedStateStore,
     TaskBoardStore,
@@ -706,3 +707,42 @@ def test_agent_labeling_store_labels_trace_samples_and_exports_jsonl(tmp_path: P
     assert read["item"]["status"] == "exported"
     assert summary["item_count"] == 1
     assert summary["annotation_count"] == 1
+
+
+def test_agent_performance_store_records_trace_metrics_and_summarizes(tmp_path: Path) -> None:
+    store = AgentPerformanceStore.from_root(tmp_path)
+
+    manual = store.record_metric(
+        "agent_quality_score",
+        4.5,
+        unit="score",
+        category="quality",
+        target="status",
+        source_type="manual",
+        tags=["llmops"],
+    )
+    trace_metrics = store.record_from_trace(
+        {
+            "trace_id": "trace-perf-1",
+            "session_id": "perf-session",
+            "intent": "status",
+            "duration_ms": 850,
+            "token_usage": {"total_tokens": 321},
+            "tool_calls": [{"name": "dac3d_status"}],
+            "quality_score": 5,
+        },
+        tags=["status"],
+        recorded_by="performance-test",
+    )
+    listed = store.list_metrics(category="latency", source_type="trace", query="trace-perf-1")
+    summary = store.summarize(category="quality")
+    archived = store.update_status(manual["metric"]["id"], "archived", actor="performance-test")
+    description = store.describe()
+
+    assert manual["created"] is True
+    assert trace_metrics["count"] == 4
+    assert listed["count"] == 1
+    assert listed["metrics"][0]["metric_name"] == "agent_latency_ms"
+    assert summary["by_metric"]["agent_quality_score"]["count"] == 2
+    assert archived["metric"]["status"] == "archived"
+    assert description["metric_count"] == 5

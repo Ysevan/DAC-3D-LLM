@@ -42,6 +42,7 @@ from goals import (
     EventQueueStore,
     GoalStore,
     ObservabilityReporter,
+    AgentPerformanceStore,
     ReviewHandoffStore,
     SharedStateStore,
     TaskBoardStore,
@@ -1474,6 +1475,7 @@ class DAC3DAgentRuntime:
                 "agent_fleet_control_plane",
                 "agent_deployment_catalog",
                 "agent_labeling_queue",
+                "agent_performance_analysis",
                 "threaded_agent_conversation",
                 "shared_browser_context",
                 "local_tool_marketplace",
@@ -2437,6 +2439,7 @@ class DAC3DAgentChatAdapter:
     agent_fleet_store: AgentFleetStore | None = None
     agent_deployment_store: AgentDeploymentStore | None = None
     agent_labeling_store: AgentLabelingStore | None = None
+    agent_performance_store: AgentPerformanceStore | None = None
     conversation_thread_store: ConversationThreadStore | None = None
     browser_context_store: BrowserContextStore | None = None
     goal_store: GoalStore | None = None
@@ -2499,6 +2502,10 @@ class DAC3DAgentChatAdapter:
             )
         if self.agent_labeling_store is None:
             self.agent_labeling_store = AgentLabelingStore.from_root(self.config.conversation_memory_dir)
+        if self.agent_performance_store is None:
+            self.agent_performance_store = AgentPerformanceStore.from_root(
+                self.config.conversation_memory_dir
+            )
         if self.conversation_thread_store is None:
             self.conversation_thread_store = ConversationThreadStore.from_root(
                 self.config.conversation_memory_dir
@@ -2675,6 +2682,11 @@ class DAC3DAgentChatAdapter:
             self.agent_labeling_store.describe()
             if self.agent_labeling_store is not None
             else {"enabled": False, "backend": "local_agent_labeling_queue"}
+        )
+        summary["agent_performance"] = (
+            self.agent_performance_store.describe()
+            if self.agent_performance_store is not None
+            else {"enabled": False, "backend": "local_agent_performance_store"}
         )
         summary["conversation_threads"] = (
             self.conversation_thread_store.describe()
@@ -2900,6 +2912,11 @@ class DAC3DAgentChatAdapter:
             if self.agent_labeling_store is not None
             else {"enabled": False, "backend": "local_agent_labeling_queue"}
         )
+        agent_performance = (
+            self.agent_performance_store.describe()
+            if self.agent_performance_store is not None
+            else {"enabled": False, "backend": "local_agent_performance_store"}
+        )
         conversation_threads = (
             self.conversation_thread_store.describe()
             if self.conversation_thread_store is not None
@@ -3002,6 +3019,7 @@ class DAC3DAgentChatAdapter:
             "agent_fleet": agent_fleet,
             "agent_deployments": agent_deployments,
             "agent_labeling": agent_labeling,
+            "agent_performance": agent_performance,
             "conversation_threads": conversation_threads,
             "browser_contexts": browser_contexts,
             "memory_os": memory,
@@ -3032,6 +3050,7 @@ class DAC3DAgentChatAdapter:
                 "tool_marketplace",
                 "agent_deployment_catalog",
                 "agent_labeling_queue",
+                "agent_performance_analysis",
                 "observability_snapshot",
                 "coordinator_route",
                 "skill_selection",
@@ -3043,6 +3062,7 @@ class DAC3DAgentChatAdapter:
                 "agent_fleet",
                 "agent_deployments",
                 "agent_labeling",
+                "agent_performance",
                 "conversation_thread",
                 "shared_browser_context",
                 "memory_prefetch",
@@ -3064,6 +3084,7 @@ class DAC3DAgentChatAdapter:
                 "fleet_instances": (workspace.get("agent_fleet") or {}).get("instance_count", 0),
                 "deployments": (workspace.get("agent_deployments") or {}).get("deployment_count", 0),
                 "labeling_items": (workspace.get("agent_labeling") or {}).get("item_count", 0),
+                "performance_metrics": (workspace.get("agent_performance") or {}).get("metric_count", 0),
                 "threads": (workspace.get("conversation_threads") or {}).get("thread_count", 0),
                 "browser_contexts": (workspace.get("browser_contexts") or {}).get("context_count", 0),
                 "goals": (workspace.get("goals") or {}).get("goal_count", 0),
@@ -3566,6 +3587,130 @@ class DAC3DAgentChatAdapter:
             limit=limit,
             mark_exported=mark_exported,
         )
+
+    def list_agent_performance_metrics(
+        self,
+        *,
+        status: str | None = None,
+        category: str | None = None,
+        metric_name: str | None = None,
+        source_type: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List local LLMOps performance metrics."""
+        if self.agent_performance_store is None:
+            return {
+                "enabled": False,
+                "backend": "local_agent_performance_store",
+                "metrics": [],
+                "count": 0,
+            }
+        return self.agent_performance_store.list_metrics(
+            status=status,
+            category=category,
+            metric_name=metric_name,
+            source_type=source_type,
+            tag=tag,
+            query=query,
+            limit=limit,
+        )
+
+    def record_agent_performance_metric(
+        self,
+        metric_name: str,
+        metric_value: Any,
+        *,
+        unit: str = "",
+        category: str = "custom",
+        target: str = "",
+        source_type: str = "manual",
+        source_id: str = "",
+        session_id: str = "",
+        tags: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        recorded_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Record one local LLMOps performance metric."""
+        if self.agent_performance_store is None:
+            raise ValueError("Agent performance store is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_performance_store.record_metric(
+                metric_name,
+                metric_value,
+                unit=unit,
+                category=category,
+                target=target,
+                source_type=source_type,
+                source_id=source_id,
+                session_id=session_id,
+                tags=tags,
+                metadata=metadata,
+                recorded_by=recorded_by,
+            ),
+        }
+
+    def record_agent_performance_from_trace(
+        self,
+        trace_id: str,
+        *,
+        tags: list[Any] | None = None,
+        recorded_by: str = "agent",
+    ) -> dict[str, Any]:
+        """Extract performance metrics from a persisted Agent trace."""
+        if self.agent_performance_store is None:
+            raise ValueError("Agent performance store is not enabled.")
+        if self.trace_logger is None:
+            raise ValueError("Trace logger is not enabled.")
+        trace = self.trace_logger.get(trace_id)
+        if trace is None:
+            raise ValueError(f"Unknown trace: {trace_id}")
+        return self.agent_performance_store.record_from_trace(
+            trace,
+            tags=tags,
+            recorded_by=recorded_by,
+        )
+
+    def agent_performance_summary(
+        self,
+        *,
+        status: str = "active",
+        category: str | None = None,
+        metric_name: str | None = None,
+        source_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Aggregate local LLMOps performance metrics."""
+        if self.agent_performance_store is None:
+            raise ValueError("Agent performance store is not enabled.")
+        return self.agent_performance_store.summarize(
+            status=status,
+            category=category,
+            metric_name=metric_name,
+            source_type=source_type,
+        )
+
+    def update_agent_performance_metric_status(
+        self,
+        metric_id: str,
+        status: str,
+        *,
+        note: str = "",
+        actor: str = "agent",
+    ) -> dict[str, Any]:
+        """Archive or reactivate one performance metric."""
+        if self.agent_performance_store is None:
+            raise ValueError("Agent performance store is not enabled.")
+        return {
+            "enabled": True,
+            **self.agent_performance_store.update_status(
+                metric_id,
+                status,
+                note=note,
+                actor=actor,
+            ),
+        }
 
     def list_agent_threads(
         self,

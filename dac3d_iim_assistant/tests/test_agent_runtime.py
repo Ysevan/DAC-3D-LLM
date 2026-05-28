@@ -787,6 +787,7 @@ def test_agent_chat_adapter_exposes_agent_runtime_summary(tmp_path) -> None:
     assert summary["agent_fleet"]["backend"] == "local_agent_fleet"
     assert summary["agent_deployments"]["backend"] == "local_agent_deployment_catalog"
     assert summary["agent_labeling"]["backend"] == "local_agent_labeling_queue"
+    assert summary["agent_performance"]["backend"] == "local_agent_performance_store"
     assert summary["conversation_threads"]["backend"] == "local_agent_threads"
     assert summary["browser_contexts"]["backend"] == "local_browser_context_store"
     assert summary["task_board"]["backend"] == "local_agent_task_board"
@@ -1087,6 +1088,7 @@ def test_agent_runtime_describes_agent_project(tmp_path) -> None:
     assert "agent_fleet_control_plane" in description["network_capabilities"]
     assert "agent_deployment_catalog" in description["network_capabilities"]
     assert "agent_labeling_queue" in description["network_capabilities"]
+    assert "agent_performance_analysis" in description["network_capabilities"]
     assert "threaded_agent_conversation" in description["network_capabilities"]
     assert "shared_browser_context" in description["network_capabilities"]
     assert "local_tool_marketplace" in description["network_capabilities"]
@@ -1678,6 +1680,48 @@ def test_agent_chat_adapter_agent_labeling_queue_roundtrip(tmp_path) -> None:
     assert read["item"]["annotations"][0]["labels"]["answer_quality"] == "good"
     assert workspace["agent_labeling"]["item_count"] == 1
     assert "agent_labeling_queue" in workspace["workflow"]
+
+
+def test_agent_chat_adapter_agent_performance_roundtrip(tmp_path) -> None:
+    config = make_agent_config(tmp_path)
+    assistant = DAC3DAssistant.create(config=config)
+    runtime = DAC3DAgentRuntime(assistant=assistant, config=assistant.config)
+    adapter = DAC3DAgentChatAdapter(runtime)
+
+    assert adapter.trace_logger is not None
+    trace = adapter.trace_logger.append(
+        {
+            "trace_id": "trace-perf-1",
+            "session_id": "perf-session",
+            "intent": "status",
+            "user_message": "当前检测状态是什么？",
+            "final_response": "当前处于空闲状态。",
+            "duration_ms": 750,
+            "usage": {"total": 280},
+            "tool_calls": [{"name": "dac3d_status"}],
+        }
+    )
+    manual = adapter.record_agent_performance_metric(
+        "agent_quality_score",
+        4.5,
+        unit="score",
+        category="quality",
+        target="status",
+        tags=["llmops"],
+    )
+    from_trace = adapter.record_agent_performance_from_trace(trace["trace_id"], tags=["status"])
+    listed = adapter.list_agent_performance_metrics(category="latency", source_type="trace")
+    summary = adapter.agent_performance_summary(metric_name="agent_total_tokens")
+    archived = adapter.update_agent_performance_metric_status(manual["metric"]["id"], "archived")
+    workspace = adapter.agent_workspace()
+
+    assert manual["created"] is True
+    assert from_trace["count"] == 3
+    assert listed["count"] == 1
+    assert summary["by_metric"]["agent_total_tokens"]["avg"] == 280
+    assert archived["metric"]["status"] == "archived"
+    assert workspace["agent_performance"]["metric_count"] == 4
+    assert "agent_performance_analysis" in workspace["workflow"]
 
 
 def test_agent_chat_adapter_repo_context_map_roundtrip(tmp_path) -> None:
