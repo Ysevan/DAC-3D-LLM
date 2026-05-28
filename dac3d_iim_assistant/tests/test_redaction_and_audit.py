@@ -164,6 +164,21 @@ def test_query_and_redacted_export(tmp_path: Path) -> None:
     assert REDACTION in serialized
 
 
+def test_paginated_redacted_trace_query(tmp_path: Path) -> None:
+    logger = AuditTraceLogger(tmp_path / "audit.jsonl")
+    logger.append_event(event_type="api_request", trace_id="trace-page", request_id="request-1")
+    logger.append_event(event_type="api_request", trace_id="trace-other", request_id="request-2")
+    logger.append_event(event_type="api_request", trace_id="trace-page", request_id="request-3")
+
+    page = logger.query_redacted_events(trace_id="trace-page", limit=1, offset=1)
+
+    assert page.total == 2
+    assert len(page.events) == 1
+    assert page.next_offset is None
+    assert page.events[0]["request_id"] == "request-3"
+    assert page.to_dict()["returned"] == 1
+
+
 def test_tampered_trace_detected(tmp_path: Path) -> None:
     logger = AuditTraceLogger(tmp_path / "audit.jsonl")
     logger.append_event(event_type="api_request", trace_id="trace-1", request_id="request-1")

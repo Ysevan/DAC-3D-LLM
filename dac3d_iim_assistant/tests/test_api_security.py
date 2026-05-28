@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from app import DAC3DAssistant
 from agent_runtime import DAC3DAgentChatAdapter, DAC3DAgentRuntime
 from tests.test_assistant import make_config
 from tracing.logger import AuditTraceLogger
+from tracing.redaction import REDACTION
 from ui.session import ConfirmationTokenStore
 from ui.web_api import create_api_app
 
@@ -80,6 +83,18 @@ def test_openapi_documents_dac3d_security_headers(tmp_path) -> None:
         "X-DAC3D-Operator-ID",
         "X-DAC3D-Roles",
     ]
+
+    audit_op = schema["paths"]["/api/audit/traces"]["get"]
+    assert audit_op["security"] == [
+        {"DAC3DSessionId": [], "DAC3DOperatorId": [], "DAC3DRoles": []}
+    ]
+    assert audit_op["x-dac3d-security"]["required_roles"] == ["admin", "security_admin"]
+    assert schema["paths"]["/api/audit/traces/{trace_id}"]["get"]["x-dac3d-security"][
+        "level"
+    ] == "privileged"
+    assert schema["paths"]["/api/audit/export"]["get"]["x-dac3d-security"][
+        "level"
+    ] == "privileged_export"
 
     assert "security" not in schema["paths"]["/api/health"]["get"]
 
@@ -303,6 +318,90 @@ def test_memory_delete_removes_approved_turn_from_context(tmp_path) -> None:
     assert response.json()["deleted_memory"]["turn_id"] == approved["committed_turn_id"]
     assert not context
     assert hits == []
+
+
+def test_audit_trace_query_requires_privileged_role(tmp_path) -> None:
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    client = TestClient(create_api_app(assistant))
+
+    response = client.get("/api/audit/traces", headers=_headers(roles="operator"))
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "PRIVILEGED_ROLE_REQUIRED"
+
+
+def test_audit_trace_query_filters_paginates_and_redacts(tmp_path) -> None:
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    app = create_api_app(assistant)
+    audit_logger = app.state.audit_logger
+    audit_logger.append_event(
+        event_type="command_preview",
+        trace_id="trace-a",
+        request_id="request-a1",
+        session_id="security-session",
+        actor={"session_id": "security-session", "operator_id": "operator-1"},
+        payload={"api_key": "sk-1234567890abcdef"},
+    )
+    audit_logger.append_event(
+        event_type="command_confirm",
+        trace_id="trace-a",
+        request_id="request-a2",
+        session_id="security-session",
+        actor={"session_id": "security-session", "operator_id": "operator-1"},
+        payload={"status": "submitted"},
+    )
+    audit_logger.append_event(
+        event_type="command_preview",
+        trace_id="trace-b",
+        request_id="request-b1",
+        session_id="security-session",
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/audit/traces/trace-a?limit=1&offset=0",
+        headers=_headers(roles="security_admin"),
+    )
+
+    assert response.status_code == 200
+    audit_trace = response.json()["audit_trace"]
+    assert audit_trace["trace_id"] == "trace-a"
+    assert audit_trace["offset"] == 0
+    assert audit_trace["limit"] == 1
+    assert audit_trace["returned"] == 1
+    assert audit_trace["total"] == 2
+    assert audit_trace["next_offset"] == 1
+    assert audit_trace["events"][0]["request_id"] == "request-a1"
+    assert audit_trace["verification"]["valid"]
+    serialized = json.dumps(audit_trace, ensure_ascii=False)
+    assert "sk-1234567890abcdef" not in serialized
+    assert REDACTION in serialized
+
+
+def test_audit_trace_export_and_invalid_pagination(tmp_path) -> None:
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    app = create_api_app(assistant)
+    app.state.audit_logger.append_event(
+        event_type="api_request",
+        trace_id="trace-export-api",
+        request_id="request-export-1",
+    )
+    client = TestClient(app)
+
+    exported = client.get(
+        "/api/audit/export?trace_id=trace-export-api&limit=10&offset=0",
+        headers=_headers(roles="admin"),
+    )
+    invalid = client.get(
+        "/api/audit/traces?limit=9999",
+        headers=_headers(roles="admin"),
+    )
+
+    assert exported.status_code == 200
+    assert exported.json()["audit_trace"]["export_format"] == "redacted-json"
+    assert exported.json()["audit_trace"]["returned"] == 1
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "INVALID_TRACE_LIMIT"
 
 
 def test_skill_patch_apply_requires_privileged_role(tmp_path) -> None:

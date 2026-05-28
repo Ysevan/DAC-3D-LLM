@@ -68,6 +68,13 @@
 - CSP 默认只允许 self，并显式禁止 object/embed 与 framing；为 Swagger UI 保留 `cdn.jsdelivr.net` 和必要 inline 样式/脚本兼容。
 - 已补回归测试覆盖普通 API、CORS preflight 和 Swagger docs 都带安全头，避免 CORS 外层中间件绕过。
 
+## S15-10 已修复
+
+- Audit trace 新增 privileged 查询/导出 API：`GET /api/audit/traces`、`GET /api/audit/traces/{trace_id}` 和 `GET /api/audit/export`。
+- trace 查询和导出现在强制要求 session、operator 和 `admin`/`security_admin` 角色；普通 operator 不能读取审计日志。
+- API 查询支持 `trace_id` 精确检索、`limit`/`offset` 分页、最大页大小限制、脱敏 JSON 导出和 hash-chain/signature 校验摘要。
+- OpenAPI 已标注 audit trace API 所需安全头和 privileged roles；回归测试覆盖越权拒绝、分页、按 trace_id 检索、导出格式和脱敏。
+
 ## P0 必须修复
 
 当前审查范围内的 P0 项已完成。下一步应继续推进 P1/P2 的锁文件、可复现 E2E 和外部审计汇聚。
@@ -86,8 +93,6 @@
 
 3. 把 Chrome 插件的真实 UI/API smoke 固化成可复现 E2E 测试，避免只依赖人工/本地运行记录。
 
-4. 给 trace query/export 增加分页、角色权限和按 trace_id 的审计检索 API。
-
 ## 已满足项
 
 - Web API 写接口要求 session/operator；确认接口要求 operator、session、preview hash、一次性 token，并拒绝 replay、过期、operator/session/hash mismatch。
@@ -95,6 +100,7 @@
 - 生产配置校验禁止生产 wildcard CORS、禁用 debug、要求 redaction、要求 rate limit、禁止 mock writer 下开放命令提交。
 - trace 日志已脱敏、带 request_id/trace_id、支持 hash chain 校验、支持 redacted export。
 - audit trace 支持 HMAC-SHA256 事件签名；生产环境要求开启 trace 并配置签名密钥。
+- audit trace 查询/导出 API 已强制 privileged roles，支持 trace_id 检索、分页、脱敏导出和完整性校验摘要。
 - FastAPI 响应默认附加 CSP、nosniff、Referrer-Policy、Permissions-Policy、frame blocking 和 cross-origin isolation 基础安全头。
 - 前端不使用 `dangerouslySetInnerHTML`、`.innerHTML`、`eval`、`new Function` 或浏览器原生确认调用，并通过可访问 dialog 显示高风险确认、preview hash、trace_id、错误 trace_id。
 - CI 安全工作流已覆盖 pytest、compileall、ruff、bandit、pip-audit、npm audit、frontend build、static scan、security eval smoke。
@@ -137,3 +143,5 @@
 8. S15-8：已完成。Audit trace 加入 HMAC 签名校验和生产密钥要求，防止仅重算 JSONL hash chain 的离线篡改。
 
 9. S15-9：已完成。FastAPI 安全中间件统一添加安全响应头，并覆盖 API、CORS preflight 和 Swagger docs 回归测试。
+
+10. S15-10：已完成。Audit trace 查询/导出 API 增加 privileged 角色权限、trace_id 检索、分页和脱敏导出。

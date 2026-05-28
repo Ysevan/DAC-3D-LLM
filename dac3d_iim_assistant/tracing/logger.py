@@ -22,6 +22,8 @@ _INTEGRITY_FIELDS = {
     "signature_algorithm",
     "signature_key_id",
 }
+DEFAULT_TRACE_QUERY_LIMIT = 100
+MAX_TRACE_QUERY_LIMIT = 500
 
 
 @dataclass(slots=True)
@@ -43,6 +45,33 @@ class TraceVerificationResult:
             "line": self.line,
             "signature_checked": self.signature_checked,
             "signature_required": self.signature_required,
+        }
+
+
+@dataclass(slots=True)
+class TraceQueryResult:
+    """Paginated redacted audit trace query result."""
+
+    events: list[dict[str, Any]]
+    total: int
+    offset: int
+    limit: int
+    trace_id: str | None = None
+
+    @property
+    def next_offset(self) -> int | None:
+        next_value = self.offset + len(self.events)
+        return next_value if next_value < self.total else None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "trace_id": self.trace_id,
+            "offset": self.offset,
+            "limit": self.limit,
+            "returned": len(self.events),
+            "total": self.total,
+            "next_offset": self.next_offset,
+            "events": self.events,
         }
 
 
@@ -113,6 +142,35 @@ class AuditTraceLogger:
         """Return redacted trace events, optionally filtered by trace id."""
         events = self.query_trace(trace_id) if trace_id else self.iter_events()
         return [redact_value(event) for event in events]
+
+    def query_redacted_events(
+        self,
+        *,
+        trace_id: str | None = None,
+        offset: int = 0,
+        limit: int = DEFAULT_TRACE_QUERY_LIMIT,
+    ) -> TraceQueryResult:
+        """Return a bounded, redacted page of audit events."""
+        safe_offset = max(int(offset), 0)
+        safe_limit = min(max(int(limit), 1), MAX_TRACE_QUERY_LIMIT)
+        events: list[dict[str, Any]] = []
+        total = 0
+        for event in self.iter_events():
+            if trace_id is not None and event.get("trace_id") != trace_id:
+                continue
+            total += 1
+            if total <= safe_offset:
+                continue
+            if len(events) >= safe_limit:
+                continue
+            events.append(redact_value(event))
+        return TraceQueryResult(
+            events=events,
+            total=total,
+            offset=safe_offset,
+            limit=safe_limit,
+            trace_id=trace_id,
+        )
 
     def verify_hash_chain(self) -> TraceVerificationResult:
         """Detect missing, reordered, or tampered JSONL trace events."""

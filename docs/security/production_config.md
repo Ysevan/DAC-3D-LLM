@@ -28,6 +28,10 @@ Production deployments must fail closed before accepting DAC-3D command submissi
 
 The FastAPI security middleware attaches browser security headers to API, static UI, Swagger, and structured error responses. The default policy includes CSP, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, frame blocking, and cross-origin isolation baseline headers. HTTPS requests also receive HSTS.
 
+## Audit Trace Query And Export
+
+Audit trace query/export APIs are privileged endpoints. Use `GET /api/audit/traces`, `GET /api/audit/traces/{trace_id}`, or `GET /api/audit/export` only with `X-DAC3D-Session-ID`, `X-DAC3D-Operator-ID`, and an `X-DAC3D-Roles` value containing `admin` or `security_admin`. Responses are redacted, paginated with bounded `limit`/`offset`, and include hash-chain/signature verification metadata.
+
 ## Safe Production Example
 
 ```bash

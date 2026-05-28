@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from collections.abc import Iterator, Sequence
 from inspect import signature
@@ -13,7 +14,7 @@ from typing import Any
 from memory import ConversationMemoryStore, MemoryApprovalError
 from security.path_policy import PathPolicy, PathPolicyError
 from security.production_config import ProductionSecurityConfig, SecurityConfigError
-from tracing.logger import AuditTraceLogger
+from tracing.logger import AuditTraceLogger, DEFAULT_TRACE_QUERY_LIMIT, MAX_TRACE_QUERY_LIMIT
 from tracing.redaction import redact_exception
 from ui.auth import ApiSecurityError, PRIVILEGED_ROLES, require_api_actor
 from ui.security_middleware import install_security_middleware
@@ -88,7 +89,23 @@ _OPENAPI_SECURITY_POLICIES: dict[tuple[str, str], dict[str, Any]] = {
         "level": "write",
         "required_roles": ("operator", "admin", "security_admin"),
     },
+    ("GET", "/api/audit/traces"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "privileged",
+        "required_roles": ("admin", "security_admin"),
+    },
+    ("GET", "/api/audit/traces/{trace_id}"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "privileged",
+        "required_roles": ("admin", "security_admin"),
+    },
+    ("GET", "/api/audit/export"): {
+        "schemes": ("DAC3DSessionId", "DAC3DOperatorId", "DAC3DRoles"),
+        "level": "privileged_export",
+        "required_roles": ("admin", "security_admin"),
+    },
 }
+_TRACE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,160}$")
 
 try:  # FastAPI resolves postponed route annotations from module globals.
     from fastapi import Request, UploadFile
@@ -531,6 +548,44 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
             "knowledge_base": summary,
         })
 
+    @app.get("/api/audit/traces")
+    def audit_traces(http_request: Request) -> dict[str, Any]:
+        actor = _require_actor(
+            http_request,
+            require_operator=True,
+            required_roles=PRIVILEGED_ROLES,
+        )
+        trace_id = _parse_optional_trace_id(http_request.query_params.get("trace_id"))
+        return _audit_trace_query_response(http_request, actor=actor, trace_id=trace_id)
+
+    @app.get("/api/audit/traces/{trace_id}")
+    def audit_trace_by_id(http_request: Request, trace_id: str) -> dict[str, Any]:
+        actor = _require_actor(
+            http_request,
+            require_operator=True,
+            required_roles=PRIVILEGED_ROLES,
+        )
+        return _audit_trace_query_response(
+            http_request,
+            actor=actor,
+            trace_id=_parse_required_trace_id(trace_id),
+        )
+
+    @app.get("/api/audit/export")
+    def audit_trace_export(http_request: Request) -> dict[str, Any]:
+        actor = _require_actor(
+            http_request,
+            require_operator=True,
+            required_roles=PRIVILEGED_ROLES,
+        )
+        trace_id = _parse_optional_trace_id(http_request.query_params.get("trace_id"))
+        return _audit_trace_query_response(
+            http_request,
+            actor=actor,
+            trace_id=trace_id,
+            export=True,
+        )
+
     selected_frontend_dist = frontend_dist_dir or assistant.config.frontend_dist_dir
 
     if selected_frontend_dist.exists():
@@ -712,6 +767,127 @@ def _require_memory_store(request: Any) -> ConversationMemoryStore:
             status_code=403,
         )
     return memory_store
+
+
+def _require_audit_logger(request: Any) -> AuditTraceLogger:
+    """Return the configured audit logger or fail closed."""
+    audit_logger = getattr(request.app.state, "audit_logger", None)
+    if audit_logger is None:
+        raise ApiSecurityError(
+            code="AUDIT_TRACE_DISABLED",
+            message="Audit trace logging is disabled.",
+            status_code=403,
+        )
+    return audit_logger
+
+
+def _audit_trace_query_response(
+    request: Any,
+    *,
+    actor: Any,
+    trace_id: str | None,
+    export: bool = False,
+) -> dict[str, Any]:
+    audit_logger = _require_audit_logger(request)
+    limit, offset = _parse_trace_pagination(request.query_params)
+    query_result = audit_logger.query_redacted_events(
+        trace_id=trace_id,
+        offset=offset,
+        limit=limit,
+    )
+    verification = audit_logger.verify_hash_chain().to_dict()
+    payload = query_result.to_dict()
+    payload["verification"] = verification
+    payload["export_format"] = "redacted-json" if export else "redacted-page"
+    _audit_event(
+        request,
+        actor=actor,
+        event_type="audit_trace_export" if export else "audit_trace_query",
+        tool_call={
+            "name": "audit_trace_export" if export else "audit_trace_query",
+            "trace_id": trace_id,
+            "offset": offset,
+            "limit": limit,
+        },
+        policy_decision={
+            "returned": payload["returned"],
+            "total": payload["total"],
+            "verification_valid": verification.get("valid"),
+        },
+    )
+    return _attach_trace(
+        request,
+        {
+            "audit_trace": payload,
+            "actor": {
+                "session_id": actor.session_id,
+                "operator_id": actor.operator_id,
+                "roles": list(actor.roles),
+            },
+        },
+    )
+
+
+def _parse_trace_pagination(query_params: Any) -> tuple[int, int]:
+    limit = _parse_bounded_int(
+        query_params.get("limit"),
+        field_name="limit",
+        default=DEFAULT_TRACE_QUERY_LIMIT,
+        minimum=1,
+        maximum=MAX_TRACE_QUERY_LIMIT,
+    )
+    offset = _parse_bounded_int(
+        query_params.get("offset"),
+        field_name="offset",
+        default=0,
+        minimum=0,
+        maximum=1_000_000,
+    )
+    return limit, offset
+
+
+def _parse_bounded_int(
+    value: Any,
+    *,
+    field_name: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    if value is None or str(value).strip() == "":
+        return default
+    try:
+        parsed = int(str(value).strip())
+    except ValueError as exc:
+        raise ApiSecurityError(
+            code=f"INVALID_TRACE_{field_name.upper()}",
+            message=f"trace {field_name} must be an integer.",
+            status_code=422,
+        ) from exc
+    if parsed < minimum or parsed > maximum:
+        raise ApiSecurityError(
+            code=f"INVALID_TRACE_{field_name.upper()}",
+            message=f"trace {field_name} must be between {minimum} and {maximum}.",
+            status_code=422,
+        )
+    return parsed
+
+
+def _parse_optional_trace_id(value: Any) -> str | None:
+    if value is None or str(value).strip() == "":
+        return None
+    return _parse_required_trace_id(value)
+
+
+def _parse_required_trace_id(value: Any) -> str:
+    text = str(value or "").strip()
+    if not _TRACE_ID_RE.fullmatch(text):
+        raise ApiSecurityError(
+            code="INVALID_TRACE_ID",
+            message="trace_id must contain only letters, digits, underscore, dot, colon, or hyphen.",
+            status_code=422,
+        )
+    return text
 
 
 def _response_payload(response: Any) -> dict[str, Any]:
