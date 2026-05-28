@@ -61,6 +61,13 @@
 - FastAPI audit logger 会从 `DAC3D_AUDIT_TRACE_SIGNING_KEY` 和 `DAC3D_AUDIT_TRACE_KEY_ID` 读取签名配置；生产配置校验要求 `DAC3D_AUDIT_TRACE_ENABLED=true` 且必须提供签名密钥。
 - 已补回归测试覆盖签名 trace 的正常校验，以及“篡改事件并重算 hash chain、但没有签名密钥”会被拒绝。
 
+## S15-9 已修复
+
+- FastAPI 安全中间件现在会给 API、静态页面、Swagger 和结构化错误统一附加浏览器安全响应头。
+- 默认响应头包括 CSP、`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`、`Permissions-Policy`、`X-Frame-Options: DENY`、`Cross-Origin-Opener-Policy` 和 `Cross-Origin-Resource-Policy`；HTTPS 请求还会附加 HSTS。
+- CSP 默认只允许 self，并显式禁止 object/embed 与 framing；为 Swagger UI 保留 `cdn.jsdelivr.net` 和必要 inline 样式/脚本兼容。
+- 已补回归测试覆盖普通 API、CORS preflight 和 Swagger docs 都带安全头，避免 CORS 外层中间件绕过。
+
 ## P0 必须修复
 
 当前审查范围内的 P0 项已完成。下一步应继续推进 P1/P2 的锁文件、可复现 E2E 和外部审计汇聚。
@@ -79,9 +86,7 @@
 
 3. 把 Chrome 插件的真实 UI/API smoke 固化成可复现 E2E 测试，避免只依赖人工/本地运行记录。
 
-4. 给 FastAPI 增加更完整的安全响应头策略，例如 CSP、`X-Content-Type-Options`、`Referrer-Policy`、`Permissions-Policy`。
-
-5. 给 trace query/export 增加分页、角色权限和按 trace_id 的审计检索 API。
+4. 给 trace query/export 增加分页、角色权限和按 trace_id 的审计检索 API。
 
 ## 已满足项
 
@@ -90,6 +95,7 @@
 - 生产配置校验禁止生产 wildcard CORS、禁用 debug、要求 redaction、要求 rate limit、禁止 mock writer 下开放命令提交。
 - trace 日志已脱敏、带 request_id/trace_id、支持 hash chain 校验、支持 redacted export。
 - audit trace 支持 HMAC-SHA256 事件签名；生产环境要求开启 trace 并配置签名密钥。
+- FastAPI 响应默认附加 CSP、nosniff、Referrer-Policy、Permissions-Policy、frame blocking 和 cross-origin isolation 基础安全头。
 - 前端不使用 `dangerouslySetInnerHTML`、`.innerHTML`、`eval`、`new Function` 或浏览器原生确认调用，并通过可访问 dialog 显示高风险确认、preview hash、trace_id、错误 trace_id。
 - CI 安全工作流已覆盖 pytest、compileall、ruff、bandit、pip-audit、npm audit、frontend build、static scan、security eval smoke。
 - red-team cases 已覆盖 prompt injection、indirect prompt injection、RAG poisoning、memory poisoning、confirmation bypass、path traversal、secret exfiltration、tool misuse、API auth bypass、trace tampering、XSS 输出注入、DoS oversized input 等类别。
@@ -129,3 +135,5 @@
 7. S15-7：已完成。前端高风险确认已从浏览器原生确认弹窗升级为可访问 dialog，并增加静态扫描规则防止回退。
 
 8. S15-8：已完成。Audit trace 加入 HMAC 签名校验和生产密钥要求，防止仅重算 JSONL hash chain 的离线篡改。
+
+9. S15-9：已完成。FastAPI 安全中间件统一添加安全响应头，并覆盖 API、CORS preflight 和 Swagger docs 回归测试。

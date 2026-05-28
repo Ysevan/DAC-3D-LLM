@@ -24,6 +24,10 @@ Production deployments must fail closed before accepting DAC-3D command submissi
 | `DAC3D_DEBUG_MODE` | Must be false. |
 | `DAC3D_MOCK_MODE` | Must not be treated as a real production command writer. |
 
+## Security Response Headers
+
+The FastAPI security middleware attaches browser security headers to API, static UI, Swagger, and structured error responses. The default policy includes CSP, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, frame blocking, and cross-origin isolation baseline headers. HTTPS requests also receive HSTS.
+
 ## Safe Production Example
 
 ```bash

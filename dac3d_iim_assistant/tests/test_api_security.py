@@ -84,6 +84,45 @@ def test_openapi_documents_dac3d_security_headers(tmp_path) -> None:
     assert "security" not in schema["paths"]["/api/health"]["get"]
 
 
+def test_security_response_headers_on_api_and_cors_preflight(tmp_path) -> None:
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    client = TestClient(create_api_app(assistant))
+
+    response = client.get("/api/runtime", headers={"X-DAC3D-Session-ID": "security-session"})
+    preflight = client.options(
+        "/api/chat",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    for candidate in (response, preflight):
+        assert candidate.headers["x-content-type-options"] == "nosniff"
+        assert candidate.headers["referrer-policy"] == "no-referrer"
+        assert candidate.headers["x-frame-options"] == "DENY"
+        assert candidate.headers["cross-origin-opener-policy"] == "same-origin"
+        assert candidate.headers["cross-origin-resource-policy"] == "same-origin"
+        assert "camera=()" in candidate.headers["permissions-policy"]
+        csp = candidate.headers["content-security-policy"]
+        assert "default-src 'self'" in csp
+        assert "object-src 'none'" in csp
+        assert "frame-ancestors 'none'" in csp
+
+
+def test_swagger_docs_csp_allows_documented_assets(tmp_path) -> None:
+    assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
+    client = TestClient(create_api_app(assistant))
+
+    response = client.get("/docs")
+
+    assert response.status_code == 200
+    csp = response.headers["content-security-policy"]
+    assert "https://cdn.jsdelivr.net" in csp
+    assert "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net" in csp
+    assert "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net" in csp
+
+
 def test_wrong_operator_rejected_for_confirmation(tmp_path) -> None:
     assistant = DAC3DAssistant.create(make_config(tmp_path), rebuild_kb=True)
     client = TestClient(create_api_app(assistant))

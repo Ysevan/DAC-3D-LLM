@@ -150,11 +150,6 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         if getattr(assistant.config, "audit_trace_enabled", True)
         else None
     )
-    install_security_middleware(
-        app,
-        rate_limit_enabled=security_config.rate_limit_enabled,
-        audit_logger=app.state.audit_logger,
-    )
     try:
         from machine_agent import MachineAgentService
 
@@ -181,6 +176,11 @@ def create_api_app(assistant: Any, frontend_dist_dir: Path | None = None) -> Any
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+    install_security_middleware(
+        app,
+        rate_limit_enabled=security_config.rate_limit_enabled,
+        audit_logger=app.state.audit_logger,
     )
 
     @app.get("/api/health")

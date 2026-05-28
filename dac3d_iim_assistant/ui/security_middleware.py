@@ -12,6 +12,34 @@ from ui.auth import ApiSecurityError, REQUEST_ID_HEADER, SESSION_HEADER
 from tracing.redaction import redact_text
 
 
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "img-src 'self' data: https://fastapi.tiangolo.com",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    )
+)
+PERMISSIONS_POLICY = ", ".join(
+    (
+        "camera=()",
+        "microphone=()",
+        "geolocation=()",
+        "payment=()",
+        "usb=()",
+        "clipboard-read=()",
+        "clipboard-write=(self)",
+        "fullscreen=(self)",
+    )
+)
+
+
 class InMemoryRateLimiter:
     """Small per-process rate-limit skeleton keyed by session or client host."""
 
@@ -61,13 +89,15 @@ def install_security_middleware(
             or (request.client.host if request.client else "unknown")
         )
         if rate_limit_enabled and request.url.path.startswith("/api/") and not limiter.allow(rate_key):
-            return structured_error_response(
+            response = structured_error_response(
                 status_code=429,
                 code="RATE_LIMITED",
                 message="Too many requests. Please retry later.",
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            _apply_security_response_headers(response, request=request)
+            return response
 
         try:
             response = await call_next(request)
@@ -98,6 +128,7 @@ def install_security_middleware(
         )
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Trace-ID"] = trace_id
+        _apply_security_response_headers(response, request=request)
         return response
 
     @app.exception_handler(ApiSecurityError)
@@ -173,6 +204,22 @@ def _safe_header(value: str | None) -> str | None:
     if not text:
         return None
     return text[:120]
+
+
+def _apply_security_response_headers(response: Any, *, request: Any) -> None:
+    """Attach browser security headers to every FastAPI response."""
+    response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", PERMISSIONS_POLICY)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    if getattr(request.url, "scheme", "") == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
 
 
 def _record_api_audit(
