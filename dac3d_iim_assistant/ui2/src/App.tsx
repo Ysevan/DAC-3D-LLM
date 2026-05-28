@@ -20,6 +20,20 @@ import type {
 type PanelMode = "hidden" | "details" | "settings";
 type ThemeMode = "auto" | "light" | "dark";
 
+type CommandApprovalRequest = {
+  message: MessageRecord;
+  action: string;
+  mode: string;
+  region: string;
+  summary: string;
+  previewHash: string;
+  shortHash: string;
+  phrase: string;
+  warnings: string[];
+  hardwareRequired: boolean;
+  traceId: string | null;
+};
+
 type StreamRenderState = {
   assistantId: string | null;
   queue: string[];
@@ -56,6 +70,7 @@ function App() {
   const [requestStage, setRequestStage] = useState<string | null>(null);
   const [confirmingPreviewId, setConfirmingPreviewId] = useState<string | null>(null);
   const [confirmedPreviewIds, setConfirmedPreviewIds] = useState<Set<string>>(() => new Set());
+  const [pendingCommandApproval, setPendingCommandApproval] = useState<CommandApprovalRequest | null>(null);
   const [detailsPayload, setDetailsPayload] = useState<AssistantPayload>(EMPTY_DETAILS);
   const [runtimeSummary, setRuntimeSummary] = useState<RuntimeSummary | null>(null);
   const [knowledgeBaseSummary, setKnowledgeBaseSummary] = useState<KnowledgeBaseSummary | null>(null);
@@ -263,15 +278,15 @@ function App() {
     if (!confirmation?.preview_id || !confirmation.preview_hash || !confirmation.confirmation_token) {
       return;
     }
-    const previewSummary = buildCommandSummary(message.payload?.command_preview);
-    const shortHash = confirmation.preview_hash.slice(0, 16);
-    const approved = window.confirm(
-      `确认只执行本次命令？\n\n${previewSummary}\npreview_hash: ${shortHash}\n\n不会确认未来命令。`,
-    );
-    if (!approved) {
+    setPendingCommandApproval(buildCommandApprovalRequest(message));
+  }
+
+  async function submitConfirmedCommand(message: MessageRecord): Promise<void> {
+    const confirmation = message.payload?.confirmation;
+    if (!confirmation?.preview_id || !confirmation.preview_hash || !confirmation.confirmation_token) {
       return;
     }
-
+    setPendingCommandApproval(null);
     setConfirmingPreviewId(confirmation.preview_id);
     try {
       const payload = await confirmCommand(confirmation, sessionId);
@@ -302,6 +317,12 @@ function App() {
       );
     } finally {
       setConfirmingPreviewId(null);
+    }
+  }
+
+  function closeCommandApprovalDialog(): void {
+    if (!confirmingPreviewId) {
+      setPendingCommandApproval(null);
     }
   }
 
@@ -792,6 +813,15 @@ function App() {
           </div>
         ) : null}
       </aside>
+      <CommandApprovalDialog
+        confirming={Boolean(
+          pendingCommandApproval?.message.payload?.confirmation?.preview_id &&
+            confirmingPreviewId === pendingCommandApproval.message.payload.confirmation.preview_id,
+        )}
+        request={pendingCommandApproval}
+        onCancel={closeCommandApprovalDialog}
+        onConfirm={(request) => void submitConfirmedCommand(request.message)}
+      />
     </div>
   );
 }
@@ -1208,6 +1238,130 @@ function clampCadence(value: number): number {
   return Math.min(42, Math.max(10, Math.round(value)));
 }
 
+function CommandApprovalDialog(props: {
+  confirming: boolean;
+  request: CommandApprovalRequest | null;
+  onCancel: () => void;
+  onConfirm: (request: CommandApprovalRequest) => void;
+}) {
+  const { confirming, request, onCancel, onConfirm } = props;
+  const [typedPhrase, setTypedPhrase] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!request) {
+      setTypedPhrase("");
+      return;
+    }
+    const focusId = window.setTimeout(() => inputRef.current?.focus(), 0);
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && !confirming) {
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusId);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [confirming, onCancel, request]);
+
+  if (!request) {
+    return null;
+  }
+
+  const typedMatches = typedPhrase.trim() === request.phrase;
+  const canSubmit = typedMatches && !confirming;
+
+  return createPortal(
+    <div className="approval-modal-backdrop" role="presentation">
+      <section
+        aria-describedby="command-approval-description"
+        aria-labelledby="command-approval-title"
+        aria-modal="true"
+        className={`approval-modal ${request.hardwareRequired ? "approval-modal-high-risk" : ""}`}
+        role="dialog"
+      >
+        <div className="approval-modal-header">
+          <div>
+            <p className="approval-modal-eyebrow">一次性命令确认</p>
+            <h2 id="command-approval-title">
+              {request.hardwareRequired ? "核对高风险 DAC-3D 操作" : "核对 DAC-3D 命令预览"}
+            </h2>
+          </div>
+          <button
+            aria-label="关闭确认窗口"
+            className="approval-modal-close"
+            disabled={confirming}
+            onClick={onCancel}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+
+        <p className="approval-modal-copy" id="command-approval-description">
+          此确认只绑定当前 preview hash、当前 operator 和当前 session，不会授权未来命令。
+        </p>
+
+        <div className="approval-command-grid">
+          <DetailRow label="动作" value={request.action} />
+          <DetailRow label="模式" value={request.mode} />
+          <DetailRow label="区域" value={request.region} />
+          <DetailRow label="摘要" value={request.summary} />
+        </div>
+
+        {request.warnings.length ? (
+          <ul className="approval-warning-list">
+            {request.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <div className="approval-hash-block">
+          <span>preview_hash</span>
+          <code>{request.previewHash}</code>
+        </div>
+
+        {request.traceId ? (
+          <div className="approval-trace-line">trace_id {request.traceId}</div>
+        ) : null}
+
+        <form
+          className="approval-phrase-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (canSubmit) {
+              onConfirm(request);
+            }
+          }}
+        >
+          <label htmlFor="command-approval-phrase">
+            输入确认语 <code>{request.phrase}</code>
+          </label>
+          <input
+            autoComplete="off"
+            id="command-approval-phrase"
+            onChange={(event) => setTypedPhrase(event.target.value)}
+            ref={inputRef}
+            value={typedPhrase}
+          />
+          <div className="approval-actions">
+            <button className="approval-cancel" disabled={confirming} onClick={onCancel} type="button">
+              取消
+            </button>
+            <button className="approval-submit" disabled={!canSubmit} type="submit">
+              {confirming ? "正在提交..." : "确认执行本次命令"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function MessageFooter(props: {
   confirming: boolean;
   confirmed: boolean;
@@ -1548,6 +1702,31 @@ function buildCommandSummary(preview: Record<string, unknown> | null | undefined
   const mode = stringValue(record.mode);
   const region = stringValue(record.region);
   return `动作: ${action} / 模式: ${mode} / 区域: ${region}`;
+}
+
+function buildCommandApprovalRequest(message: MessageRecord): CommandApprovalRequest {
+  const payload = message.payload || EMPTY_DETAILS;
+  const preview = asRecord(payload.command_preview);
+  const confirmation = payload.confirmation;
+  const previewHash = confirmation?.preview_hash ?? "";
+  const shortHash = previewHash.slice(0, 16);
+  const action = stringValue(preview?.action);
+  const mode = stringValue(preview?.mode);
+  const region = stringValue(preview?.region);
+  const safety = asRecord(preview?.safety);
+  return {
+    message,
+    action,
+    mode,
+    region,
+    summary: buildCommandSummary(payload.command_preview),
+    previewHash,
+    shortHash,
+    phrase: `执行 ${shortHash}`,
+    warnings: getCommandWarnings(payload.command_preview),
+    hardwareRequired: Boolean(safety?.hardware_required),
+    traceId: payload.trace_id ?? null,
+  };
 }
 
 function getCommandWarnings(preview: Record<string, unknown> | null | undefined): string[] {

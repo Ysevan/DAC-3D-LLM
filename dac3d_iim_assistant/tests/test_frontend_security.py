@@ -27,9 +27,12 @@ def test_command_preview_requires_confirm() -> None:
 
     assert "previewCommand" in api_source
     assert "confirmCommand" in api_source
-    assert "window.confirm" in app_source
+    assert "window.confirm" not in app_source
+    assert "CommandApprovalDialog" in app_source
+    assert "command-approval-phrase" in app_source
+    assert "typedPhrase.trim() === request.phrase" in app_source
     assert "确认执行本次命令" in app_source
-    assert "不会确认未来命令" in app_source
+    assert "不会授权未来命令" in app_source
 
 
 def test_blocked_action_displays_reason() -> None:

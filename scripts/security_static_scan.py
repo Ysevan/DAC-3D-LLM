@@ -35,6 +35,7 @@ UNSAFE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("react-dangerous-html", re.compile(r"dangerouslySetInnerHTML")),
     ("javascript-eval", re.compile(r"\beval\s*\(")),
     ("javascript-new-function", re.compile(r"\bnew\s+Function\s*\(")),
+    ("browser-window-confirm", re.compile(r"\bwindow\.confirm\s*\(")),
 )
 
 

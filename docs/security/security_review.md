@@ -47,17 +47,22 @@
 - 每个受保护 operation 都附带 `x-dac3d-security` 扩展，标出 required headers 和 required roles，降低 Swagger 调试时漏带 operator/session/role 的误用风险。
 - 已补回归测试确认 `/openapi.json` 暴露三类安全头、`/api/commands/confirm` 标注 operator/admin/security_admin 写角色、`/api/health` 不被错误标为受保护。
 
+## S15-7 已修复
+
+- `ui2` 高风险命令确认已从浏览器原生确认弹窗改为页面内可访问 dialog。点击“确认执行本次命令”只会打开确认窗口，不会直接下发。
+- dialog 会展示本次 action、mode、region、summary、完整 `preview_hash`、trace_id 和风险提示，并声明确认只绑定当前 preview/operator/session。
+- operator 必须输入短确认语 `执行 <preview_hash 前 16 位>`，按钮才会启用；Escape/取消只关闭 dialog，不会触发 `/api/commands/confirm`。
+- 静态扫描器新增 `browser-window-confirm` 规则，CI 本地扫描会拒绝重新引入浏览器原生确认调用。
+
 ## P0 必须修复
 
-当前审查范围内的 P0 项已完成。下一步应继续推进 P1/P2 的审计不可变性、前端确认体验、锁文件和可复现 E2E。
+当前审查范围内的 P0 项已完成。下一步应继续推进 P1/P2 的审计不可变性、锁文件和可复现 E2E。
 
 ## P1 建议修复
 
 1. Audit trace 是 JSONL hash chain，可检测内容篡改，但还不是操作系统或外部存储层面的不可变审计。生产建议加只追加权限、轮转、签名或外部日志汇聚。
 
-2. 前端高风险确认目前使用 `window.confirm`。安全语义已经明确，但生产 UI 建议换成可访问 modal，并要求 operator 核对 action、scope、preview hash 或短确认语。
-
-3. dependency audit、bandit、ruff、npm audit 已进入 CI，但本地无法在无网络/无 CI token 环境中确认完整执行结果。合并前应以 GitHub Actions 结果为准。
+2. dependency audit、bandit、ruff、npm audit 已进入 CI，但本地无法在无网络/无 CI token 环境中确认完整执行结果。合并前应以 GitHub Actions 结果为准。
 
 ## P2 后续优化
 
@@ -77,7 +82,7 @@
 - `/api/chat` 与 streaming chat 对执行类文本 fail closed，强制走 preview/confirm 分离链路。
 - 生产配置校验禁止生产 wildcard CORS、禁用 debug、要求 redaction、要求 rate limit、禁止 mock writer 下开放命令提交。
 - trace 日志已脱敏、带 request_id/trace_id、支持 hash chain 校验、支持 redacted export。
-- 前端不使用 `dangerouslySetInnerHTML`、`.innerHTML`、`eval`、`new Function`，并显示高风险确认、preview hash、trace_id、错误 trace_id。
+- 前端不使用 `dangerouslySetInnerHTML`、`.innerHTML`、`eval`、`new Function` 或浏览器原生确认调用，并通过可访问 dialog 显示高风险确认、preview hash、trace_id、错误 trace_id。
 - CI 安全工作流已覆盖 pytest、compileall、ruff、bandit、pip-audit、npm audit、frontend build、static scan、security eval smoke。
 - red-team cases 已覆盖 prompt injection、indirect prompt injection、RAG poisoning、memory poisoning、confirmation bypass、path traversal、secret exfiltration、tool misuse、API auth bypass、trace tampering、XSS 输出注入、DoS oversized input 等类别。
 - Agent/CLI 直接执行命令已 fail closed；confirmed flag 只返回 token-bound confirmation 要求，不能直接提交到 mock runtime 或 command-file bridge。
@@ -86,6 +91,7 @@
 - 长期 memory 已改为 pending patch 审批生命周期；未批准、已拒绝、已删除的 memory 都不会进入 prompt context。
 - Security eval runner 已接入真实本地 Agent runtime/tool harness；报告会记录实际 `tool_calls`、ToolGateway blocked attempts、policy decisions、command submission 状态、memory approval 状态和 API auth 结果。
 - Swagger/OpenAPI 已把 DAC-3D session、operator 和 roles header 建模为安全 schemes，并按 operation 标注 required headers/roles。
+- `ui2` 高风险命令确认已改为可访问 dialog，要求 operator 核对命令摘要和 preview hash 并输入短确认语后才提交。
 
 ## 缺失测试
 
@@ -111,3 +117,5 @@
 5. S15-5：已完成。security eval runner 已接入真实 runtime/tool trace，把 P0 安全边界转为 CI 门禁。
 
 6. S15-6：已完成。Swagger/OpenAPI 已建模 DAC-3D session/operator/roles 安全头，并为受保护 operation 标注安全级别和所需角色。
+
+7. S15-7：已完成。前端高风险确认已从浏览器原生确认弹窗升级为可访问 dialog，并增加静态扫描规则防止回退。
