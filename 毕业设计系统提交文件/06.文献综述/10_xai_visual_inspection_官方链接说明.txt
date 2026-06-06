@@ -1,0 +1,4 @@
+﻿JoVE 站点需要脚本环境与页面校验，自动下载 PDF 失败。已保留官方页面链接，请在浏览器中手动下载。
+
+官方页面：
+https://app.jove.com/t/69440/explainable-ai-for-visual-inspection-a-comparative-analysis-and-review

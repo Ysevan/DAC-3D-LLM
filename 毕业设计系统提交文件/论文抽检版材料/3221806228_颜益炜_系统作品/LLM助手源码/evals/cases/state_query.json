@@ -1,0 +1,11 @@
+{
+  "id": "state_query_current_status",
+  "category": "state_query",
+  "input": "当前检测状态是什么？",
+  "expected": {
+    "intent": "status",
+    "must_call_tools": ["dac3d_status"],
+    "requires_confirmation": false,
+    "answer_contains": ["当前"]
+  }
+}

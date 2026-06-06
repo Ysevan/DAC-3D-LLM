@@ -1,0 +1,125 @@
+{
+  "server_started": true,
+  "results": [
+    {
+      "timestamp": "2026-06-01T15:48:41.865",
+      "endpoint": "/api/health",
+      "round": 1,
+      "status_code": 200,
+      "elapsed_ms": 14.379,
+      "body_head": "{\"status\":\"ok\"}"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:41.879",
+      "endpoint": "/api/health",
+      "round": 2,
+      "status_code": 200,
+      "elapsed_ms": 15.772,
+      "body_head": "{\"status\":\"ok\"}"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:41.895",
+      "endpoint": "/api/health",
+      "round": 3,
+      "status_code": 200,
+      "elapsed_ms": 26.32,
+      "body_head": "{\"status\":\"ok\"}"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:41.921",
+      "endpoint": "/api/health",
+      "round": 4,
+      "status_code": 200,
+      "elapsed_ms": 17.04,
+      "body_head": "{\"status\":\"ok\"}"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:41.938",
+      "endpoint": "/api/health",
+      "round": 5,
+      "status_code": 200,
+      "elapsed_ms": 17.103,
+      "body_head": "{\"status\":\"ok\"}"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:41.956",
+      "endpoint": "/api/runtime",
+      "round": 1,
+      "status_code": 200,
+      "elapsed_ms": 113.273,
+      "body_head": "{\"provider\":\"mock\",\"model\":\"gpt-5.5\",\"vector_store\":\"chroma\",\"embedding_backend\":\"hashing\",\"embedding_model_name\":\"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\",\"embedding_download_allowed\":false,\"retrieval_top_k\":4,\"mock_mode\":true,\"dac3d\":{\"mode\":\"status_file\",\"endpoint\":\"file:///C:"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:42.069",
+      "endpoint": "/api/runtime",
+      "round": 2,
+      "status_code": 200,
+      "elapsed_ms": 100.234,
+      "body_head": "{\"provider\":\"mock\",\"model\":\"gpt-5.5\",\"vector_store\":\"chroma\",\"embedding_backend\":\"hashing\",\"embedding_model_name\":\"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\",\"embedding_download_allowed\":false,\"retrieval_top_k\":4,\"mock_mode\":true,\"dac3d\":{\"mode\":\"status_file\",\"endpoint\":\"file:///C:"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:42.169",
+      "endpoint": "/api/runtime",
+      "round": 3,
+      "status_code": 200,
+      "elapsed_ms": 96.235,
+      "body_head": "{\"provider\":\"mock\",\"model\":\"gpt-5.5\",\"vector_store\":\"chroma\",\"embedding_backend\":\"hashing\",\"embedding_model_name\":\"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\",\"embedding_download_allowed\":false,\"retrieval_top_k\":4,\"mock_mode\":true,\"dac3d\":{\"mode\":\"status_file\",\"endpoint\":\"file:///C:"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:42.265",
+      "endpoint": "/api/runtime",
+      "round": 4,
+      "status_code": 200,
+      "elapsed_ms": 116.849,
+      "body_head": "{\"provider\":\"mock\",\"model\":\"gpt-5.5\",\"vector_store\":\"chroma\",\"embedding_backend\":\"hashing\",\"embedding_model_name\":\"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\",\"embedding_download_allowed\":false,\"retrieval_top_k\":4,\"mock_mode\":true,\"dac3d\":{\"mode\":\"status_file\",\"endpoint\":\"file:///C:"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:42.383",
+      "endpoint": "/api/runtime",
+      "round": 5,
+      "status_code": 200,
+      "elapsed_ms": 147.225,
+      "body_head": "{\"provider\":\"mock\",\"model\":\"gpt-5.5\",\"vector_store\":\"chroma\",\"embedding_backend\":\"hashing\",\"embedding_model_name\":\"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\",\"embedding_download_allowed\":false,\"retrieval_top_k\":4,\"mock_mode\":true,\"dac3d\":{\"mode\":\"status_file\",\"endpoint\":\"file:///C:"
+    },
+    {
+      "timestamp": "2026-06-01T15:48:42.529",
+      "endpoint": "/api/knowledge-base/summary",
+      "round": 1,
+      "status_code": 200,
+      "elapsed_ms": 37.766,
+      "body_head": "{\"documents\":[\"DAC-3D参数说明.md\",\"DAC-3D常见问题.md\",\"DAC-3D操作手册.md\",\"defect_interpretation.md\",\"manual_overview.md\",\"parameter_notes.md\",\"troubleshooting.md\"],\"document_count\":7,\"chunk_count\":112,\"latest_build_at\":\"2026-05-26T19:13:41.058660+00:00\",\"storage_backend\":\"chroma\",\"embedding_backend\":\"hashing\","
+    },
+    {
+      "timestamp": "2026-06-01T15:48:42.567",
+      "endpoint": "/api/knowledge-base/summary",
+      "round": 2,
+      "status_code": 200,
+      "elapsed_ms": 41.868,
+      "body_head": "{\"documents\":[\"DAC-3D参数说明.md\",\"DAC-3D常见问题.md\",\"DAC-3D操作手册.md\",\"defect_interpretation.md\",\"manual_overview.md\",\"parameter_notes.md\",\"troubleshooting.md\"],\"document_count\":7,\"chunk_count\":112,\"latest_build_at\":\"2026-05-26T19:13:41.058660+00:00\",\"storage_backend\":\"chroma\",\"embedding_backend\":\"hashing\","
+    },
+    {
+      "timestamp": "2026-06-01T15:48:42.609",
+      "endpoint": "/api/knowledge-base/summary",
+      "round": 3,
+      "status_code": 200,
+      "elapsed_ms": 37.472,
+      "body_head": "{\"documents\":[\"DAC-3D参数说明.md\",\"DAC-3D常见问题.md\",\"DAC-3D操作手册.md\",\"defect_interpretation.md\",\"manual_overview.md\",\"parameter_notes.md\",\"troubleshooting.md\"],\"document_count\":7,\"chunk_count\":112,\"latest_build_at\":\"2026-05-26T19:13:41.058660+00:00\",\"storage_backend\":\"chroma\",\"embedding_backend\":\"hashing\","
+    },
+    {
+      "timestamp": "2026-06-01T15:48:42.647",
+      "endpoint": "/api/knowledge-base/summary",
+      "round": 4,
+      "status_code": 200,
+      "elapsed_ms": 36.881,
+      "body_head": "{\"documents\":[\"DAC-3D参数说明.md\",\"DAC-3D常见问题.md\",\"DAC-3D操作手册.md\",\"defect_interpretation.md\",\"manual_overview.md\",\"parameter_notes.md\",\"troubleshooting.md\"],\"document_count\":7,\"chunk_count\":112,\"latest_build_at\":\"2026-05-26T19:13:41.058660+00:00\",\"storage_backend\":\"chroma\",\"embedding_backend\":\"hashing\","
+    },
+    {
+      "timestamp": "2026-06-01T15:48:42.683",
+      "endpoint": "/api/knowledge-base/summary",
+      "round": 5,
+      "status_code": 200,
+      "elapsed_ms": 37.607,
+      "body_head": "{\"documents\":[\"DAC-3D参数说明.md\",\"DAC-3D常见问题.md\",\"DAC-3D操作手册.md\",\"defect_interpretation.md\",\"manual_overview.md\",\"parameter_notes.md\",\"troubleshooting.md\"],\"document_count\":7,\"chunk_count\":112,\"latest_build_at\":\"2026-05-26T19:13:41.058660+00:00\",\"storage_backend\":\"chroma\",\"embedding_backend\":\"hashing\","
+    }
+  ]
+}

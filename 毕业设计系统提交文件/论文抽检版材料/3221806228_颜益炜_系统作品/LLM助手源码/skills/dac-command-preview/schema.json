@@ -1,0 +1,16 @@
+{
+  "intent": "operation_preview",
+  "required_fields": ["action", "payload", "safety"],
+  "allowed_actions": [
+    "start_online_scan",
+    "start_offline_detection",
+    "stop_detection",
+    "query_status",
+    "get_latest_result",
+    "validate_offline_folder"
+  ],
+  "safety": {
+    "requires_confirmation_default": true,
+    "never_execute_in_preview": true
+  }
+}

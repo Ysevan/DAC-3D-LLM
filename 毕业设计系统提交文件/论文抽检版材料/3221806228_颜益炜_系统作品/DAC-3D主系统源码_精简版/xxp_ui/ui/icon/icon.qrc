@@ -1,0 +1,10 @@
+<RCC>
+  <qresource prefix="icon">
+    <file>icon_12af5u4ry7yi/日志.png</file>
+    <file>icon_12af5u4ry7yi/消息栏-警告提醒.png</file>
+    <file>icon_12af5u4ry7yi/shujujieguotongji.png</file>
+    <file>icon_12af5u4ry7yi/xiangji.png</file>
+    <file>icon_12af5u4ry7yi/zhixiandianji.png</file>
+    <file>关闭.png</file>
+  </qresource>
+</RCC>

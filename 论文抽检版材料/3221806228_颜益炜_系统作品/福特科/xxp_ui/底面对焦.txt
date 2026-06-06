@@ -1,0 +1,120 @@
+    def botton_focus(self):
+        self.save_path_snakeScan = 'E:/ftkpic/snakescan/' + self.date_folder + '-' + self.time_folder
+        os.makedirs(self.save_path_snakeScan, exist_ok=True)
+        os.makedirs(self.save_path_snakeScan + '/焦前', exist_ok=True)
+        os.makedirs(self.save_path_snakeScan + '/焦后', exist_ok=True)
+        os.makedirs(self.save_path_snakeScan + '/焦面', exist_ok=True)
+        os.makedirs(self.save_path_snakeScan + '/检测结果', exist_ok=True)
+
+        x_pos_start = self.doubleSpinBox_16.value()
+        y_pos_start = self.doubleSpinBox_17.value()
+        self.xy_pos = []
+        self.xy_pos = getposxy(x_pos_start, y_pos_start)
+
+        self.thread_xy_scan1 = threading.Thread(target=self.xy_scan1_thread, args=(self.xy_pos,))
+        self.thread_xy_scan1.start()
+
+        with self.condition:
+            self.thread_run_status = 'xy'
+            self.condition.notify_all()
+
+    def xy_scan1_thread(self, xy_pos):
+        # print('启动xy线程')
+        with self.condition:
+            self.condition.wait_for(lambda: self.thread_run_status == 'xy')
+            # print('执行xy')
+
+            # try:
+            start_time = time.time()
+            self.timestatus = False
+            if self.debug_ui_queue:
+                msg = {
+                    'type': 'info',
+                    'data': {
+                        'start_time': start_time
+                    }
+                }
+                self.debug_ui_queue.put(msg)
+
+            # self.status = 'xy_scan'
+            self.status ='snake_scan'
+            df = pd.read_csv(r"C:\Users\Administrator\Desktop\工装盘焦面11111111.csv", header=None,encoding="gbk")#文件编码类型
+            b_column_data = df.iloc[:, 2].tolist()
+            index = 0
+            for (i, pos) in enumerate(xy_pos):
+                #     y_now = xy_pos[0][1]
+
+                if i % 12 == 0:
+                    y_now = xy_pos[i][1]
+                    # print('y:',y_now)
+                    print('y位置', i % 2)
+                    index += 1
+                    self.g.GCommand(f'pPOSY={y_now}')
+                    self.g.GCommand('XQ  # MOVEY,2')
+                    time.sleep(5)
+                    self.xy_status()
+                    self.get_image_flag_temp = 0
+                    # res_x = self.g.GCommand('TPA')
+                    # res_x = res_x.split(":")[-1].strip()  # 获取冒号后的部分并去除空白字符
+                    # res_y = self.g.GCommand('TPB')
+                    # res_y = res_y.split(":")[-1].strip()  # 获取冒号后的部分并去除空白字符
+                    # if res_x.strip():
+                    #     self.doubleSpinBox_100.setValue(round(float(res_x)) / 6400)
+                    #     self.pos_x = round(float(res_x)) / 6400
+                    # if res_y.strip():
+                    #     self.doubleSpinBox_101.setValue(round(float(res_y)) / 6400)
+                    #     self.pos_y = round(float(res_y)) / 6400
+                    self.move_z_up(b_column_data[i])
+                    self.condition.wait_for(lambda: self.thread_run_status == 'xy')
+                    # self.takePhoto()
+                    self.camera_save = 4
+                    self.status ='snake_scan'
+                    self.takePhoto()
+
+                else:
+                    x = pos[0]
+                    # print('x:',x)
+                    print('x位置:', i % 2)
+                    index += 1
+                    self.g.GCommand(f'pPOSX={x}')
+                    self.g.GCommand('XQ  # MOVEX,1')
+                    time.sleep(5)
+                    # self.stagestatus_x()
+                    self.xy_status()
+
+                    self.get_image_flag_temp = 0
+                    # res_x = self.g.GCommand('TPA')
+                    # res_x = res_x.split(":")[-1].strip()  # 获取冒号后的部分并去除空白字符
+                    # res_y = self.g.GCommand('TPB')
+                    # res_y = res_y.split(":")[-1].strip()  # 获取冒号后的部分并去除空白字符
+                    # if res_x.strip():
+                    #     self.doubleSpinBox_100.setValue(round(float(res_x)) / 6400)
+                    #     self.pos_x = round(float(res_x)) / 6400
+                    # if res_y.strip():
+                    #     self.doubleSpinBox_101.setValue(round(float(res_y)) / 6400)
+                    #     self.pos_y = round(float(res_y)) / 6400
+                    self.move_z_up(b_column_data[i])
+                    self.condition.wait_for(lambda: self.thread_run_status == 'xy')
+                    # self.takePhoto()
+                    # self.camera_save = 1
+                    #激光控制
+                    # 开激光
+                    self.light.laserpower(0)
+                    # Z轴补偿移动（基于cam2的结果）
+                    #a = 0 - self.last_result_cam2[2]
+                    #self.Zmc.ZAux_Direct_Single_Move(0, a * 1000)
+                    # 等待线程状态确认
+                    self.condition.wait_for(lambda: self.thread_run_status == 'xy')
+                    time.sleep(0.5)
+                    # 检查Z轴状态
+                    self.z_status()
+                    time.sleep(0.5)
+
+                    # 关激光
+                    self.light.laserpower(1)
+                    #相机模式存图
+                    self.camera_save = 4
+                    self.status = 'snake_scan'
+                    self.takePhoto()
+
+                print(index)

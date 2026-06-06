@@ -1,0 +1,21 @@
+{
+  "settings_version": "0.0.6",
+  "datasets_dir": "C:\\Users\\xecat\\DAC-3D-LLM\\\u798f\u7279\u79d1\\xxp_ui\\datasets",
+  "weights_dir": "weights",
+  "runs_dir": "runs",
+  "uuid": "015c5eea73ba866f5ef4186a682d9597b183e6ef7026a9dc216aa97dfe63e9bf",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "hub": true,
+  "mlflow": true,
+  "neptune": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": true
+}

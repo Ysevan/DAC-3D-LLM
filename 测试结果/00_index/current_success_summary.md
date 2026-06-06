@@ -1,0 +1,8 @@
+# Current Successful Rerun Summary
+
+| Item | Result | Evidence | Status |
+| --- | --- | --- | --- |
+| Real LLM 5-round calls | success=5/5, failed=0/5 | 01_step1_llm_evidence/llm_5_rounds_payload_response.jsonl | PASS |
+| External API backend log | total_tokens=2608, input=165, output=2443 | 01_step1_llm_evidence/backend_external_api_call_log.jsonl | PASS |
+| Automated pytest regression | 227 passed, 1 skipped in 25.72s | 04_step4_function_exception/pytest_full_run_success.log | PASS |
+| Local API smoke rerun | 15 requests returned successful status codes | 03_step3_performance/rerun_smoke_results.json | PASS |

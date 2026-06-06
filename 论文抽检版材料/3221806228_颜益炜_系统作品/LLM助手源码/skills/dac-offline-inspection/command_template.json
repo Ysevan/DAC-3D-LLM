@@ -1,0 +1,11 @@
+{
+  "action": "start_offline_detection",
+  "payload": {
+    "image_folder": "<allowed_offline_folder>",
+    "validate_before_run": true
+  },
+  "safety": {
+    "needs_confirmation": true,
+    "hardware_required": false
+  }
+}

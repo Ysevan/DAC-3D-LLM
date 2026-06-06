@@ -1,0 +1,5 @@
+{
+  "prompt": "请说明DAC-3D助手在回答中展示来源依据的作用。",
+  "captured_at": "2026-06-02T16:05:38.330Z",
+  "visible_text_tail": "备用前端\nDAC-3D\n☽\n自动\n新建会话\nDAC-3D 运行状态\n已完成\n100%\n\n检测完成，检测用时：1780244763.92秒\n\nstatus_file\n2026/6/1 00:26:03\n检测详情\n系统设置\n系统在线\n您\n\n请说明DAC-3D助手在回答中展示来源依据的作用。\n\n复制\n重用\nDAC-3D 助手\n\nDAC-3D 助手在回答中展示来源依据，主要是为了让结论可追溯、可复核、可维护：它能说明回答来自当前检索到的手册、FAQ、参数说明或缺陷判定指南，而不是凭空推断；也方便操作员回到原始文档核对参数、流程或字段含义。若资料没有覆盖问题，助手应明确说明依据不足，避免误导现场操作。对于缺陷解释类问题，来源依据还能帮助追溯判断所参考的结果文件字段，例如 defect_detail.csv、defect_summary.csv 等。\n\n1\n历史对话记忆\n2\n历史对话记忆\n3\n历史对话记忆\n4\n历史对话记忆\n5\n历史对话记忆\n6\nDAC-Agent Runtime project context\n7\nDefault operator workflow preferences\n8\nDAC-3D runtime profile\n全部来源\ntrace_id d3519786\n复制\n详情\n助手可能会产生不准确的信息，请以实际检测结果为准。\n检测详情"
+}

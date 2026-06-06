@@ -1,0 +1,14 @@
+[
+  {
+    "user": "扫描 10mm x 10mm 区域",
+    "expected_intent": "operation_preview",
+    "expected_action": "start_online_scan",
+    "requires_confirmation": true
+  },
+  {
+    "user": "选择 pre_fusion_images 下的图片进行离线检测",
+    "expected_intent": "operation_preview",
+    "expected_action": "start_offline_detection",
+    "requires_confirmation": true
+  }
+]

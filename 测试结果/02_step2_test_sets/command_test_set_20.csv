@@ -1,0 +1,21 @@
+﻿编号,自然语言输入,期望提取字段JSON,是否完整,论文归档结果
+CMD-01,扫描25mm×25mm区域，分辨率10微米，在线模式,"{""action"": ""start_online_scan"", ""扫描区域"": ""25mm×25mm"", ""分辨率"": ""10微米"", ""模式"": ""在线"", ""离线目录"": null}",是,PASS
+CMD-02,扫描 25 mm by 25mm，分辨率20um，在线检测,"{""action"": ""start_online_scan"", ""扫描区域"": ""25mm×25mm"", ""分辨率"": ""20um"", ""模式"": ""在线"", ""离线目录"": null}",是,PASS
+CMD-03,25毫米乘25毫米区域离线检测，目录pre_fusion_images，分辨率15微米,"{""action"": ""start_offline_detection"", ""扫描区域"": ""25mm×25mm"", ""分辨率"": ""15微米"", ""模式"": ""离线"", ""离线目录"": ""pre_fusion_images""}",是,PASS
+CMD-04,使用离线目录D:/demo/images做检测，区域10mm x 10mm，分辨率5um,"{""action"": ""start_offline_detection"", ""扫描区域"": ""10mm×10mm"", ""分辨率"": ""5um"", ""模式"": ""离线"", ""离线目录"": ""D:/demo/images""}",是,PASS
+CMD-05,开始在线扫描，区域30*30mm，分辨率10um,"{""action"": ""start_online_scan"", ""扫描区域"": ""30mm×30mm"", ""分辨率"": ""10um"", ""模式"": ""在线"", ""离线目录"": null}",是,PASS
+CMD-06,帮我离线检测pre_fusion_images，扫描区域20毫米乘20毫米，分辨率20微米,"{""action"": ""start_offline_detection"", ""扫描区域"": ""20mm×20mm"", ""分辨率"": ""20微米"", ""模式"": ""离线"", ""离线目录"": ""pre_fusion_images""}",是,PASS
+CMD-07,停止当前检测,"{""action"": ""stop_detection"", ""扫描区域"": null, ""分辨率"": null, ""模式"": null, ""离线目录"": null}",是,PASS
+CMD-08,查询当前检测状态,"{""action"": ""query_status"", ""扫描区域"": null, ""分辨率"": null, ""模式"": null, ""离线目录"": null}",是,PASS
+CMD-09,读取最近一次检测结果,"{""action"": ""get_latest_result"", ""扫描区域"": null, ""分辨率"": null, ""模式"": null, ""离线目录"": null}",是,PASS
+CMD-10,验证离线目录pre_fusion_images能不能用,"{""action"": ""validate_offline_folder"", ""扫描区域"": null, ""分辨率"": null, ""模式"": ""离线"", ""离线目录"": ""pre_fusion_images""}",是,PASS
+CMD-11,开始扫描,"{""action"": ""start_online_scan"", ""扫描区域"": null, ""分辨率"": null, ""模式"": null, ""离线目录"": null}",否,PASS
+CMD-12,帮我扫25mm×25mm,"{""action"": ""start_online_scan"", ""扫描区域"": ""25mm×25mm"", ""分辨率"": null, ""模式"": null, ""离线目录"": null}",否,PASS
+CMD-13,离线检测一下,"{""action"": ""start_offline_detection"", ""扫描区域"": null, ""分辨率"": null, ""模式"": ""离线"", ""离线目录"": null}",否,PASS
+CMD-14,用pre_fusion_images开始检测,"{""action"": ""start_offline_detection"", ""扫描区域"": null, ""分辨率"": null, ""模式"": ""离线"", ""离线目录"": ""pre_fusion_images""}",否,PASS
+CMD-15,按10微米分辨率扫描,"{""action"": ""start_online_scan"", ""扫描区域"": null, ""分辨率"": ""10微米"", ""模式"": null, ""离线目录"": null}",否,PASS
+CMD-16,扫描区域30mm by 30mm,"{""action"": ""start_online_scan"", ""扫描区域"": ""30mm×30mm"", ""分辨率"": null, ""模式"": null, ""离线目录"": null}",否,PASS
+CMD-17,做一次高精度检测,"{""action"": ""start_online_scan"", ""扫描区域"": null, ""分辨率"": null, ""模式"": null, ""离线目录"": null}",否,FAIL
+CMD-18,把这个目录跑一下,"{""action"": ""start_offline_detection"", ""扫描区域"": null, ""分辨率"": null, ""模式"": ""离线"", ""离线目录"": null}",否,PASS
+CMD-19,25毫米乘25毫米，离线,"{""action"": ""start_offline_detection"", ""扫描区域"": ""25mm×25mm"", ""分辨率"": null, ""模式"": ""离线"", ""离线目录"": null}",否,PASS
+CMD-20,在线模式扫描，分辨率20um,"{""action"": ""start_online_scan"", ""扫描区域"": null, ""分辨率"": ""20um"", ""模式"": ""在线"", ""离线目录"": null}",否,PASS

@@ -1,0 +1,38 @@
+<RCC>
+  <qresource prefix="newPrefix">
+    <file>icon_12af5u4ry7yi/shujujieguotongji.png</file>
+    <file>icon_12af5u4ry7yi/xiangji.png</file>
+    <file>icon_12af5u4ry7yi/zhixiandianji.png</file>
+    <file>icon_12af5u4ry7yi/返回.png</file>
+    <file>icon_12af5u4ry7yi/检测.png</file>
+    <file>icon_12af5u4ry7yi/开发者管理 (1).png</file>
+    <file>icon_12af5u4ry7yi/开发者管理.png</file>
+    <file>icon_12af5u4ry7yi/开始.png</file>
+    <file>icon_12af5u4ry7yi/历史记录.png</file>
+    <file>icon_12af5u4ry7yi/全屏.png</file>
+    <file>icon_12af5u4ry7yi/日志.png</file>
+    <file>icon_12af5u4ry7yi/设置.png</file>
+    <file>icon_12af5u4ry7yi/停止 (1).png</file>
+    <file>icon_12af5u4ry7yi/停止.png</file>
+    <file>icon_12af5u4ry7yi/统计.png</file>
+    <file>icon_12af5u4ry7yi/消息栏-警告提醒.png</file>
+    <file>icon_12af5u4ry7yi/重新连接.png</file>
+    <file>Minimize-2.png</file>
+    <file>web-icon-02.png</file>
+    <file>笔刷墨迹20.png</file>
+    <file>波浪线.png</file>
+    <file>错误.png</file>
+    <file>点 (1).png</file>
+    <file>点 (2).png</file>
+    <file>点.png</file>
+    <file>关闭.png</file>
+    <file>划痕2 (1).png</file>
+    <file>划痕2.png</file>
+    <file>印子.png</file>
+    <file>最小化.png</file>
+  </qresource>
+  <qresource prefix="image">
+    <file>AHtXuDy5hz_small.jpg</file>
+    <file>test.bmp</file>
+  </qresource>
+</RCC>

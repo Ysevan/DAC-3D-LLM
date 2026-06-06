@@ -1,0 +1,9 @@
+{
+  "provider": "openai_compatible",
+  "api_base_url": "https://tokenflux.dev/v1",
+  "api_key_present": true,
+  "api_key_redacted": "***234e",
+  "model": "gpt-5.5",
+  "api_path": "/responses",
+  "generated_at": "2026-06-02T17:23:24"
+}

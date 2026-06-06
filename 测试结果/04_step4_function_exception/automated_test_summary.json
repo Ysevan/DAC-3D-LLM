@@ -1,0 +1,7 @@
+{
+  "command": "C:\\Users\\xecat\\AppData\\Local\\Programs\\Python\\Python310\\Scripts\\pytest.exe tests -q",
+  "return_code": 0,
+  "elapsed_seconds": 27.478,
+  "result_line": "227 passed, 1 skipped in 25.72s",
+  "generated_at": "2026-06-02T17:26:41"
+}

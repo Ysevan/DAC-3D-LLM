@@ -1,0 +1,4 @@
+﻿Taylor & Francis 站点启用了 Cloudflare 校验，自动下载 PDF 失败。已保留官方页面链接，请在浏览器中手动下载。
+
+官方页面：
+https://www.tandfonline.com/doi/full/10.1080/00207543.2024.2330631

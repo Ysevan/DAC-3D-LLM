@@ -1,0 +1,503 @@
+import queue
+import random
+import threading
+import os
+import time
+import cv2
+import numpy as np
+from pathlib import Path
+import torch
+from PIL import Image
+from ultralytics import YOLO
+from ultralytics.utils.plotting import Annotator
+from collections import Counter
+import csv
+import tempfile
+import re
+from datetime import datetime
+import sys
+from sahi import AutoDetectionModel
+from sahi.predict import get_sliced_prediction
+
+
+# 确保下面的路径是正确的
+sys.path.append(r"d:\zycgit\ZDevelop_Confocal\xxp_ui\Algorithm\Regis_Fusion")
+from Algorithm.Regis_Fusion.Regis_Fusion import fusion_with_known_matrices
+
+
+# ===========================
+# 圆形拟合相关函数（从new_circle_detect2.py引入）
+# ===========================
+
+def fast_ransac_circle_fit(points, iterations=500, threshold=10):
+    """优化的RANSAC圆拟合"""
+    n_points = len(points)
+    if n_points < 3:
+        return None
+    best_inliers_count = 0
+    best_params = None
+
+    points_x = points[:, 0]
+    points_y = points[:, 1]
+
+    for _ in range(iterations):
+        idx = np.random.choice(n_points, 3, replace=False)
+        p1, p2, p3 = points[idx]
+
+        x1, y1 = p1
+        x2, y2 = p2
+        x3, y3 = p3
+
+        det = 2 * (x1 * (y2 - y3) - y1 * (x2 - x3) + x2 * y3 - x3 * y2)
+
+        if abs(det) < 1e-10:
+            continue
+
+        k1 = x1**2 + y1**2
+        k2 = x2**2 + y2**2
+        k3 = x3**2 + y3**2
+
+        cx = (k1 * (y2 - y3) + k2 * (y3 - y1) + k3 * (y1 - y2)) / det
+        cy = (k1 * (x3 - x2) + k2 * (x1 - x3) + k3 * (x2 - x1)) / det
+
+        r = np.sqrt((x1 - cx)**2 + (y1 - cy)**2)
+
+        if r <= 0 or r > 2000:
+            continue
+
+        distances = np.abs(np.sqrt((points_x - cx)**2 + (points_y - cy)**2) - r)
+        inliers_count = np.sum(distances < threshold)
+
+        if inliers_count > best_inliers_count:
+            best_inliers_count = inliers_count
+            best_params = (cx, cy, r)
+    return best_params
+
+
+def detect_and_mask_circle(image):
+    """
+    检测圆形并创建掩码图像
+    参数:
+        image: numpy数组格式的图像(灰度或彩色)
+    返回:
+        masked_img: 掩码后的图像(圆外部分为黑色)
+        circle_info: 圆的信息字典
+    """
+    if image is None:
+        print(f"无法处理空图像")
+        return None, None
+
+    # 如果是彩色图像，转换为灰度
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        img = image.copy()
+    else:
+        gray = image.copy()
+        img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+    blurred = cv2.GaussianBlur(gray, (5, 5), 2)
+
+    h, w = gray.shape
+    center_y, center_x = h // 2, w // 2
+
+    angles = np.linspace(0, 2*np.pi, 180)
+    cos_angles = np.cos(angles)
+    sin_angles = np.sin(angles)
+
+    max_radius = min(h, w) // 2
+    radii = np.arange(5, max_radius, 2)
+
+    threshold = np.mean(gray) + 0.5 * np.std(gray)
+
+    outer_edge_points = []
+
+    for i, (cos_a, sin_a) in enumerate(zip(cos_angles, sin_angles)):
+        x_coords = center_x + radii * cos_a
+        y_coords = center_y + radii * sin_a
+
+        valid_mask = (x_coords >= 0) & (x_coords < w) & \
+                     (y_coords >= 0) & (y_coords < h)
+
+        if not np.any(valid_mask):
+            continue
+
+        x_coords = x_coords[valid_mask].astype(int)
+        y_coords = y_coords[valid_mask].astype(int)
+
+        intensities = blurred[y_coords, x_coords]
+        bright_indices = np.where(intensities > threshold)[0]
+
+        if len(bright_indices) > 0:
+            farthest_idx = bright_indices[-1]
+            outer_edge_points.append([x_coords[farthest_idx], y_coords[farthest_idx]])
+
+    if len(outer_edge_points) < 10:
+        mean_val = np.mean(blurred)
+        std_val = np.std(blurred)
+        threshold = mean_val + 0.3 * std_val
+        _, bright_mask = cv2.threshold(blurred, threshold, 255, cv2.THRESH_BINARY)
+
+        contours, _ = cv2.findContours(bright_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+            outer_edge_points = largest_contour[::5].reshape(-1, 2)
+        else:
+            return None, None
+
+    outer_edge_points = np.array(outer_edge_points)
+    best_circle = fast_ransac_circle_fit(outer_edge_points, iterations=500)
+
+    if best_circle is None:
+        return None, None
+
+    xc, yc, C = best_circle
+    R_extended = C + 20
+
+    # 创建圆形掩码
+    mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.circle(mask, (int(xc), int(yc)), int(R_extended), 255, -1)
+
+    # 应用掩码
+    masked_img = cv2.bitwise_and(img, img, mask=mask)
+
+    circle_info = {
+        'center': (xc, yc),
+        'radius': C,
+        'extended_radius': R_extended
+    }
+
+    return masked_img, circle_info
+
+
+
+class ImageProcessor:
+    def __init__(self, debug_image_queue, image_debug_queue, ui_image_queue, image_ui_queue):
+        self.pos = 0
+        self.Tray_id = None
+        self.debug_image_queue = debug_image_queue
+        self.image_debug_queue = image_debug_queue
+        self.ui_image_queue = ui_image_queue
+        self.image_ui_queue = image_ui_queue
+
+        # --- 状态管理变量 ---
+        # 用于存储一个样本中第一个表面的检测结果
+        self.pending_sample_data = {}
+        # 扫描计数器，0代表第一个表面，1代表第二个表面
+        self.scan_part_counter = 0
+        # 最终的样本位置计数器 (一个样本占一个位置)
+        self.final_sample_position = 0
+
+        # 初始化瑕疵检测模型
+        self.model = None
+        self.model_type = None
+        self.model_loaded = False
+        self.load_defect_model()
+
+        # 创建结果保存目录
+        self.result_dir = r"d:\zycgit\ZDevelop_Confocal\xxp_ui\results\defect_detection"
+        os.makedirs(self.result_dir, exist_ok=True)
+        # 创建融合结果保存目录
+        self.fusion_result_dir = r"d:\zycgit\ZDevelop_Confocal\xxp_ui\results\fusion_result"
+        os.makedirs(self.fusion_result_dir, exist_ok=True)
+
+        self.getInfoFromDebug_thread = threading.Thread(target=self.getInfoFromDebug)
+        self.getInfoFromDebug_thread.start()
+
+        self.getInfoFromUI_thread = threading.Thread(target=self.getInfoFromUI)
+        self.getInfoFromUI_thread.start()
+
+    def load_defect_model(self):
+        """加载瑕疵检测模型"""
+        try:
+            model_path = r"D:\zycgit\ZDevelop_Confocal\xxp_ui\deploy\weights\best.pt"
+            if not os.path.exists(model_path):
+                print(f"模型文件不存在: {model_path}")
+                return
+
+            print(f"正在加载瑕疵检测模型: {model_path}")
+            model_format = Path(model_path).suffix
+            if model_format == '.pt':
+                self.model = AutoDetectionModel.from_pretrained(
+                    model_type='ultralytics',
+                    model_path=model_path,
+                    confidence_threshold=0.25,
+                    device="cuda:0" if torch.cuda.is_available() else "cpu"
+                )
+                self.model_type = 'sahi'
+                self.model_loaded = True
+                print("瑕疵检测模型加载成功")
+            else:
+                print(f"不支持的模型格式: {model_format}")
+        except Exception as e:
+            print(f"加载瑕疵检测模型失败: {e}")
+
+    def process_image_with_sahi(self, frame, conf_threshold=0.25, slice_height=1024, slice_width=1024):
+        """使用SAHI进行切片检测处理，集成圆形拟合和不同颜色的锚框"""
+        try:
+            # ===== 步骤1: 圆形拟合和掩码处理 =====
+            print("  >> 执行圆形拟合...")
+            masked_frame, circle_info = detect_and_mask_circle(frame)
+
+            if masked_frame is None or circle_info is None:
+                print("  >> 警告: 圆形拟合失败，使用原始图像进行检测")
+                masked_frame = frame
+                circle_info = None
+            else:
+                center_x, center_y = circle_info['center']
+                radius = circle_info['radius']
+                print(f"  >> 圆形拟合成功 - 圆心: ({center_x:.1f}, {center_y:.1f}), 半径: {radius:.1f}px")
+
+            # ===== 步骤2: 转换为RGB进行检测 =====
+            if len(masked_frame.shape) == 2:
+                # 灰度图转RGB
+                rgb_frame = cv2.cvtColor(masked_frame, cv2.COLOR_GRAY2RGB)
+            else:
+                rgb_frame = masked_frame.copy()
+
+            # ===== 步骤3: 使用SAHI进行切片检测 =====
+            print("  >> 执行SAHI切片检测...")
+            result = get_sliced_prediction(
+                rgb_frame,
+                self.model,
+                slice_height=slice_height,
+                slice_width=slice_width,
+                overlap_height_ratio=0.1,
+                overlap_width_ratio=0.1,
+                perform_standard_pred=True,
+                postprocess_type="NMS",
+                postprocess_match_threshold=0.5,
+                postprocess_match_metric="IOU"
+            )
+
+            # ===== 步骤4: 定义不同类型瑕疵的颜色 =====
+            defect_colors = {
+                'splash': (0, 165, 255),    # 黄色 - 麻点
+                'scratch': (255, 0, 255),   # 洋红 - 划痕
+                'chipping': (255, 165, 0),  # 橙色 - 崩边
+                'default': (0, 0, 255)      # 默认红色
+            }
+
+            # ===== 步骤5: 创建标注器并绘制结果 =====
+            annotator = Annotator(rgb_frame, line_width=2)
+
+            detection_data = [
+                (det.category.name, det.category.id, (det.bbox.minx, det.bbox.miny, det.bbox.maxx, det.bbox.maxy),
+                 float(det.score.value))
+                for det in result.object_prediction_list
+            ]
+
+            cnt = 0
+            defect_details = []
+
+            for det in detection_data:
+                cnt += 1
+                minx, miny, maxx, maxy = det[2]
+                confidence = det[3]
+                width = maxx - minx
+                height = maxy - miny
+                defect_type = det[0]
+
+                defect_info = {
+                    "id": cnt, "category": defect_type, "category_id": int(det[1]),
+                    "confidence": float(confidence),
+                    "bbox": {
+                        "x1": float(minx), "y1": float(miny), "x2": float(maxx),
+                        "y2": float(maxy), "width": float(width), "height": float(height)
+                    }
+                }
+                defect_details.append(defect_info)
+
+                # 根据瑕疵类型选择颜色
+                color = defect_colors.get(defect_type, defect_colors['default'])
+
+                label = f"{defect_type} {confidence:.2f}"
+                annotator.box_label(det[2], label=label, color=color)
+
+            result_img = annotator.result()
+
+            # ===== 步骤6: 如果进行了圆形拟合，在结果图上绘制圆形边界 =====
+            if circle_info is not None:
+                center_x, center_y = int(circle_info['center'][0]), int(circle_info['center'][1])
+                radius = int(circle_info['radius'])
+                # 绘制圆形边界（白色，半透明）
+                cv2.circle(result_img, (center_x, center_y), radius, (255, 255, 255), 2)
+                # 绘制圆心
+                cv2.circle(result_img, (center_x, center_y), 5, (0, 255, 0), -1)
+
+            print(f"  >> 检测完成，共检测到 {cnt} 个瑕疵")
+            return result_img, result, cnt, defect_details
+
+        except Exception as e:
+            print(f"处理图像时出错: {e}")
+            import traceback
+            traceback.print_exc()
+            return None, None, 0, []
+
+    def getInfoFromDebug(self):
+        """
+        处理来自调试UI的图像数据队列。
+        该函数会处理一个样本的上下两个表面，对每个表面进行图像融合和瑕疵检测，
+        然后合并两个表面的结果，将单个样本的最终结果发送到UI。
+        """
+        while True:
+            try:
+                data = self.debug_image_queue.get(timeout=2)
+                if not data:
+                    continue
+
+                part_number = self.scan_part_counter + 1
+                surface_type = "上表面" if part_number == 1 else "下表面"
+                print(f"图像处理进程接收到样本的第 {part_number} 部分 ({surface_type}) 图像...")
+
+                # --- 1. 保存当前接收到的原始图像 ---
+                Image.fromarray(data['DA3562103']['frame']).save(data['DA3562103']['pic_path'])
+                img_2117_rotated = Image.fromarray(data['DA3562117']['frame']).rotate(180)
+                img_2117_rotated.save(data['DA3562117']['pic_path'])
+                img_7093_flipped = Image.fromarray(data['DA3827093']['frame']).transpose(
+                    Image.Transpose.FLIP_LEFT_RIGHT)
+                img_7093_flipped.save(data['DA3827093']['pic_path'])
+
+                current_pic_paths = [data['DA3562103']['pic_path'], data['DA3562117']['pic_path'],
+                                     data['DA3827093']['pic_path']]
+                current_result_pic_path = data['result_pic_path']
+
+                # --- 2. 对当前表面进行图像融合 ---
+                print(f"开始对第 {part_number} 部分 ({surface_type}) 进行图像配准和融合处理...")
+                fusion_start_time = time.time()
+
+                img_back = data['DA3562103']['frame'].copy()
+                img_focus = cv2.flip(data['DA3827093']['frame'].copy(), 1)
+                img_front = cv2.rotate(data['DA3562117']['frame'].copy(), cv2.ROTATE_180)
+
+                fusion_image_list = [img_back, img_focus, img_front]
+
+                H1_to_ref = np.array([ [-1.003241, -0.023340, 2196.622034],[-0.020062, 1.004064, 84.512507],[0.000002, -0.000001, 1.000000]])
+                H3_to_ref = np.array([ [0.153752, -0.986170, 1952.083044],[0.991027, 0.149623, -31.947256],[-0.000001, 0.000000, 1.000000]])
+                homographies = [H1_to_ref, np.eye(3), H3_to_ref]
+
+                fused_image, _ = fusion_with_known_matrices(
+                    fusion_image_list,
+                    homographies=homographies,
+                    result_dir=self.fusion_result_dir,
+                    verbose=True
+                )
+
+                fusion_elapsed_time = time.time() - fusion_start_time
+                print(f"图像融合完成，耗时: {fusion_elapsed_time:.2f} 秒")
+
+                # 为当前表面的融合结果创建一个唯一的文件名
+                pos_for_filename = self.final_sample_position + 1
+                fusion_result_filename = f"fused_image_pos{pos_for_filename}_surface{part_number}.jpg"
+                fusion_result_path = os.path.join(self.fusion_result_dir, fusion_result_filename)
+                if fused_image is not None:
+                    cv2.imwrite(fusion_result_path, fused_image)
+                    print(f"融合结果已保存为: {fusion_result_path}")
+
+                # --- 3. 对当前表面进行瑕疵检测 (使用原始焦平面图像) ---
+                defections = []
+                res = 1
+                result_img = None
+
+                if self.model_loaded:
+                    start_time = time.time()
+                    result_img, _, defect_count, defect_details = self.process_image_with_sahi(
+                        fused_image, conf_threshold=0.25, slice_height=1024, slice_width=1024
+                    )
+                    elapsed_time = time.time() - start_time
+                    print(f"瑕疵检测耗时: {elapsed_time:.2f} 秒，检测到 {defect_count} 个瑕疵")
+
+                    if result_img is not None:
+                        cv2.imwrite(current_result_pic_path, result_img)
+
+                    if defect_count > 0:
+                        res = 0
+                        for defect in defect_details:
+                            bbox = defect["bbox"]
+                            defections.append({
+                                'defection_type': defect["category"],
+                                'defection_pos': ((bbox["x1"] + bbox["x2"]) / 2, (bbox["y1"] + bbox["y2"]) / 2),
+                                'defection_size': max(bbox["width"], bbox["height"])
+                            })
+                else:
+                    print("警告: 模型未加载，使用随机结果进行模拟。")
+                    res = random.randint(0, 1)  # 随机模拟结果
+
+                # --- 4. 核心逻辑：根据是第1部分还是第2部分进行处理 ---
+                if self.scan_part_counter == 0:
+                    self.pending_sample_data = {
+                        'quality': res, 'pic_path': current_pic_paths, 'defections': defections,
+                        'result_pic_path': current_result_pic_path, 'result_img': result_img
+                    }
+                    self.scan_part_counter = 1
+                    print("样本第一部分处理完成，等待第二部分...\n")
+                elif self.scan_part_counter == 1:
+                    print("样本第二部分处理完成，开始合并最终结果...")
+                    first_part_data = self.pending_sample_data
+
+                    final_res = 1 if first_part_data['quality'] == 1 and res == 1 else 0
+                    final_defections = first_part_data['defections'] + defections
+                    self.final_sample_position += 1
+                    # === 新增：按规范保存结果图 ===
+                    result_dir = r"E:\ftkpic\final_results\ciping2"  # 瑕疵检测结果保存目录
+                    os.makedirs(result_dir, exist_ok=True)  # 确保目录存在
+
+                    # 生成标准文件名
+                    base_name = f"{self.Tray_id}_pos{self.final_sample_position}"
+
+                    # 保存第一面结果图
+                    surface1_path = os.path.join(result_dir, f"{base_name}_surface下.jpg")
+                    if first_part_data['result_img'] is not None:
+                        cv2.imwrite(surface1_path, first_part_data['result_img'])
+
+                    # 保存第二面结果图
+                    surface2_path = os.path.join(result_dir, f"{base_name}_surface上.jpg")
+                    if result_img is not None:
+                        cv2.imwrite(surface2_path, result_img)
+                    # === 新增结束 ===
+
+                    final_sample_data = {
+                        'Tray_id': self.Tray_id, 'quality': final_res,
+                        'pic_path': {'surface_1': first_part_data['pic_path'], 'surface_2': current_pic_paths},
+                        'pos': self.final_sample_position,
+                        'defections': final_defections,
+                        'result_pic_path': {'surface_1': first_part_data['result_pic_path'],
+                                            'surface_2': current_result_pic_path},
+                        'result_img': [result_img , first_part_data['result_img']]
+                    }
+                    print(final_sample_data)
+                    self.image_ui_queue.put({'type': 'Sample_detection_result', 'sample_data': final_sample_data})
+                    print(
+                        f"样本 {self.final_sample_position} 的最终结果已发送到UI。最终质量: {'合格' if final_res == 1 else '不合格'}\n")
+
+                    self.pending_sample_data = {}
+                    self.scan_part_counter = 0
+
+                    if self.final_sample_position >= 144:
+                        self.final_sample_position = 0
+                        self.image_ui_queue.put({'type': 'info', 'data': 'finish'})
+                        print("所有样本处理完成！")
+
+            except queue.Empty:
+                pass
+            except Exception as e:
+                print(f"图像处理过程中发生严重错误: {e}")
+                import traceback
+                traceback.print_exc()
+                self.pending_sample_data = {}
+                self.scan_part_counter = 0
+
+    def getInfoFromUI(self):
+        while True:
+            try:
+                data = self.ui_image_queue.get(timeout=2)
+                if data:
+                    print('图像处理进程接收到UI消息：', data)
+                    if data['type'] == 'info':
+                        self.Tray_id = data['data']['tray_id']
+                    elif data['type'] == 'reload_model':
+                        self.load_defect_model()
+            except queue.Empty:
+                pass
+
+帮我改一下D:\zycgit\ZDevelop_Confocal\xxp_ui\Algorithm\Regis_Fusion\Regis_Fusion.py代码，现在D:\zycgit\ZDevelop_Confocal\xxp_ui\image_processor.py调用Regis_Fusion.py融合的代码，比较耗费时间，帮我优化代码，提升时间效率。现在融合部分平均每张图片需要耗费0.5s

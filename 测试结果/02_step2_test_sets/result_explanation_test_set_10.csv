@@ -1,0 +1,11 @@
+﻿编号,输入的检测结果描述,期望严重度,期望提及的阈值依据,论文归档结果
+RES-01,scratch长度0.20mm，宽度0.03mm，置信度0.91,low,划痕长度低于中等级阈值,FAIL
+RES-02,scratch长度0.50mm，宽度0.04mm，置信度0.93,medium,划痕长度达到中等级边界,FAIL
+RES-03,scratch长度1.20mm，宽度0.08mm，置信度0.95,high,划痕长度超过高等级阈值,FAIL
+RES-04,chipping面积0.05mm²，数量1，置信度0.88,low,点蚀面积低于中等级阈值,FAIL
+RES-05,chipping面积0.10mm²，数量2，置信度0.90,medium,点蚀面积等于中等级边界,FAIL
+RES-06,chipping面积0.30mm²，数量4，置信度0.94,high,点蚀面积或数量超过高等级阈值,FAIL
+RES-07,splash数量2，最大直径0.04mm,low,飞溅数量和直径均较低,FAIL
+RES-08,splash数量5，最大直径0.08mm,medium,飞溅数量达到中等级边界,FAIL
+RES-09,splash数量12，最大直径0.15mm,high,飞溅数量或直径超过高等级阈值,FAIL
+RES-10,缺陷类型缺失，仅给出面积0.12mm²,依据不足,结果字段不完整，不能可靠套用阈值,FAIL
